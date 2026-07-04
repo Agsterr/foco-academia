@@ -1,0 +1,52 @@
+name: Deploy to Hetzner
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-foco-academia-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Configurar SSH
+        env:
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+        run: |
+          if [ -z "$HETZNER_SSH_KEY" ] || [ -z "$HETZNER_HOST" ]; then
+            echo "Defina HETZNER_SSH_KEY e HETZNER_HOST nos secrets do repositorio."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$HETZNER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HETZNER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Executar deploy no servidor
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+        run: |
+          USER="${HETZNER_USER:-root}"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=30 \
+            "${USER}@${HETZNER_HOST}" \
+            'bash /opt/foco-academia/scripts/deploy-hetzner.sh'
+
+      - name: Verificar containers
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+        run: |
+          USER="${HETZNER_USER:-root}"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes \
+            "${USER}@${HETZNER_HOST}" \
+            'docker ps --filter name=foco-academia --format "table {{.Names}}\t{{.Status}}"'
