@@ -11,6 +11,9 @@ import java.util.UUID;
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailIgnoreCase(String email);
     boolean existsByEmailIgnoreCase(String email);
+    boolean existsByRole(UserRole role);
     List<User> findByRoleAndActiveTrueOrderByNameAsc(UserRole role);
     List<User> findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(UUID instructorId, UserRole role);
+    List<User> findByAcademyIdOrderByNameAsc(UUID academyId);
+    long countByAcademyIdAndRole(UUID academyId, UserRole role);
 }

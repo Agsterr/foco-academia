@@ -78,6 +78,16 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getDeviceId(): string {
+  const key = "academia_device_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {}

@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -22,6 +24,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final DeviceService deviceService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -46,6 +49,7 @@ public class AuthService {
         return new AuthResponse(jwtService.generateToken(authUser), UserResponse.from(user));
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.email().trim().toLowerCase(), request.password())
@@ -53,6 +57,15 @@ public class AuthService {
 
         User user = userRepository.findByEmailIgnoreCase(request.email().trim().toLowerCase())
                 .orElseThrow(() -> new ApiException("Credenciais inválidas"));
+
+        if (!user.isActive()) {
+            throw new ApiException("Conta desativada");
+        }
+
+        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel());
+
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
 
         AuthUser authUser = new AuthUser(user);
         return new AuthResponse(jwtService.generateToken(authUser), UserResponse.from(user));

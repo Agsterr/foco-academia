@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, setToken } from "@/lib/api";
+import { api, getDeviceId, setToken } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,7 +18,12 @@ export default function LoginPage() {
     try {
       const data = await api<{ token: string }>("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          deviceId: getDeviceId(),
+          deviceLabel: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
+        }),
       });
       setToken(data.token);
       router.push("/treinos");

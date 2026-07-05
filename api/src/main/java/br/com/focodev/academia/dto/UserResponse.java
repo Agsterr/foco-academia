@@ -3,6 +3,7 @@ package br.com.focodev.academia.dto;
 import br.com.focodev.academia.domain.User;
 import br.com.focodev.academia.domain.UserRole;
 
+import java.time.Instant;
 import java.util.UUID;
 
 public record UserResponse(
@@ -11,7 +12,9 @@ public record UserResponse(
         String name,
         String phone,
         UserRole role,
-        UUID instructorId
+        UUID academyId,
+        UUID instructorId,
+        Instant lastLoginAt
 ) {
     public static UserResponse from(User user) {
         return new UserResponse(
@@ -20,7 +23,9 @@ public record UserResponse(
                 user.getName(),
                 user.getPhone(),
                 user.getRole(),
-                user.getInstructor() != null ? user.getInstructor().getId() : null
+                user.getAcademy() != null ? user.getAcademy().getId() : null,
+                user.getInstructor() != null ? user.getInstructor().getId() : null,
+                user.getLastLoginAt()
         );
     }
 }

@@ -47,6 +47,7 @@ public class AcademiaService {
         student.setPhone(request.phone());
         student.setRole(UserRole.ALUNO);
         student.setInstructor(instructorUser);
+        student.setAcademy(instructorUser.getAcademy());
         userRepository.save(student);
         return UserResponse.from(student);
     }

@@ -35,8 +35,14 @@ public class User {
     private UserRole role;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "academy_id")
+    private Academy academy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id")
     private User instructor;
+
+    private Instant lastLoginAt;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
