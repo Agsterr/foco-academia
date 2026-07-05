@@ -47,21 +47,21 @@ services:
     build:
       context: .
       dockerfile: docker/instrutor.Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: /instrutor
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-}
     container_name: foco-academia-instrutor
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-}
-      NEXT_PUBLIC_BASE_PATH: /instrutor
 
   admin:
     build:
       context: .
       dockerfile: docker/admin.Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: /admin
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-}
     container_name: foco-academia-admin
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-}
-      NEXT_PUBLIC_BASE_PATH: /admin
 
   nginx:
     image: nginx:1.27-alpine
