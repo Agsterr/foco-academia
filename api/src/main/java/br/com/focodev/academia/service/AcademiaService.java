@@ -29,17 +29,18 @@ public class AcademiaService {
     private final WorkoutFeedbackRepository feedbackRepository;
     private final SuggestionRepository suggestionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TenantService tenantService;
 
     @Value("${app.upload.dir}")
     private String uploadDir;
 
     @Transactional
     public UserResponse createStudent(AuthUser instructor, CreateStudentRequest request) {
+        User instructorUser = tenantService.requireInstructor(instructor);
         if (userRepository.existsByEmailIgnoreCase(request.email())) {
             throw new ApiException("E-mail já cadastrado");
         }
 
-        User instructorUser = getInstructor(instructor);
         User student = new User();
         student.setEmail(request.email().trim().toLowerCase());
         student.setPasswordHash(passwordEncoder.encode(request.password()));
@@ -53,11 +54,13 @@ public class AcademiaService {
     }
 
     public List<UserResponse> listStudents(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
         return userRepository.findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(instructor.getId(), UserRole.ALUNO)
                 .stream().map(UserResponse::from).toList();
     }
 
     public DashboardResponse dashboard(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
         long students = userRepository.findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(instructor.getId(), UserRole.ALUNO).size();
         long activeWorkouts = workoutRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId()).stream()
                 .filter(w -> w.getStatus() == WorkoutStatus.ATIVO).count();
@@ -67,16 +70,11 @@ public class AcademiaService {
 
     @Transactional
     public WorkoutResponse createWorkout(AuthUser instructor, CreateWorkoutRequest request) {
-        User instructorUser = getInstructor(instructor);
+        User instructorUser = tenantService.requireInstructor(instructor);
         User student = userRepository.findById(request.studentId())
                 .orElseThrow(() -> new ApiException("Aluno não encontrado"));
 
-        if (student.getRole() != UserRole.ALUNO) {
-            throw new ApiException("Usuário não é aluno");
-        }
-        if (student.getInstructor() == null || !student.getInstructor().getId().equals(instructor.getId())) {
-            throw new ApiException("Aluno não pertence a este instrutor");
-        }
+        tenantService.requireStudentInInstructorAcademy(instructorUser, student);
 
         Workout workout = new Workout();
         workout.setTitle(request.title().trim());
@@ -108,11 +106,14 @@ public class AcademiaService {
     }
 
     public List<WorkoutResponse> listInstructorWorkouts(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
         return workoutRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId())
                 .stream().map(WorkoutResponse::from).toList();
     }
 
     public List<WorkoutResponse> listStudentWorkouts(AuthUser student) {
+        tenantService.requireActiveAcademy(userRepository.findById(student.getId())
+                .orElseThrow(() -> new ApiException("Aluno não encontrado")));
         return workoutRepository.findByStudentIdWithExercises(student.getId())
                 .stream().map(WorkoutResponse::from).toList();
     }
@@ -133,15 +134,16 @@ public class AcademiaService {
 
     @Transactional
     public FeedbackResponse submitFeedback(AuthUser student, UUID workoutId, FeedbackRequest request) {
+        User studentUser = userRepository.findById(student.getId())
+                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        tenantService.requireActiveAcademy(studentUser);
+
         Workout workout = workoutRepository.findById(workoutId)
                 .orElseThrow(() -> new ApiException("Treino não encontrado"));
 
         if (!workout.getStudent().getId().equals(student.getId())) {
             throw new ApiException("Treino não pertence a este aluno");
         }
-
-        User studentUser = userRepository.findById(student.getId())
-                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
 
         WorkoutFeedback feedback = feedbackRepository.findByWorkoutIdAndStudentId(workoutId, student.getId())
                 .orElseGet(WorkoutFeedback::new);
@@ -159,6 +161,7 @@ public class AcademiaService {
     }
 
     public List<FeedbackResponse> listWorkoutFeedbacks(AuthUser instructor, UUID workoutId) {
+        tenantService.requireInstructor(instructor);
         Workout workout = workoutRepository.findById(workoutId)
                 .orElseThrow(() -> new ApiException("Treino não encontrado"));
         if (!workout.getInstructor().getId().equals(instructor.getId())) {
@@ -169,6 +172,7 @@ public class AcademiaService {
     }
 
     public List<FeedbackResponse> listInstructorFeedbacks(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
         return feedbackRepository.findByWorkoutInstructorIdOrderByCreatedAtDesc(instructor.getId())
                 .stream().map(FeedbackResponse::from).toList();
     }
@@ -177,6 +181,7 @@ public class AcademiaService {
     public SuggestionResponse createSuggestion(AuthUser student, SuggestionRequest request) {
         User studentUser = userRepository.findById(student.getId())
                 .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        tenantService.requireActiveAcademy(studentUser);
 
         Suggestion suggestion = new Suggestion();
         suggestion.setStudent(studentUser);
@@ -192,12 +197,14 @@ public class AcademiaService {
     }
 
     public List<SuggestionResponse> listInstructorSuggestions(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
         return suggestionRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId())
                 .stream().map(SuggestionResponse::from).toList();
     }
 
     @Transactional
     public SuggestionResponse respondSuggestion(AuthUser instructor, UUID suggestionId, SuggestionResponseRequest request) {
+        tenantService.requireInstructor(instructor);
         Suggestion suggestion = suggestionRepository.findById(suggestionId)
                 .orElseThrow(() -> new ApiException("Sugestão não encontrada"));
 
@@ -211,7 +218,8 @@ public class AcademiaService {
         return SuggestionResponse.from(suggestionRepository.save(suggestion));
     }
 
-    public String uploadMedia(MultipartFile file) throws IOException {
+    public String uploadMedia(AuthUser instructor, MultipartFile file) throws IOException {
+        tenantService.requireInstructor(instructor);
         if (file.isEmpty()) {
             throw new ApiException("Arquivo vazio");
         }
@@ -228,10 +236,5 @@ public class AcademiaService {
         Files.createDirectories(directory);
         Files.copy(file.getInputStream(), directory.resolve(filename));
         return "/api/media/" + filename;
-    }
-
-    private User getInstructor(AuthUser instructor) {
-        return userRepository.findById(instructor.getId())
-                .orElseThrow(() -> new ApiException("Instrutor não encontrado"));
     }
 }

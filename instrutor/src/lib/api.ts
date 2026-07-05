@@ -64,6 +64,16 @@ export interface Dashboard {
 }
 
 const TOKEN_KEY = "academia_token";
+const ACADEMY_SLUG_KEY = "academia_slug";
+
+export function getAcademySlug(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem(ACADEMY_SLUG_KEY) ?? "";
+}
+
+export function setAcademySlug(slug: string) {
+  localStorage.setItem(ACADEMY_SLUG_KEY, slug.trim().toLowerCase());
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

@@ -3,6 +3,7 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080
 export interface Academy {
   id: string;
   name: string;
+  slug: string;
   deviceLimitPerUser: number;
   active: boolean;
   createdAt: string;

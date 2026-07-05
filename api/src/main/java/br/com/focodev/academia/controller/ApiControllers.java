@@ -4,6 +4,7 @@ import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
+import br.com.focodev.academia.service.TenantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,10 +24,16 @@ public class ApiControllers {
 
     private final AuthService authService;
     private final AcademiaService academiaService;
+    private final TenantService tenantService;
 
     @GetMapping("/health")
     public Map<String, String> health() {
         return Map.of("status", "ok");
+    }
+
+    @GetMapping("/tenants/{slug}")
+    public TenantPublicResponse tenant(@PathVariable String slug) {
+        return TenantPublicResponse.from(tenantService.requireActiveAcademyBySlug(slug));
     }
 
     @PostMapping("/auth/register")
@@ -115,7 +122,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @RequestParam("file") MultipartFile file
     ) throws IOException {
-        return Map.of("url", academiaService.uploadMedia(file));
+        return Map.of("url", academiaService.uploadMedia(user, file));
     }
 
     @GetMapping("/student/workouts")

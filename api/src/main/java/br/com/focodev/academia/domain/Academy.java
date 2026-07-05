@@ -22,6 +22,10 @@ public class Academy {
     @Column(nullable = false)
     private String name;
 
+    /** Identificador único da academia (multi-tenant). Usado no login. */
+    @Column(nullable = false, unique = true, length = 64)
+    private String slug;
+
     /** Máximo de dispositivos simultâneos por usuário (aluno/instrutor). */
     @Column(nullable = false)
     private int deviceLimitPerUser = 3;

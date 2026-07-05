@@ -29,9 +29,15 @@ public class DataInitializer {
             Academy academy = academyRepository.findAll().stream().findFirst().orElseGet(() -> {
                 Academy a = new Academy();
                 a.setName("Academia Demo");
+                a.setSlug("academia-demo");
                 a.setDeviceLimitPerUser(3);
                 return academyRepository.save(a);
             });
+
+            if (academy.getSlug() == null || academy.getSlug().isBlank()) {
+                academy.setSlug("academia-demo");
+                academyRepository.save(academy);
+            }
 
             if (!userRepository.existsByRole(UserRole.ADMIN)) {
                 User admin = new User();

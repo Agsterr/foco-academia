@@ -37,7 +37,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String token = header.substring(7);
         try {
             var userId = jwtService.extractUserId(token);
-            userRepository.findById(userId).ifPresent(user -> {
+            userRepository.findByIdWithAcademy(userId).ifPresent(user -> {
                 AuthUser authUser = new AuthUser(user);
                 var authentication = new UsernamePasswordAuthenticationToken(
                         authUser, null, authUser.getAuthorities()

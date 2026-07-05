@@ -27,6 +27,7 @@ export default function AcademiasPage() {
             <div className="flex justify-between">
               <div>
                 <h3 className="font-medium">{a.name}</h3>
+                <p className="text-sm text-emerald-400/80">Código: {a.slug}</p>
                 <p className="text-sm text-slate-400">{a.instructorCount} instrutores · {a.studentCount} alunos</p>
                 <p className="text-xs text-slate-500">Limite: {a.deviceLimitPerUser} dispositivos/usuário</p>
               </div>

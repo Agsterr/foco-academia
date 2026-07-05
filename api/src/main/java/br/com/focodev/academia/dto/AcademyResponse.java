@@ -8,6 +8,7 @@ import java.util.UUID;
 public record AcademyResponse(
         UUID id,
         String name,
+        String slug,
         int deviceLimitPerUser,
         boolean active,
         Instant createdAt,
@@ -18,6 +19,7 @@ public record AcademyResponse(
         return new AcademyResponse(
                 academy.getId(),
                 academy.getName(),
+                academy.getSlug(),
                 academy.getDeviceLimitPerUser(),
                 academy.isActive(),
                 academy.getCreatedAt(),

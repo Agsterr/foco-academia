@@ -3,6 +3,8 @@ package br.com.focodev.academia.repository;
 import br.com.focodev.academia.domain.User;
 import br.com.focodev.academia.domain.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -10,6 +12,12 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailIgnoreCase(String email);
+
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.academy WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailWithAcademy(@Param("email") String email);
+
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.academy WHERE u.id = :id")
+    Optional<User> findByIdWithAcademy(@Param("id") UUID id);
     boolean existsByEmailIgnoreCase(String email);
     boolean existsByRole(UserRole role);
     List<User> findByRoleAndActiveTrueOrderByNameAsc(UserRole role);

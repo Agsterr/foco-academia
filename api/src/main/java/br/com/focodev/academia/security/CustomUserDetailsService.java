@@ -15,7 +15,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) {
-        return userRepository.findByEmailIgnoreCase(username)
+        return userRepository.findByEmailWithAcademy(username)
                 .map(AuthUser::new)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
     }

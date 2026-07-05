@@ -8,6 +8,7 @@ import { api, getToken } from "@/lib/api";
 export default function NovaAcademiaPage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
   const [deviceLimit, setDeviceLimit] = useState(3);
   const [instructorName, setInstructorName] = useState("");
   const [instructorEmail, setInstructorEmail] = useState("");
@@ -25,6 +26,7 @@ export default function NovaAcademiaPage() {
         method: "POST",
         body: JSON.stringify({
           name,
+          slug: slug || undefined,
           deviceLimitPerUser: deviceLimit,
           instructorName,
           instructorEmail,
@@ -44,6 +46,8 @@ export default function NovaAcademiaPage() {
       <h2 className="mb-4 text-xl font-semibold">Nova academia</h2>
       <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da academia" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
+        <input value={slug} onChange={(e) => setSlug(e.target.value.toLowerCase())} placeholder="Código (opcional, ex: minha-academia)" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" />
+        <p className="text-xs text-slate-500">Instrutores e alunos usam este código no login.</p>
         <label className="block text-sm text-slate-400">
           Limite de dispositivos por usuário
           <input type="number" min={1} max={20} value={deviceLimit} onChange={(e) => setDeviceLimit(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" />

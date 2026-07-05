@@ -7,6 +7,7 @@ import br.com.focodev.academia.repository.AcademyRepository;
 import br.com.focodev.academia.repository.DeviceSessionRepository;
 import br.com.focodev.academia.repository.UserRepository;
 import br.com.focodev.academia.security.AuthUser;
+import br.com.focodev.academia.util.SlugHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,10 @@ public class AdminService {
 
         Academy academy = new Academy();
         academy.setName(request.name().trim());
+        String slugBase = request.slug() != null && !request.slug().isBlank()
+                ? request.slug().trim()
+                : request.name();
+        academy.setSlug(SlugHelper.unique(slugBase, academyRepository::existsBySlugIgnoreCase));
         academy.setDeviceLimitPerUser(request.deviceLimitPerUser());
         academyRepository.save(academy);
 

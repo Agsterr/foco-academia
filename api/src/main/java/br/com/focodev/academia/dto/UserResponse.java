@@ -13,6 +13,8 @@ public record UserResponse(
         String phone,
         UserRole role,
         UUID academyId,
+        String academyName,
+        String academySlug,
         UUID instructorId,
         Instant lastLoginAt
 ) {
@@ -24,6 +26,8 @@ public record UserResponse(
                 user.getPhone(),
                 user.getRole(),
                 user.getAcademy() != null ? user.getAcademy().getId() : null,
+                user.getAcademy() != null ? user.getAcademy().getName() : null,
+                user.getAcademy() != null ? user.getAcademy().getSlug() : null,
                 user.getInstructor() != null ? user.getInstructor().getId() : null,
                 user.getLastLoginAt()
         );

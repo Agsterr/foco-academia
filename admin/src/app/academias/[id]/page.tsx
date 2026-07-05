@@ -75,6 +75,7 @@ export default function AcademiaDetailPage() {
   return (
     <AppShell>
       <h2 className="text-xl font-semibold">{academy.name}</h2>
+      <p className="mt-1 text-sm text-emerald-400">Código de login: <code className="rounded bg-slate-800 px-2 py-0.5">{academy.slug}</code></p>
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
         <p className="text-sm text-slate-400">Limite de dispositivos por usuário</p>
         <div className="mt-2 flex gap-2">

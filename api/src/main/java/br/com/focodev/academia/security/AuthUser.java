@@ -15,6 +15,8 @@ public class AuthUser implements UserDetails {
     private final String email;
     private final String password;
     private final UserRole role;
+    private final UUID academyId;
+    private final boolean academyActive;
     private final boolean active;
 
     public AuthUser(User user) {
@@ -22,7 +24,17 @@ public class AuthUser implements UserDetails {
         this.email = user.getEmail();
         this.password = user.getPasswordHash();
         this.role = user.getRole();
+        this.academyId = user.getAcademy() != null ? user.getAcademy().getId() : null;
+        this.academyActive = user.getAcademy() == null || user.getAcademy().isActive();
         this.active = user.isActive();
+    }
+
+    public UUID getAcademyId() {
+        return academyId;
+    }
+
+    public boolean isAcademyActive() {
+        return academyActive;
     }
 
     public UUID getId() {

@@ -33,6 +33,7 @@ public class JwtService {
                 .subject(user.getId().toString())
                 .claim("email", user.getUsername())
                 .claim("role", user.getRole().name())
+                .claim("academyId", user.getAcademyId() != null ? user.getAcademyId().toString() : null)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(expirationHours, ChronoUnit.HOURS)))
                 .signWith(key)
