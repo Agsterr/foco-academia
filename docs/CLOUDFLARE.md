@@ -23,11 +23,7 @@ O ingress do túnel já inclui `academia.focodev.com.br → http://127.0.0.1:808
 
 ## Contas demo
 
-| Perfil | E-mail | Senha |
-|--------|--------|-------|
-| Admin plataforma | admin@focodev.com.br | admin123 |
-| Instrutor | instrutor@academia.com | instrutor123 |
-| Aluno | aluno@academia.com | aluno123 |
+Contas de demonstração são provisionadas pelo seed da API. Não documente credenciais neste repositório — use variáveis de ambiente ou documentação privada do time.
 
 ## Automação (opcional)
 

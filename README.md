@@ -43,9 +43,9 @@ cd instrutor && npm run dev -- -p 3002
 
 Configure `NEXT_PUBLIC_API_URL=http://localhost:8080` nos dois apps.
 
-### Contas demo (criadas automaticamente)
-- Instrutor: `instrutor@academia.com` / `instrutor123`
-- Aluno: `aluno@academia.com` / `aluno123`
+### Contas demo
+
+Contas de demonstração são criadas automaticamente ao rodar o seed da API. Consulte a documentação interna ou o time de desenvolvimento para obter acesso em ambiente local.
 
 ## Docker
 
