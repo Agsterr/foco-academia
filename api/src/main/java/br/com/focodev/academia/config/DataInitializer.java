@@ -39,10 +39,11 @@ public class DataInitializer {
                 academyRepository.save(academy);
             }
 
-            if (!userRepository.existsByRole(UserRole.ADMIN)) {
+            String adminPassword = envOrNull("SEED_ADMIN_PASSWORD");
+            if (adminPassword != null && !userRepository.existsByRole(UserRole.ADMIN)) {
                 User admin = new User();
                 admin.setEmail("admin@focodev.com.br");
-                admin.setPasswordHash(passwordEncoder.encode("admin123"));
+                admin.setPasswordHash(passwordEncoder.encode(adminPassword));
                 admin.setName("Administrador FocoDev");
                 admin.setRole(UserRole.ADMIN);
                 userRepository.save(admin);
@@ -56,10 +57,14 @@ public class DataInitializer {
                 userRepository.save(u);
             }
 
-            if (userRepository.findByEmailIgnoreCase("instrutor@academia.com").isEmpty()) {
+            String instructorPassword = envOrNull("SEED_INSTRUTOR_PASSWORD");
+            String studentPassword = envOrNull("SEED_ALUNO_PASSWORD");
+            if (instructorPassword != null
+                    && studentPassword != null
+                    && userRepository.findByEmailIgnoreCase("instrutor@academia.com").isEmpty()) {
                 User instructor = new User();
                 instructor.setEmail("instrutor@academia.com");
-                instructor.setPasswordHash(passwordEncoder.encode("instrutor123"));
+                instructor.setPasswordHash(passwordEncoder.encode(instructorPassword));
                 instructor.setName("Instrutor Demo");
                 instructor.setRole(UserRole.INSTRUTOR);
                 instructor.setAcademy(academy);
@@ -67,7 +72,7 @@ public class DataInitializer {
 
                 User student = new User();
                 student.setEmail("aluno@academia.com");
-                student.setPasswordHash(passwordEncoder.encode("aluno123"));
+                student.setPasswordHash(passwordEncoder.encode(studentPassword));
                 student.setName("Aluno Demo");
                 student.setRole(UserRole.ALUNO);
                 student.setAcademy(academy);
@@ -101,5 +106,10 @@ public class DataInitializer {
                 workoutRepository.save(workout);
             }
         };
+    }
+
+    private static String envOrNull(String key) {
+        String value = System.getenv(key);
+        return value != null && !value.isBlank() ? value : null;
     }
 }

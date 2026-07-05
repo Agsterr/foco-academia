@@ -8,8 +8,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [academySlug, setSlug] = useState("academia-demo");
   const [academyName, setAcademyName] = useState("");
-  const [email, setEmail] = useState("instrutor@academia.com");
-  const [password, setPassword] = useState("instrutor123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -99,9 +99,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          Demo: academia-demo · instrutor@academia.com / instrutor123
-        </p>
+
       </div>
     </div>
   );
