@@ -29,6 +29,9 @@ fi
 echo "==> Rebuild e restart"
 docker compose up -d --build
 
+echo "==> Reinicia nginx (atualiza IPs dos containers)"
+docker compose restart nginx
+
 echo "==> Status"
 docker ps --filter name=foco-academia --format 'table {{.Names}}\t{{.Status}}'
 echo "Deploy concluido em $(date -u +'%Y-%m-%dT%H:%M:%SZ')."
