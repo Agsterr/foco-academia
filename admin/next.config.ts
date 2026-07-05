@@ -12,7 +12,6 @@ const withPWA = withPWAInit({
 const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {},
-  trailingSlash: Boolean(basePath),
   basePath,
   assetPrefix: basePath,
 };

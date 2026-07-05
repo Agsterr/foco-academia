@@ -30,7 +30,7 @@ echo "==> Rebuild e restart"
 docker compose up -d --build
 
 echo "==> Reinicia nginx (atualiza IPs dos containers)"
-docker compose restart nginx
+docker compose up -d --force-recreate nginx
 
 echo "==> Status"
 docker ps --filter name=foco-academia --format 'table {{.Names}}\t{{.Status}}'
