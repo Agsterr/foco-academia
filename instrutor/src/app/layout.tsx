@@ -7,7 +7,7 @@ const geist = Geist({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Foco Academia - Instrutor",
   description: "Painel do instrutor",
-  manifest: "/manifest.json",
+  manifest: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/manifest.json`,
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
