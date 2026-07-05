@@ -31,6 +31,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-at-least-32-chars!!}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80}
       UPLOAD_DIR: /app/uploads
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_INSTRUTOR_PASSWORD: ${SEED_INSTRUTOR_PASSWORD:-}
+      SEED_ALUNO_PASSWORD: ${SEED_ALUNO_PASSWORD:-}
     volumes:
       - academia_uploads:/app/uploads
 
