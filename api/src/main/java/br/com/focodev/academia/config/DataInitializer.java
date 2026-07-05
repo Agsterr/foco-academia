@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class DataInitializer {
     private final PasswordEncoder passwordEncoder;
 
     @Bean
+    @Order(1)
     CommandLineRunner seedData() {
         return args -> {
             Academy academy = academyRepository.findAll().stream().findFirst().orElseGet(() -> {
