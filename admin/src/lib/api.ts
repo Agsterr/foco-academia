@@ -1,4 +1,5 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+/** Em produção usa a mesma origem (nginx → /api). Em dev, defina NEXT_PUBLIC_API_URL. */
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export interface Academy {
   id: string;
@@ -67,7 +68,15 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
   const response = await fetch(`${API_URL}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message ?? "Erro na requisição");
+  if (!response.ok) {
+    const message =
+      typeof data.message === "string"
+        ? data.message
+        : Object.values(data as Record<string, unknown>)
+            .filter((value): value is string => typeof value === "string")
+            .join(" · ") || "Erro na requisição";
+    throw new Error(message);
+  }
   return data as T;
 }
 
