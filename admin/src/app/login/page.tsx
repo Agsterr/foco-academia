@@ -40,14 +40,27 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-emerald-400">Admin da Plataforma</h1>
         <p className="mt-1 text-sm text-slate-400">Gerencie academias, usuários e limites de dispositivos</p>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-mail"
+            className="form-input"
+            required
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
+            className="form-input"
+            required
+          />
           {error && <p className="text-sm text-red-400">{error}</p>}
-          <button type="submit" disabled={loading} className="w-full rounded-lg bg-emerald-600 py-2.5 font-medium disabled:opacity-50">
+          <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
-
       </div>
     </div>
   );

@@ -79,15 +79,15 @@ export default function AcademiaDetailPage() {
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
         <p className="text-sm text-slate-400">Limite de dispositivos por usuário</p>
         <div className="mt-2 flex gap-2">
-          <input type="number" min={1} max={20} value={deviceLimit} onChange={(e) => setDeviceLimit(Number(e.target.value))} className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" />
-          <button onClick={saveLimit} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm">Salvar</button>
+          <input type="number" min={1} max={20} value={deviceLimit} onChange={(e) => setDeviceLimit(Number(e.target.value))} className="form-input w-24" />
+          <button onClick={saveLimit} className="btn-primary text-sm">Salvar</button>
         </div>
         {message && <p className="mt-2 text-sm text-green-400">{message}</p>}
       </div>
 
       <div className="mt-4 flex gap-2">
         {(["users", "add-instructor", "add-student"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`rounded-full px-3 py-1 text-sm ${tab === t ? "bg-emerald-600" : "bg-slate-800"}`}>
+          <button key={t} onClick={() => setTab(t)} className={`rounded-full px-3 py-1 text-sm ${tab === t ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-200"}`}>
             {t === "users" ? "Usuários" : t === "add-instructor" ? "+ Instrutor" : "+ Aluno"}
           </button>
         ))}
@@ -114,24 +114,24 @@ export default function AcademiaDetailPage() {
 
       {tab === "add-instructor" && (
         <form onSubmit={addInstructor} className="mt-4 space-y-2 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <input name="name" placeholder="Nome" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <input name="email" type="email" placeholder="E-mail" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <input name="password" type="password" placeholder="Senha" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm">Cadastrar instrutor</button>
+          <input name="name" placeholder="Nome" className="form-input" required />
+          <input name="email" type="email" placeholder="E-mail" className="form-input" required />
+          <input name="password" type="password" placeholder="Senha" className="form-input" required />
+          <button type="submit" className="btn-primary text-sm">Cadastrar instrutor</button>
         </form>
       )}
 
       {tab === "add-student" && (
         <form onSubmit={addStudent} className="mt-4 space-y-2 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <select name="instructorId" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required>
+          <select name="instructorId" className="form-input" required>
             {instructors.map((i) => (
               <option key={i.id} value={i.id}>{i.name}</option>
             ))}
           </select>
-          <input name="name" placeholder="Nome" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <input name="email" type="email" placeholder="E-mail" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <input name="password" type="password" placeholder="Senha" className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2" required />
-          <button type="submit" className="rounded-lg bg-emerald-600 px-4 py-2 text-sm">Cadastrar aluno</button>
+          <input name="name" placeholder="Nome" className="form-input" required />
+          <input name="email" type="email" placeholder="E-mail" className="form-input" required />
+          <input name="password" type="password" placeholder="Senha" className="form-input" required />
+          <button type="submit" className="btn-primary text-sm">Cadastrar aluno</button>
         </form>
       )}
     </AppShell>

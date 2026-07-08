@@ -64,7 +64,7 @@ export default function LoginPage() {
               value={academySlug}
               onChange={(e) => setSlug(e.target.value.toLowerCase())}
               placeholder="ex: academia-demo"
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
+              className="form-input"
               required
             />
             {academyName && <p className="mt-1 text-xs text-blue-300">{academyName}</p>}
@@ -75,7 +75,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
+              className="form-input"
               required
             />
           </div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2"
+              className="form-input"
               required
             />
           </div>
@@ -93,7 +93,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 py-2.5 font-medium hover:bg-blue-500 disabled:opacity-50"
+            className="btn-primary w-full"
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
