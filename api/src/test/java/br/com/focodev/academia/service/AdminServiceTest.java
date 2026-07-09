@@ -227,7 +227,13 @@ class AdminServiceTest {
         when(userRepository.findByAcademyIdOrderByNameAsc(academyId)).thenReturn(List.of(instructor));
         when(deviceSessionRepository.countByUserId(instructor.getId())).thenReturn(0L);
 
+        AdminUserResponse response = adminService.listAcademyUsers(academyId).get(0);
+
         assertEquals(1, adminService.listAcademyUsers(academyId).size());
+        assertEquals("Instrutor", response.name());
+        assertEquals(academyId, response.academyId());
+        assertEquals("Academia Teste", response.academyName());
+        assertEquals(0, response.deviceCount());
     }
 
     @Test

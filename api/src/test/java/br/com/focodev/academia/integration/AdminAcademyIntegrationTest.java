@@ -102,7 +102,9 @@ class AdminAcademyIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Professor Lista"))
                 .andExpect(jsonPath("$[0].role").value("INSTRUTOR"))
-                .andExpect(jsonPath("$[0].email").value("prof-lista@test.com"));
+                .andExpect(jsonPath("$[0].email").value("prof-lista@test.com"))
+                .andExpect(jsonPath("$[0].academyName").value("Academia Usuários"))
+                .andExpect(jsonPath("$[0].academyId").value(academyId));
     }
 
     @Test
