@@ -15,6 +15,7 @@ export default function AcademiaDetailPage() {
   const [deviceLimit, setDeviceLimit] = useState(3);
   const [tab, setTab] = useState<"users" | "add-instructor" | "add-student">("users");
   const [message, setMessage] = useState("");
+  const [selectedInstructorId, setSelectedInstructorId] = useState("");
 
   function load() {
     api<Academy>(`/api/admin/academies/${id}`).then((a) => {
@@ -39,6 +40,16 @@ export default function AcademiaDetailPage() {
     if (!getToken()) { router.replace("/login"); return; }
     load();
   }, [id, router]);
+
+  const instructors = users.filter((u) => u.role === "INSTRUTOR");
+
+  useEffect(() => {
+    setSelectedInstructorId((current) => {
+      if (instructors.length === 1) return instructors[0].id;
+      if (current && instructors.some((i) => i.id === current)) return current;
+      return "";
+    });
+  }, [instructors]);
 
   async function saveLimit() {
     await api(`/api/admin/academies/${id}`, {
@@ -67,7 +78,6 @@ export default function AcademiaDetailPage() {
   async function addStudent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const instructors = users.filter((u) => u.role === "INSTRUTOR");
     await api(`/api/admin/academies/${id}/students`, {
       method: "POST",
       body: JSON.stringify({
@@ -82,8 +92,6 @@ export default function AcademiaDetailPage() {
   }
 
   if (!academy) return <AppShell><p className="text-slate-400">Carregando...</p></AppShell>;
-
-  const instructors = users.filter((u) => u.role === "INSTRUTOR");
 
   return (
     <AppShell>
@@ -140,16 +148,40 @@ export default function AcademiaDetailPage() {
       )}
 
       {tab === "add-student" && (
-        <form onSubmit={addStudent} className="mt-4 space-y-2 rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <select name="instructorId" className="form-input" required>
-            {instructors.map((i) => (
-              <option key={i.id} value={i.id}>{i.name}</option>
-            ))}
-          </select>
-          <input name="name" placeholder="Nome" className="form-input" required />
-          <input name="email" type="email" placeholder="E-mail" className="form-input" required />
-          <input name="password" type="password" placeholder="Senha" className="form-input" required />
-          <button type="submit" className="btn-primary text-sm">Cadastrar aluno</button>
+        <form onSubmit={addStudent} className="mt-4 space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <div>
+            <label htmlFor="instructorId" className="mb-1 block text-sm text-slate-400">
+              Instrutor responsável
+            </label>
+            {!usersLoaded && <p className="text-sm text-slate-500">Carregando instrutores...</p>}
+            {usersLoaded && instructors.length === 0 && (
+              <p className="text-sm text-amber-400">
+                Nenhum instrutor cadastrado. Use &quot;+ Instrutor&quot; antes de cadastrar alunos.
+              </p>
+            )}
+            <select
+              id="instructorId"
+              name="instructorId"
+              className="form-input"
+              required
+              value={selectedInstructorId}
+              onChange={(e) => setSelectedInstructorId(e.target.value)}
+              disabled={!usersLoaded || instructors.length === 0}
+            >
+              <option value="" disabled>
+                {instructors.length === 0 ? "Nenhum instrutor disponível" : "Selecione o instrutor"}
+              </option>
+              {instructors.map((i) => (
+                <option key={i.id} value={i.id}>{i.name} ({i.email})</option>
+              ))}
+            </select>
+          </div>
+          <input name="name" placeholder="Nome do aluno" className="form-input" required disabled={instructors.length === 0} />
+          <input name="email" type="email" placeholder="E-mail do aluno" className="form-input" required disabled={instructors.length === 0} />
+          <input name="password" type="password" placeholder="Senha" className="form-input" required disabled={instructors.length === 0} />
+          <button type="submit" className="btn-primary text-sm" disabled={instructors.length === 0}>
+            Cadastrar aluno
+          </button>
         </form>
       )}
     </AppShell>
