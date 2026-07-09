@@ -1,4 +1,6 @@
 /** Em produção usa a mesma origem (nginx → /api). Em dev, defina NEXT_PUBLIC_API_URL. */
+import type { MediaType, WeekDay } from "./workout";
+
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export type { WeekDay, MediaType } from "./workout";
