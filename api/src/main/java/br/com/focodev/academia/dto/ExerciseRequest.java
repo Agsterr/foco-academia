@@ -1,5 +1,6 @@
 package br.com.focodev.academia.dto;
 
+import br.com.focodev.academia.domain.MediaType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -10,6 +11,8 @@ public record ExerciseRequest(
         Integer reps,
         String duration,
         String videoUrl,
+        MediaType mediaType,
+        @Size(max = 1000) String variationNotes,
         String notes,
         int sortOrder
 ) {}

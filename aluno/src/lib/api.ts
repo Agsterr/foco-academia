@@ -1,6 +1,9 @@
 /** Em produção usa a mesma origem (nginx → /api). Em dev, defina NEXT_PUBLIC_API_URL. */
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
+export type { WeekDay, MediaType } from "./workout";
+export { weekDayLabels, weekDayShort, weekDayOrder } from "./workout";
+
 export type UserRole = "INSTRUTOR" | "ALUNO";
 
 export type RatingLevel = "MUITO_BOM" | "BOM" | "FACIL" | "RUIM" | "MUITO_RUIM";
@@ -22,8 +25,64 @@ export interface Exercise {
   reps?: number;
   duration?: string;
   videoUrl?: string;
+  mediaType?: MediaType;
+  variationNotes?: string;
   notes?: string;
   sortOrder: number;
+}
+
+export interface WorkoutDay {
+  id: string;
+  weekDay: WeekDay;
+  muscleGroup?: string;
+  notes?: string;
+  restDay: boolean;
+  sortOrder: number;
+  exercises: Exercise[];
+  activeSessionId?: string;
+  completedThisWeek: boolean;
+}
+
+export interface WorkoutProgram {
+  id: string;
+  title: string;
+  description?: string;
+  active: boolean;
+  createdAt: string;
+  student: User;
+  days: WorkoutDay[];
+}
+
+export interface SetLog {
+  id: string;
+  exerciseId: string;
+  setNumber: number;
+  completedAt: string;
+  elapsedMs?: number;
+}
+
+export interface WorkoutSession {
+  id: string;
+  workoutDayId: string;
+  startedAt: string;
+  completedAt?: string;
+  totalDurationSeconds?: number;
+  rating?: RatingLevel;
+  comment?: string;
+  setLogs: SetLog[];
+}
+
+export interface StudentStats {
+  daysCompletedThisWeek: number;
+  totalWorkoutsCompleted: number;
+  currentStreak: number;
+  completedWeekDays: string[];
+}
+
+export interface SessionComplete {
+  session: WorkoutSession;
+  stats: StudentStats;
+  message: string;
 }
 
 export interface Workout {
@@ -126,3 +185,23 @@ export const ratingLabels: Record<RatingLevel, string> = {
   RUIM: "Ruim",
   MUITO_RUIM: "Muito ruim",
 };
+
+export function mediaUrl(url?: string): string {
+  if (!url) return "";
+  return url.startsWith("http") ? url : `${API_URL}${url}`;
+}
+
+export function formatDuration(seconds?: number): string {
+  if (!seconds) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function formatElapsed(ms?: number): string {
+  if (!ms) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  return formatDuration(sec);
+}

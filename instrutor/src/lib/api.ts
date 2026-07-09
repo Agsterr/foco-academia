@@ -1,6 +1,9 @@
 /** Em produção usa a mesma origem (nginx → /api). Em dev, defina NEXT_PUBLIC_API_URL. */
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
+export type { WeekDay, MediaType } from "./workout";
+export { weekDayLabels, weekDayOrder } from "./workout";
+
 export type UserRole = "INSTRUTOR" | "ALUNO";
 
 export type RatingLevel = "MUITO_BOM" | "BOM" | "FACIL" | "RUIM" | "MUITO_RUIM";
@@ -22,8 +25,30 @@ export interface Exercise {
   reps?: number;
   duration?: string;
   videoUrl?: string;
+  mediaType?: MediaType;
+  variationNotes?: string;
   notes?: string;
   sortOrder: number;
+}
+
+export interface WorkoutDay {
+  id: string;
+  weekDay: WeekDay;
+  muscleGroup?: string;
+  notes?: string;
+  restDay: boolean;
+  sortOrder: number;
+  exercises: Exercise[];
+}
+
+export interface WorkoutProgram {
+  id: string;
+  title: string;
+  description?: string;
+  active: boolean;
+  createdAt: string;
+  student: User;
+  days: WorkoutDay[];
 }
 
 export interface Workout {
@@ -56,6 +81,19 @@ export interface Feedback {
   comment?: string;
   createdAt: string;
   student: User;
+}
+
+export interface SessionFeedback {
+  id: string;
+  student: User;
+  programTitle: string;
+  weekDay: WeekDay;
+  muscleGroup?: string;
+  rating: RatingLevel;
+  comment?: string;
+  totalDurationSeconds?: number;
+  setsCompleted: number;
+  completedAt: string;
 }
 
 export interface Dashboard {

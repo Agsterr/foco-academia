@@ -5,6 +5,7 @@ import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
 import br.com.focodev.academia.service.TenantService;
+import br.com.focodev.academia.service.WorkoutProgramService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ public class ApiControllers {
 
     private final AuthService authService;
     private final AcademiaService academiaService;
+    private final WorkoutProgramService workoutProgramService;
     private final TenantService tenantService;
 
     @GetMapping("/health")
@@ -69,6 +71,27 @@ public class ApiControllers {
         return academiaService.dashboard(user);
     }
 
+    @PostMapping("/instructor/programs")
+    public WorkoutProgramResponse createProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody CreateWorkoutProgramRequest request
+    ) {
+        return workoutProgramService.createProgram(user, request);
+    }
+
+    @GetMapping("/instructor/programs")
+    public List<WorkoutProgramResponse> listInstructorPrograms(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.listInstructorPrograms(user);
+    }
+
+    @GetMapping("/instructor/programs/{id}")
+    public WorkoutProgramResponse getInstructorProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID id
+    ) {
+        return workoutProgramService.getProgram(user, id);
+    }
+
     @PostMapping("/instructor/workouts")
     public WorkoutResponse createWorkout(
             @AuthenticationPrincipal AuthUser user,
@@ -98,6 +121,11 @@ public class ApiControllers {
         return academiaService.listWorkoutFeedbacks(user, id);
     }
 
+    @GetMapping("/instructor/session-feedbacks")
+    public List<SessionFeedbackResponse> instructorSessionFeedbacks(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.listSessionFeedbacksForInstructor(user);
+    }
+
     @GetMapping("/instructor/feedbacks")
     public List<FeedbackResponse> instructorFeedbacks(@AuthenticationPrincipal AuthUser user) {
         return academiaService.listInstructorFeedbacks(user);
@@ -123,6 +151,58 @@ public class ApiControllers {
             @RequestParam("file") MultipartFile file
     ) throws IOException {
         return Map.of("url", academiaService.uploadMedia(user, file));
+    }
+
+    @GetMapping("/student/programs/active")
+    public WorkoutProgramResponse getActiveStudentProgram(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.getActiveStudentProgram(user);
+    }
+
+    @GetMapping("/student/programs/{id}")
+    public WorkoutProgramResponse getStudentProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID id
+    ) {
+        return workoutProgramService.getProgram(user, id);
+    }
+
+    @GetMapping("/student/days/{dayId}")
+    public WorkoutDayResponse getStudentDay(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID dayId
+    ) {
+        return workoutProgramService.getStudentDay(user, dayId);
+    }
+
+    @PostMapping("/student/days/{dayId}/sessions")
+    public WorkoutSessionResponse startSession(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID dayId
+    ) {
+        return workoutProgramService.startOrResumeSession(user, dayId);
+    }
+
+    @PostMapping("/student/sessions/{sessionId}/sets")
+    public WorkoutSessionResponse toggleSet(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody LogSetRequest request
+    ) {
+        return workoutProgramService.toggleSet(user, sessionId, request);
+    }
+
+    @PostMapping("/student/sessions/{sessionId}/complete")
+    public SessionCompleteResponse completeSession(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody CompleteSessionRequest request
+    ) {
+        return workoutProgramService.completeSession(user, sessionId, request);
+    }
+
+    @GetMapping("/student/stats")
+    public StudentStatsResponse getStudentStats(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.getStudentStats(user);
     }
 
     @GetMapping("/student/workouts")

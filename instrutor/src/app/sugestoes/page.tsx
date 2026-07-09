@@ -42,6 +42,11 @@ export default function SugestoesPage() {
       <h2 className="mb-4 text-xl font-semibold">Sugestões dos alunos</h2>
       {loading && <p className="text-slate-400">Carregando...</p>}
       <div className="space-y-4">
+        {!loading && suggestions.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-slate-400">
+            Nenhuma sugestão ainda. Os alunos podem enviar pelo app em Sugestões.
+          </p>
+        )}
         {suggestions.map((s) => (
           <div key={s.id} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <p className="font-medium">{s.student.name}</p>

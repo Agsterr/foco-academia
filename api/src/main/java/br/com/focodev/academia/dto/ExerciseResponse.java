@@ -1,6 +1,7 @@
 package br.com.focodev.academia.dto;
 
 import br.com.focodev.academia.domain.Exercise;
+import br.com.focodev.academia.domain.MediaType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -14,6 +15,8 @@ public record ExerciseResponse(
         Integer reps,
         String duration,
         String videoUrl,
+        MediaType mediaType,
+        String variationNotes,
         String notes,
         int sortOrder
 ) {
@@ -26,6 +29,8 @@ public record ExerciseResponse(
                 exercise.getReps(),
                 exercise.getDuration(),
                 exercise.getVideoUrl(),
+                exercise.getMediaType(),
+                exercise.getVariationNotes(),
                 exercise.getNotes(),
                 exercise.getSortOrder()
         );

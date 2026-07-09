@@ -3,6 +3,7 @@ package br.com.focodev.academia.config;
 import br.com.focodev.academia.domain.*;
 import br.com.focodev.academia.repository.AcademyRepository;
 import br.com.focodev.academia.repository.UserRepository;
+import br.com.focodev.academia.repository.WorkoutProgramRepository;
 import br.com.focodev.academia.repository.WorkoutRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -20,6 +21,7 @@ public class DataInitializer {
     private final UserRepository userRepository;
     private final AcademyRepository academyRepository;
     private final WorkoutRepository workoutRepository;
+    private final WorkoutProgramRepository programRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -104,8 +106,69 @@ public class DataInitializer {
                 workout.getExercises().add(ex1);
                 workout.getExercises().add(ex2);
                 workoutRepository.save(workout);
+
+                WorkoutProgram program = new WorkoutProgram();
+                program.setTitle("Ficha Semanal — Hipertrofia");
+                program.setDescription("Programa completo de segunda a domingo.");
+                program.setInstructor(instructor);
+                program.setStudent(student);
+
+                program.getDays().add(buildDay(program, WeekDay.MONDAY, "Peito e Tríceps", 0,
+                        exercise("Supino reto", 4, 10, "Controle a descida", 0),
+                        exercise("Crucifixo", 3, 12, null, 1)));
+                program.getDays().add(buildDay(program, WeekDay.TUESDAY, "Costas e Bíceps", 1,
+                        exercise("Puxada frontal", 4, 10, null, 0),
+                        exercise("Rosca direta", 3, 12, null, 1)));
+                program.getDays().add(buildDay(program, WeekDay.WEDNESDAY, "Pernas", 2,
+                        exercise("Agachamento", 4, 10, null, 0),
+                        exercise("Leg press", 3, 12, null, 1)));
+                program.getDays().add(buildDay(program, WeekDay.THURSDAY, "Ombros e Abdômen", 3,
+                        exercise("Desenvolvimento", 4, 10, null, 0)));
+                program.getDays().add(buildDay(program, WeekDay.FRIDAY, "Bíceps e Tríceps", 4,
+                        exercise("Rosca martelo", 3, 12, null, 0),
+                        exercise("Tríceps testa", 3, 12, null, 1)));
+                program.getDays().add(buildDay(program, WeekDay.SATURDAY, "Cardio", 5,
+                        exercise("Esteira", 1, 1, "30 minutos moderado", 0)));
+                program.getDays().add(buildRestDay(program, WeekDay.SUNDAY, 6));
+
+                programRepository.save(program);
             }
         };
+    }
+
+    private static WorkoutDay buildRestDay(WorkoutProgram program, WeekDay weekDay, int sortOrder) {
+        WorkoutDay day = new WorkoutDay();
+        day.setProgram(program);
+        day.setWeekDay(weekDay);
+        day.setMuscleGroup("Descanso");
+        day.setRestDay(true);
+        day.setSortOrder(sortOrder);
+        return day;
+    }
+
+    private static WorkoutDay buildDay(WorkoutProgram program, WeekDay weekDay, String muscleGroup,
+                                       int sortOrder, Exercise... exercises) {
+        WorkoutDay day = new WorkoutDay();
+        day.setProgram(program);
+        day.setWeekDay(weekDay);
+        day.setMuscleGroup(muscleGroup);
+        day.setRestDay(false);
+        day.setSortOrder(sortOrder);
+        for (Exercise exercise : exercises) {
+            exercise.setWorkoutDay(day);
+            day.getExercises().add(exercise);
+        }
+        return day;
+    }
+
+    private static Exercise exercise(String name, int sets, int reps, String notes, int sortOrder) {
+        Exercise ex = new Exercise();
+        ex.setName(name);
+        ex.setSets(sets);
+        ex.setReps(reps);
+        ex.setNotes(notes);
+        ex.setSortOrder(sortOrder);
+        return ex;
     }
 
     private static String envOrNull(String key) {

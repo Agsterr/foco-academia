@@ -6,16 +6,12 @@ import br.com.focodev.academia.exception.ApiException;
 import br.com.focodev.academia.repository.*;
 import br.com.focodev.academia.security.AuthUser;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -30,9 +26,7 @@ public class AcademiaService {
     private final SuggestionRepository suggestionRepository;
     private final PasswordEncoder passwordEncoder;
     private final TenantService tenantService;
-
-    @Value("${app.upload.dir}")
-    private String uploadDir;
+    private final MediaStorageService mediaStorageService;
 
     @Transactional
     public UserResponse createStudent(AuthUser instructor, CreateStudentRequest request) {
@@ -98,6 +92,8 @@ public class AcademiaService {
                 exercise.setReps(exerciseRequest.reps());
                 exercise.setDuration(exerciseRequest.duration());
                 exercise.setVideoUrl(exerciseRequest.videoUrl());
+                exercise.setMediaType(exerciseRequest.mediaType() != null ? exerciseRequest.mediaType() : MediaType.NONE);
+                exercise.setVariationNotes(exerciseRequest.variationNotes());
                 exercise.setNotes(exerciseRequest.notes());
                 exercise.setSortOrder(exerciseRequest.sortOrder());
                 workout.getExercises().add(exercise);
@@ -233,17 +229,6 @@ public class AcademiaService {
             throw new ApiException("Arquivo vazio");
         }
 
-        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
-        String extension = "";
-        int dot = original.lastIndexOf('.');
-        if (dot > 0) {
-            extension = original.substring(dot);
-        }
-
-        String filename = UUID.randomUUID() + extension;
-        Path directory = Paths.get(uploadDir).toAbsolutePath().normalize();
-        Files.createDirectories(directory);
-        Files.copy(file.getInputStream(), directory.resolve(filename));
-        return "/api/media/" + filename;
+        return mediaStorageService.store(file);
     }
 }
