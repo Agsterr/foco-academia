@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_URL, api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
+import { api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
+import { lookupAcademyName } from "@/lib/tenant";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,11 +20,16 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (!academySlug.trim()) return;
-    fetch(`${API_URL}/api/tenants/${encodeURIComponent(academySlug.trim())}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((t) => setAcademyName(t?.name ?? ""))
-      .catch(() => setAcademyName(""));
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void lookupAcademyName(academySlug, controller.signal)
+        .then(setAcademyName)
+        .catch(() => setAcademyName(""));
+    }, 400);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [academySlug]);
 
   async function handleSubmit(e: FormEvent) {

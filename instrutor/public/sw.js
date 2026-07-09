@@ -1,11 +1,10 @@
-const CACHE_NAME = "foco-academia-instrutor-v1";
-const SCOPE = self.registration.scope;
+const CACHE_NAME = "foco-academia-instrutor-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll([SCOPE, `${SCOPE}login/`]))
+      .then((cache) => cache.addAll(["./", "./login/"]))
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting()),
   );

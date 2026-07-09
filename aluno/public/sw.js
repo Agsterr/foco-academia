@@ -1,8 +1,8 @@
-const CACHE_NAME = "foco-academia-aluno-v1";
+const CACHE_NAME = "foco-academia-aluno-v2";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(["/"])).then(() => self.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(["./"])).then(() => self.skipWaiting()),
   );
 });
 
