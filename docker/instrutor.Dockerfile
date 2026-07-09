@@ -1,8 +1,12 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache imagemagick
 COPY instrutor/package*.json ./
 RUN npm ci
 COPY instrutor/ .
+RUN mkdir -p public/icons && \
+    convert public/favicon.ico -resize 192x192 public/icons/icon-192.png && \
+    convert public/favicon.ico -resize 512x512 public/icons/icon-512.png
 ARG NEXT_PUBLIC_BASE_PATH=/instrutor
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_TELEMETRY_DISABLED=1

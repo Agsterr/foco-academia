@@ -1,9 +1,10 @@
 {
+  "id": "/instrutor",
   "name": "Foco Academia - Instrutor",
   "short_name": "Instrutor",
   "description": "Gerencie alunos, treinos e sugestões",
-  "start_url": "/instrutor/login/",
-  "scope": "/instrutor/",
+  "start_url": "/instrutor/login",
+  "scope": "/instrutor",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#7c3aed",

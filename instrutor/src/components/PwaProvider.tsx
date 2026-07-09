@@ -60,7 +60,7 @@ export function PwaProvider() {
   return (
     <div className="border-b border-violet-800 bg-violet-950/80 px-4 py-2">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-violet-100">Instale o painel do instrutor no celular.</p>
+        <p className="text-sm text-violet-100">Instale o painel do instrutor no celular ou computador.</p>
         <button
           type="button"
           onClick={handleInstall}

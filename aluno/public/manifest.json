@@ -1,8 +1,9 @@
 {
+  "id": "/aluno",
   "name": "Foco Academia - Aluno",
-  "short_name": "Academia Aluno",
+  "short_name": "Aluno",
   "description": "Veja seus treinos, avalie e envie sugestões",
-  "start_url": "/",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f172a",

@@ -17,7 +17,7 @@ export function PwaProvider() {
     }
 
     if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
     }
 
     const onInstallPrompt = (event: Event) => {
@@ -56,7 +56,7 @@ export function PwaProvider() {
   return (
     <div className="border-b border-blue-800 bg-blue-950/80 px-4 py-2">
       <div className="mx-auto flex max-w-lg flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-blue-100">Instale o app do aluno no celular.</p>
+        <p className="text-sm text-blue-100">Instale o app do aluno no celular ou computador.</p>
         <button
           type="button"
           onClick={handleInstall}
