@@ -53,12 +53,14 @@ public class AcademiaService {
         return UserResponse.from(student);
     }
 
+    @Transactional(readOnly = true)
     public List<UserResponse> listStudents(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
         return userRepository.findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(instructor.getId(), UserRole.ALUNO)
                 .stream().map(UserResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
     public DashboardResponse dashboard(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
         long students = userRepository.findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(instructor.getId(), UserRole.ALUNO).size();
@@ -105,12 +107,14 @@ public class AcademiaService {
         return WorkoutResponse.from(workoutRepository.save(workout));
     }
 
+    @Transactional(readOnly = true)
     public List<WorkoutResponse> listInstructorWorkouts(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
-        return workoutRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId())
+        return workoutRepository.findByInstructorIdWithDetails(instructor.getId())
                 .stream().map(WorkoutResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<WorkoutResponse> listStudentWorkouts(AuthUser student) {
         tenantService.requireActiveAcademy(userRepository.findById(student.getId())
                 .orElseThrow(() -> new ApiException("Aluno não encontrado")));
@@ -118,6 +122,7 @@ public class AcademiaService {
                 .stream().map(WorkoutResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
     public WorkoutResponse getWorkout(AuthUser user, UUID workoutId) {
         Workout workout = workoutRepository.findByIdWithExercises(workoutId)
                 .orElseThrow(() -> new ApiException("Treino não encontrado"));
@@ -160,6 +165,7 @@ public class AcademiaService {
         return FeedbackResponse.from(feedbackRepository.save(feedback));
     }
 
+    @Transactional(readOnly = true)
     public List<FeedbackResponse> listWorkoutFeedbacks(AuthUser instructor, UUID workoutId) {
         tenantService.requireInstructor(instructor);
         Workout workout = workoutRepository.findById(workoutId)
@@ -171,6 +177,7 @@ public class AcademiaService {
                 .stream().map(FeedbackResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<FeedbackResponse> listInstructorFeedbacks(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
         return feedbackRepository.findByWorkoutInstructorIdOrderByCreatedAtDesc(instructor.getId())
@@ -191,11 +198,13 @@ public class AcademiaService {
         return SuggestionResponse.from(suggestionRepository.save(suggestion));
     }
 
+    @Transactional(readOnly = true)
     public List<SuggestionResponse> listStudentSuggestions(AuthUser student) {
         return suggestionRepository.findByStudentIdOrderByCreatedAtDesc(student.getId())
                 .stream().map(SuggestionResponse::from).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<SuggestionResponse> listInstructorSuggestions(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
         return suggestionRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId())
