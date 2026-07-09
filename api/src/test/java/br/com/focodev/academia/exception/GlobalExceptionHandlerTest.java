@@ -2,6 +2,8 @@ package br.com.focodev.academia.exception;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -35,6 +37,24 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("obrigatório", response.getBody().get("name"));
+    }
+
+    @Test
+    void handleBadCredentials() {
+        ResponseEntity<Map<String, String>> response =
+                handler.handleBadCredentials(new BadCredentialsException("bad"));
+
+        assertEquals(401, response.getStatusCode().value());
+        assertEquals("E-mail ou senha inválidos", response.getBody().get("message"));
+    }
+
+    @Test
+    void handleAuthentication() {
+        ResponseEntity<Map<String, String>> response =
+                handler.handleAuthentication(new DisabledException("disabled"));
+
+        assertEquals(401, response.getStatusCode().value());
+        assertEquals("E-mail ou senha inválidos", response.getBody().get("message"));
     }
 
     @Test

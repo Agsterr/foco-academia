@@ -89,7 +89,20 @@ export default function LoginPage() {
               required
             />
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+            <div className="text-sm text-red-400">
+              <p>{error}</p>
+              {error.includes("Administrador da plataforma") && (
+                <p className="mt-2 text-slate-400">
+                  Acesse o painel admin em{" "}
+                  <a href="/admin/login" className="text-violet-400 underline">
+                    academia.focodev.com.br/admin
+                  </a>
+                  . Para instrutor, use o e-mail cadastrado na academia.
+                </p>
+              )}
+            </div>
+          )}
           <button
             type="submit"
             disabled={loading}

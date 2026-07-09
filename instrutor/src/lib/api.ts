@@ -117,7 +117,13 @@ export async function api<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message ?? "Erro na requisição");
+    const message =
+      typeof data.message === "string"
+        ? data.message
+        : Object.values(data as Record<string, unknown>)
+            .filter((value): value is string => typeof value === "string")
+            .join(" · ") || "Erro na requisição";
+    throw new Error(message);
   }
   return data as T;
 }
