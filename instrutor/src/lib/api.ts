@@ -1,5 +1,12 @@
 /** Em produção usa a mesma origem (nginx → /api). Em dev, defina NEXT_PUBLIC_API_URL. */
 import type { MediaType, WeekDay } from "./workout";
+import {
+  SLUG_KEY,
+  TOKEN_KEY,
+  readStorageItem,
+  removeStorageItem,
+  writeStorageItem,
+} from "./auth-storage";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
@@ -104,29 +111,29 @@ export interface Dashboard {
   pendingSuggestions: number;
 }
 
-const TOKEN_KEY = "academia_token";
-const ACADEMY_SLUG_KEY = "academia_slug";
+const LEGACY_TOKEN_KEY = "academia_token";
+const LEGACY_SLUG_KEY = "academia_slug";
 
 export function getAcademySlug(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(ACADEMY_SLUG_KEY) ?? "";
+  return readStorageItem(SLUG_KEY, LEGACY_SLUG_KEY) ?? "";
 }
 
 export function setAcademySlug(slug: string) {
-  localStorage.setItem(ACADEMY_SLUG_KEY, slug.trim().toLowerCase());
+  writeStorageItem(SLUG_KEY, slug.trim().toLowerCase(), LEGACY_SLUG_KEY);
 }
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return readStorageItem(TOKEN_KEY, LEGACY_TOKEN_KEY);
 }
 
 export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+  writeStorageItem(TOKEN_KEY, token, LEGACY_TOKEN_KEY);
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
+  removeStorageItem(TOKEN_KEY, LEGACY_TOKEN_KEY);
 }
 
 export function getDeviceId(): string {

@@ -2,7 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import PasswordInput from "@/components/PasswordInput";
 import { api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
+import { clearSavedLogin, getSavedLogin, saveLogin } from "@/lib/auth-storage";
 import { lookupAcademyName } from "@/lib/tenant";
 
 export default function LoginPage() {
@@ -11,12 +13,20 @@ export default function LoginPage() {
   const [academyName, setAcademyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const saved = getAcademySlug();
-    if (saved) setSlug(saved);
+    const savedSlug = getAcademySlug();
+    if (savedSlug) setSlug(savedSlug);
+
+    const savedLogin = getSavedLogin();
+    if (savedLogin.remember) {
+      setEmail(savedLogin.email);
+      setPassword(savedLogin.password);
+      setRemember(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -48,6 +58,11 @@ export default function LoginPage() {
           deviceLabel: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
         }),
       });
+      if (remember) {
+        saveLogin(email, password);
+      } else {
+        clearSavedLogin();
+      }
       setToken(data.token);
       router.push("/treinos");
     } catch (err) {
@@ -63,38 +78,59 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-blue-400">Área do Aluno</h1>
         <p className="mt-1 text-sm text-slate-400">Acesse seus treinos na sua academia</p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4" autoComplete="off">
           <div>
-            <label className="mb-1 block text-sm text-slate-300">Código da academia</label>
+            <label htmlFor="aluno-academy-slug" className="mb-1 block text-sm text-slate-300">
+              Código da academia
+            </label>
             <input
+              id="aluno-academy-slug"
+              name="aluno-academy-slug"
               value={academySlug}
               onChange={(e) => setSlug(e.target.value.toLowerCase())}
               placeholder="ex: academia-demo"
               className="form-input"
               required
+              autoComplete="off"
             />
             {academyName && <p className="mt-1 text-xs text-blue-300">{academyName}</p>}
           </div>
           <div>
-            <label className="mb-1 block text-sm text-slate-300">E-mail</label>
+            <label htmlFor="aluno-login-email" className="mb-1 block text-sm text-slate-300">
+              E-mail
+            </label>
             <input
+              id="aluno-login-email"
+              name="aluno-login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="form-input"
               required
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-slate-300">Senha</label>
-            <input
-              type="password"
+            <label htmlFor="aluno-login-password" className="mb-1 block text-sm text-slate-300">
+              Senha
+            </label>
+            <PasswordInput
+              id="aluno-login-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="form-input"
+              onChange={setPassword}
               required
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            Lembrar e-mail e senha neste aparelho
+          </label>
           {error && (
             <div className="text-sm text-red-400">
               <p>{error}</p>
@@ -109,19 +145,13 @@ export default function LoginPage() {
               )}
             </div>
           )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full"
-          >
+          <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? "Entrando..." : "Entrar"}
           </button>
           <p className="text-center text-xs text-slate-500">
             Demo: código <code className="text-slate-400">academia-demo</code> · aluno@academia.com / aluno123
           </p>
         </form>
-
-
       </div>
     </div>
   );
