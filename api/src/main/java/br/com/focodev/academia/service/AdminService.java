@@ -86,6 +86,7 @@ public class AdminService {
         return toAcademyResponse(academyRepository.save(academy));
     }
 
+    @Transactional(readOnly = true)
     public List<AdminUserResponse> listAcademyUsers(UUID academyId) {
         getAcademyEntity(academyId);
         return userRepository.findByAcademyIdOrderByNameAsc(academyId).stream()

@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -73,6 +74,35 @@ class AdminAcademyIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listAcademyUsers_returnsInstructorAfterCreate() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "Academia Usuários",
+                "deviceLimitPerUser", 3,
+                "instructorName", "Professor Lista",
+                "instructorEmail", "prof-lista@test.com",
+                "instructorPassword", "senha123"
+        );
+
+        String response = mockMvc.perform(post("/api/admin/academies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String academyId = objectMapper.readTree(response).get("id").asText();
+
+        mockMvc.perform(get("/api/admin/academies/" + academyId + "/users")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Professor Lista"))
+                .andExpect(jsonPath("$[0].role").value("INSTRUTOR"))
+                .andExpect(jsonPath("$[0].email").value("prof-lista@test.com"));
     }
 
     @Test

@@ -10,6 +10,8 @@ export default function AcademiaDetailPage() {
   const router = useRouter();
   const [academy, setAcademy] = useState<Academy | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [usersError, setUsersError] = useState("");
   const [deviceLimit, setDeviceLimit] = useState(3);
   const [tab, setTab] = useState<"users" | "add-instructor" | "add-student">("users");
   const [message, setMessage] = useState("");
@@ -19,7 +21,18 @@ export default function AcademiaDetailPage() {
       setAcademy(a);
       setDeviceLimit(a.deviceLimitPerUser);
     });
-    api<AdminUser[]>(`/api/admin/academies/${id}/users`).then(setUsers);
+    setUsersLoaded(false);
+    setUsersError("");
+    api<AdminUser[]>(`/api/admin/academies/${id}/users`)
+      .then((data) => {
+        setUsers(data);
+        setUsersLoaded(true);
+      })
+      .catch((err: Error) => {
+        setUsers([]);
+        setUsersLoaded(true);
+        setUsersError(err.message || "Erro ao carregar usuários");
+      });
   }
 
   useEffect(() => {
@@ -95,6 +108,11 @@ export default function AcademiaDetailPage() {
 
       {tab === "users" && (
         <div className="mt-4 space-y-2">
+          {usersError && <p className="text-sm text-red-400">{usersError}</p>}
+          {!usersLoaded && <p className="text-sm text-slate-400">Carregando usuários...</p>}
+          {usersLoaded && !usersError && users.length === 0 && (
+            <p className="text-sm text-slate-400">Nenhum usuário cadastrado nesta academia.</p>
+          )}
           {users.map((u) => (
             <div key={u.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
               <div className="flex justify-between">
