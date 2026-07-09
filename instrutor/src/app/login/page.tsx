@@ -137,7 +137,10 @@ export default function LoginPage() {
               {error.includes("Administrador da plataforma") && (
                 <p className="mt-2 text-slate-400">
                   Acesse o painel admin em{" "}
-                  <a href="/admin/login" className="text-violet-400 underline">
+                  <a
+                    href="https://academia.focodev.com.br/admin/login"
+                    className="text-violet-400 underline"
+                  >
                     academia.focodev.com.br/admin
                   </a>
                   . Para instrutor, use o e-mail cadastrado na academia.

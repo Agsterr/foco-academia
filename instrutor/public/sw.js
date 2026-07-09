@@ -1,4 +1,4 @@
-const CACHE = "foco-academia-instrutor-v3";
+const CACHE = "foco-academia-instrutor-v5";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
@@ -9,8 +9,5 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  const path = new URL(event.request.url).pathname;
-  if (path.startsWith("/api") || path.startsWith("/admin") || path === "/") {
-    return;
-  }
+  event.respondWith(fetch(event.request));
 });

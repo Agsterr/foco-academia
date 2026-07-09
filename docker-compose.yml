@@ -56,7 +56,6 @@ services:
       context: .
       dockerfile: docker/instrutor.Dockerfile
       args:
-        NEXT_PUBLIC_BASE_PATH: /instrutor
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-}
     container_name: foco-academia-instrutor
     restart: unless-stopped

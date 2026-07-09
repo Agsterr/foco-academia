@@ -55,7 +55,7 @@ docker compose up -d --build
 ```
 
 - Aluno: http://localhost:8088/
-- Instrutor: http://localhost:8088/instrutor/
+- Instrutor: http://localhost:3002 (dev) ou `instrutor.academia.focodev.com.br` em produção
 - API: http://localhost:8088/api/health
 
 ## Deploy Hetzner
@@ -66,7 +66,7 @@ Path no servidor: `/opt/foco-academia`
 2. `bash scripts/setup-git-hetzner.sh` (cadastre deploy key no GitHub)
 3. Push em `main` dispara GitHub Actions
 
-Domínio sugerido: `academia.focodev.com.br` via Cloudflare Tunnel.
+Domínio: `academia.focodev.com.br` (aluno/admin) e `instrutor.academia.focodev.com.br` (instrutor) via Cloudflare Tunnel.
 
 ## Tecnologias
 

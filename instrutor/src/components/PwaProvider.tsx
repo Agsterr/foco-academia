@@ -12,6 +12,7 @@ const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 export function PwaProvider() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     if (window.matchMedia("(display-mode: standalone)").matches) {
@@ -53,21 +54,46 @@ export function PwaProvider() {
     setInstallEvent(null);
   }
 
-  if (installed || !installEvent) {
+  if (installed || dismissed) {
     return null;
   }
 
   return (
-    <div className="border-b border-violet-800 bg-violet-950/80 px-4 py-2">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-violet-100">Instale o painel do instrutor no celular ou computador.</p>
-        <button
-          type="button"
-          onClick={handleInstall}
-          className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Instalar app
-        </button>
+    <div className="border-b border-violet-800 bg-violet-950/80 px-4 py-3">
+      <div className="mx-auto max-w-5xl">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-violet-100">Instalar atalho do Instrutor</p>
+            <p className="mt-1 text-xs text-violet-200/80">
+              Abra <strong>instrutor.academia.focodev.com.br</strong> no Chrome/Edge e instale como app
+              separado do Aluno.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {installEvent && (
+              <button
+                type="button"
+                onClick={handleInstall}
+                className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                Instalar agora
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setDismissed(true)}
+              className="rounded-lg border border-violet-700 px-3 py-1.5 text-sm text-violet-200"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+        {!installEvent && (
+          <p className="mt-2 text-xs text-violet-200/70">
+            No Chrome: menu ⋮ → &quot;Instalar Foco Academia - Instrutor&quot; ou &quot;Salvar e compartilhar&quot; →
+            &quot;Instalar&quot;.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ COPY instrutor/ .
 RUN mkdir -p public/icons && \
     convert public/favicon.ico -resize 192x192 public/icons/icon-192.png && \
     convert public/favicon.ico -resize 512x512 public/icons/icon-512.png
-ARG NEXT_PUBLIC_BASE_PATH=/instrutor
+ARG NEXT_PUBLIC_BASE_PATH=
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH
