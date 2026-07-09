@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Cria CNAME instrutor.academia -> tunel (requer CLOUDFLARE_ZONE_ID ou token com Zone Read).
+# Cria CNAME instrutor-academia -> tunel (requer CLOUDFLARE_ZONE_ID ou token com Zone Read).
 set -euo pipefail
 
 ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-focodev.com.br}"
 ZONE_ID="${CLOUDFLARE_ZONE_ID:-}"
 TUNNEL_CNAME="${TUNNEL_CNAME:-4fe3f6e0-d2ec-4bca-8459-e66f81d95494.cfargotunnel.com}"
-DNS_NAME="${DNS_NAME:-instrutor.academia}"
+DNS_NAME="${DNS_NAME:-instrutor-academia}"
 API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
 
 if [[ -z "$API_TOKEN" ]]; then

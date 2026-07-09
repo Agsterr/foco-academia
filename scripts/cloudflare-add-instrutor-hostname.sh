@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Adiciona instrutor.academia.focodev.com.br ao tunel gerenciamento-estoque (preserva ingress existente).
+# Adiciona instrutor-academia.focodev.com.br ao tunel gerenciamento-estoque (preserva ingress existente).
 set -euo pipefail
 
-HOSTNAME="${PUBLIC_HOSTNAME:-instrutor.academia.focodev.com.br}"
+HOSTNAME="${PUBLIC_HOSTNAME:-instrutor-academia.focodev.com.br}"
 ORIGIN="${ACADEMIA_ORIGIN:-http://127.0.0.1:8088}"
 ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-focodev.com.br}"
 ESTOQUE_ENV="${ESTOQUE_ENV:-/opt/gerenciamento-estoque/.env}"
@@ -30,7 +30,7 @@ Adicionar Public Hostname -> ${ORIGIN}:
   - ${HOSTNAME}
 
 DNS CNAME (proxied) na zona focodev.com.br:
-  instrutor.academia -> <tunnel-id>.cfargotunnel.com
+  instrutor-academia -> <tunnel-id>.cfargotunnel.com
 ================================================================================
 EOF
   exit 1

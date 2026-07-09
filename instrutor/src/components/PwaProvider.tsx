@@ -65,7 +65,7 @@ export function PwaProvider() {
           <div>
             <p className="text-sm font-medium text-violet-100">Instalar atalho do Instrutor</p>
             <p className="mt-1 text-xs text-violet-200/80">
-              Abra <strong>instrutor.academia.focodev.com.br</strong> no Chrome/Edge e instale como app
+              Abra <strong>instrutor-academia.focodev.com.br</strong> no Chrome/Edge e instale como app
               separado do Aluno.
             </p>
           </div>
