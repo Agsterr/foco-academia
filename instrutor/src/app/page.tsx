@@ -17,13 +17,7 @@ export default function DashboardPage() {
     }
     api<Dashboard>("/api/instructor/dashboard")
       .then(setDashboard)
-      .catch((err) => {
-        if (err instanceof Error && err.message.includes("Acesso negado")) {
-          router.replace("/login?erro=perfil");
-          return;
-        }
-        router.replace("/login");
-      });
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   return (

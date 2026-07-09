@@ -64,24 +64,16 @@ export interface Dashboard {
   pendingSuggestions: number;
 }
 
-const TOKEN_KEY = "academia_instrutor_token";
-const ACADEMY_SLUG_KEY = "academia_instrutor_slug";
-const LEGACY_TOKEN_KEY = "academia_token";
-const LEGACY_SLUG_KEY = "academia_slug";
-
-export interface AuthResponse {
-  token: string;
-  user: { role: "ADMIN" | "INSTRUTOR" | "ALUNO" };
-}
+const TOKEN_KEY = "academia_token";
+const ACADEMY_SLUG_KEY = "academia_slug";
 
 export function getAcademySlug(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(ACADEMY_SLUG_KEY) ?? localStorage.getItem(LEGACY_SLUG_KEY) ?? "";
+  return localStorage.getItem(ACADEMY_SLUG_KEY) ?? "";
 }
 
 export function setAcademySlug(slug: string) {
   localStorage.setItem(ACADEMY_SLUG_KEY, slug.trim().toLowerCase());
-  localStorage.removeItem(LEGACY_SLUG_KEY);
 }
 
 export function getToken(): string | null {
@@ -91,17 +83,10 @@ export function getToken(): string | null {
 
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
-}
-
-/** Remove token compartilhado antigo (mesma chave do app aluno). */
-export function clearLegacySharedToken() {
-  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function getDeviceId(): string {
@@ -132,10 +117,6 @@ export async function api<T>(
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (response.status === 403) {
-      clearToken();
-      throw new Error("Acesso negado. Use a conta de instrutor para entrar neste painel.");
-    }
     const message =
       typeof data.message === "string"
         ? data.message

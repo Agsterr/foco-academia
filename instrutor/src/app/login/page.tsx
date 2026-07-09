@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearLegacySharedToken, getAcademySlug, getDeviceId, setAcademySlug, setToken, type AuthResponse } from "@/lib/api";
+import { api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
 import { lookupAcademyName } from "@/lib/tenant";
 
 export default function LoginPage() {
@@ -15,7 +15,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    clearLegacySharedToken();
     const saved = getAcademySlug();
     if (saved) setSlug(saved);
   }, []);
@@ -39,7 +38,7 @@ export default function LoginPage() {
     setError("");
     try {
       setAcademySlug(academySlug);
-      const data = await api<AuthResponse>("/api/auth/login", {
+      const data = await api<{ token: string }>("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({
           email,
@@ -49,13 +48,6 @@ export default function LoginPage() {
           deviceLabel: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 80) : undefined,
         }),
       });
-      if (data.user.role !== "INSTRUTOR") {
-        throw new Error(
-          data.user.role === "ALUNO"
-            ? "Esta conta é de aluno. Acesse academia.focodev.com.br (área do aluno)."
-            : "Administrador da plataforma não usa código de academia",
-        );
-      }
       setToken(data.token);
       router.push("/");
     } catch (err) {
@@ -106,14 +98,6 @@ export default function LoginPage() {
           {error && (
             <div className="text-sm text-red-400">
               <p>{error}</p>
-              {error.includes("aluno") && (
-                <p className="mt-2 text-slate-400">
-                  Acesse a{" "}
-                  <a href="/" className="text-violet-400 underline">
-                    área do aluno
-                  </a>
-                </p>
-              )}
               {error.includes("Administrador da plataforma") && (
                 <p className="mt-2 text-slate-400">
                   Acesse o painel admin em{" "}
@@ -132,9 +116,6 @@ export default function LoginPage() {
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
-          <p className="text-center text-xs text-slate-500">
-            Demo: código <code className="text-slate-400">academia-demo</code> · instrutor@academia.com / instrutor123
-          </p>
         </form>
 
 
