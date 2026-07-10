@@ -1,16 +1,27 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordInput from "@/components/PasswordInput";
 import { api, getDeviceId, setToken } from "@/lib/api";
+import { clearSavedLogin, getSavedLogin, saveLogin } from "@/lib/auth-storage";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const savedLogin = getSavedLogin();
+    if (savedLogin.remember) {
+      setEmail(savedLogin.email);
+      setPassword(savedLogin.password);
+      setRemember(true);
+    }
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -26,6 +37,11 @@ export default function LoginPage() {
           deviceLabel: navigator.userAgent.slice(0, 80),
         }),
       });
+      if (remember) {
+        saveLogin(email, password);
+      } else {
+        clearSavedLogin();
+      }
       setToken(data.token);
       router.push("/");
     } catch (err) {
@@ -81,6 +97,14 @@ export default function LoginPage() {
               required
             />
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            Lembrar e-mail e senha neste aparelho
+          </label>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? "Entrando..." : "Entrar"}
