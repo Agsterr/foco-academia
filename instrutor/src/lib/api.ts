@@ -137,12 +137,40 @@ export function clearToken() {
 }
 
 export function getDeviceId(): string {
-  const key = "academia_device_id";
-  let id = localStorage.getItem(key);
+  const storageKey = "academia_device_id";
+  const cookieName = "academia_device_id";
+
+  const readCookie = (name: string) => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : null;
+  };
+
+  const cookieDomain = () => {
+    const host = window.location.hostname;
+    if (host === "localhost" || host.endsWith(".localhost")) return undefined;
+    if (host.endsWith("focodev.com.br")) return ".focodev.com.br";
+    return undefined;
+  };
+
+  const writeCookie = (name: string, value: string) => {
+    const domain = cookieDomain();
+    let cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+    if (domain) cookie += `; domain=${domain}`;
+    document.cookie = cookie;
+  };
+
+  const fromCookie = readCookie(cookieName);
+  if (fromCookie) {
+    localStorage.setItem(storageKey, fromCookie);
+    return fromCookie;
+  }
+
+  let id = localStorage.getItem(storageKey);
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem(key, id);
   }
+  localStorage.setItem(storageKey, id);
+  writeCookie(cookieName, id);
   return id;
 }
 

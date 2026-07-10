@@ -7,6 +7,7 @@ export interface Academy {
   slug: string;
   deviceLimitPerUser: number;
   active: boolean;
+  appBlocked: boolean;
   createdAt: string;
   instructorCount: number;
   studentCount: number;
@@ -26,11 +27,47 @@ export interface AdminUser {
   active: boolean;
 }
 
+export interface DeviceSession {
+  id: string;
+  deviceId: string;
+  deviceLabel?: string;
+  appClient: "WEB" | "MOBILE";
+  lastSeenAt: string;
+}
+
 export interface Dashboard {
   totalAcademies: number;
   activeAcademies: number;
   totalInstructors: number;
   totalStudents: number;
+}
+
+export interface AppRelease {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  fileName: string;
+  fileSizeBytes: number;
+  sha256: string;
+  releaseNotes?: string;
+  forceUpdate: boolean;
+  active: boolean;
+  downloadUrl: string;
+  createdAt: string;
+}
+
+export interface ConnectedDevice {
+  sessionId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  deviceId: string;
+  deviceLabel?: string;
+  appClient: string;
+  appVersion?: string;
+  appVersionCode?: number;
+  needsUpdate: boolean;
+  lastSeenAt: string;
 }
 
 const TOKEN_KEY = "academia_admin_token";
@@ -49,12 +86,40 @@ export function clearToken() {
 }
 
 export function getDeviceId(): string {
-  const key = "academia_device_id";
-  let id = localStorage.getItem(key);
+  const storageKey = "academia_device_id";
+  const cookieName = "academia_device_id";
+
+  const readCookie = (name: string) => {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? decodeURIComponent(match[1]) : null;
+  };
+
+  const cookieDomain = () => {
+    const host = window.location.hostname;
+    if (host === "localhost" || host.endsWith(".localhost")) return undefined;
+    if (host.endsWith("focodev.com.br")) return ".focodev.com.br";
+    return undefined;
+  };
+
+  const writeCookie = (name: string, value: string) => {
+    const domain = cookieDomain();
+    let cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+    if (domain) cookie += `; domain=${domain}`;
+    document.cookie = cookie;
+  };
+
+  const fromCookie = readCookie(cookieName);
+  if (fromCookie) {
+    localStorage.setItem(storageKey, fromCookie);
+    return fromCookie;
+  }
+
+  let id = localStorage.getItem(storageKey);
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem(key, id);
   }
+  localStorage.setItem(storageKey, id);
+  writeCookie(cookieName, id);
   return id;
 }
 
@@ -83,4 +148,54 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 export function formatDate(iso?: string) {
   if (!iso) return "Nunca";
   return new Date(iso).toLocaleString("pt-BR");
+}
+
+export async function listAppReleases(): Promise<AppRelease[]> {
+  return api<AppRelease[]>("/api/admin/releases");
+}
+
+export async function listConnectedDevices(): Promise<ConnectedDevice[]> {
+  return api<ConnectedDevice[]>("/api/admin/releases/connected-devices");
+}
+
+export async function setReleaseForceUpdate(id: string, forceUpdate: boolean): Promise<AppRelease> {
+  return api<AppRelease>(`/api/admin/releases/${id}/force-update`, {
+    method: "PATCH",
+    body: JSON.stringify({ forceUpdate }),
+  });
+}
+
+export async function downloadAppRelease(id: string): Promise<Blob> {
+  const token = getToken();
+  const response = await fetch(`${API_URL}/api/admin/releases/${id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error("Erro ao baixar APK");
+  return response.blob();
+}
+
+export async function uploadAppRelease(data: {
+  file: File;
+  versionName: string;
+  versionCode: number;
+  releaseNotes?: string;
+  forceUpdate: boolean;
+}): Promise<AppRelease> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", data.file);
+  form.append("versionName", data.versionName);
+  form.append("versionCode", String(data.versionCode));
+  if (data.releaseNotes) form.append("releaseNotes", data.releaseNotes);
+  form.append("forceUpdate", String(data.forceUpdate));
+  const response = await fetch(`${API_URL}/api/admin/releases`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof json.message === "string" ? json.message : "Erro ao publicar APK");
+  }
+  return json as AppRelease;
 }
