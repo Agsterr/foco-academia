@@ -51,11 +51,24 @@ public class AuthService {
                 throw new ApiException("Administrador da plataforma não usa código de academia");
             }
         } else {
+            if (request.academySlug() == null || request.academySlug().isBlank()) {
+                if (user.getRole() == UserRole.INSTRUTOR) {
+                    throw new ApiException(
+                            "Este e-mail é de instrutor. Acesse instrutor-academia.focodev.com.br e informe o código da academia."
+                    );
+                }
+                if (user.getRole() == UserRole.ALUNO) {
+                    throw new ApiException(
+                            "Este e-mail é de aluno. Acesse academia.focodev.com.br e informe o código da academia."
+                    );
+                }
+                throw new ApiException("Código da academia é obrigatório");
+            }
             Academy academy = tenantService.requireActiveAcademyBySlug(request.academySlug());
             tenantService.requireUserBelongsToAcademy(user, academy);
         }
 
-        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel());
+        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel(), request.appClient(), request.appVersion());
 
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
