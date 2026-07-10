@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import PasswordInput from "@/components/PasswordInput";
 import { api, getDeviceId, setToken } from "@/lib/api";
 
 export default function LoginPage() {
@@ -50,23 +51,36 @@ export default function LoginPage() {
           </a>
           .
         </p>
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-mail"
-            className="form-input"
-            required
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha"
-            className="form-input"
-            required
-          />
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4" autoComplete="off">
+          <div>
+            <label htmlFor="admin-login-email" className="mb-1 block text-sm text-slate-300">
+              E-mail
+            </label>
+            <input
+              id="admin-login-email"
+              name="admin-login-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@focodev.com.br"
+              className="form-input"
+              required
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+            />
+          </div>
+          <div>
+            <label htmlFor="admin-login-password" className="mb-1 block text-sm text-slate-300">
+              Senha
+            </label>
+            <PasswordInput
+              id="admin-login-password"
+              value={password}
+              onChange={setPassword}
+              required
+            />
+          </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? "Entrando..." : "Entrar"}
