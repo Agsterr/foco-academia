@@ -68,7 +68,7 @@ public class AuthService {
             tenantService.requireUserBelongsToAcademy(user, academy);
         }
 
-        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel(), request.appClient(), request.appVersion());
+        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel());
 
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
