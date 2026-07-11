@@ -12,6 +12,8 @@ interface CardioSession {
   distanceMeters?: number;
   avgSpeedKmh?: number;
   elapsedMs?: number;
+  pausedMs?: number;
+  pauseCount?: number;
   startedAt: string;
 }
 
@@ -57,6 +59,14 @@ function summarizeIntervals(json?: string | null): string {
   const runSec = intervals.find((i) => i.phase === "RUN")?.durationSec ?? 0;
   const rounds = Math.max(walk, run);
   return `${rounds} rodadas · ${Math.round(walkSec / 60)} min caminhada / ${Math.round(runSec / 60)} min corrida`;
+}
+
+function formatDuration(ms?: number | null): string {
+  if (ms == null || ms < 0) return "0:00";
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = (totalSec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 export default function CardioPage() {
@@ -282,6 +292,15 @@ export default function CardioPage() {
             <p className="font-medium">{s.studentName}</p>
             <p className="text-slate-400">
               {((s.distanceMeters ?? 0) / 1000).toFixed(2)} km · {(s.avgSpeedKmh ?? 0).toFixed(1)} km/h
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Em movimento {formatDuration(s.elapsedMs)}
+              {(s.pausedMs ?? 0) > 0 && (
+                <> · Pausado {formatDuration(s.pausedMs)}</>
+              )}
+              {(s.pauseCount ?? 0) > 0 && (
+                <> · {s.pauseCount} pausa{(s.pauseCount ?? 0) === 1 ? "" : "s"}</>
+              )}
             </p>
           </div>
         ))}

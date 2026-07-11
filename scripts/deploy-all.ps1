@@ -45,6 +45,9 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RepoRoot
 
+# git escreve warnings em stderr; nao tratar como falha fatal
+$GitErrorAction = $ErrorActionPreference
+
 function Assert-Cmd([string]$Name) {
   if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
     throw "Comando '$Name' nao encontrado no PATH."
@@ -52,9 +55,15 @@ function Assert-Cmd([string]$Name) {
 }
 
 function Get-ChangedPaths {
-  $staged = git diff --cached --name-only 2>$null
-  $unstaged = git diff --name-only 2>$null
-  $untracked = git ls-files --others --exclude-standard 2>$null
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $staged = @(git diff --cached --name-only 2>$null)
+    $unstaged = @(git diff --name-only 2>$null)
+    $untracked = @(git ls-files --others --exclude-standard 2>$null)
+  } finally {
+    $ErrorActionPreference = $prev
+  }
   @($staged) + @($unstaged) + @($untracked) | Where-Object { $_ } | Sort-Object -Unique
 }
 

@@ -21,6 +21,9 @@ class ActiveRunSnapshot {
     this.movingElapsedSec = 0,
     this.phaseIndex = 0,
     this.autoPaused = false,
+    this.manualPaused = false,
+    this.pausedSec = 0,
+    this.pauseCount = 0,
     this.splits = const [],
   });
 
@@ -35,6 +38,9 @@ class ActiveRunSnapshot {
   final int movingElapsedSec;
   final int phaseIndex;
   final bool autoPaused;
+  final bool manualPaused;
+  final int pausedSec;
+  final int pauseCount;
   final List<TrackedPoint> points;
   final List<KmSplit> splits;
 
@@ -50,6 +56,9 @@ class ActiveRunSnapshot {
         'movingElapsedSec': movingElapsedSec,
         'phaseIndex': phaseIndex,
         'autoPaused': autoPaused,
+        'manualPaused': manualPaused,
+        'pausedSec': pausedSec,
+        'pauseCount': pauseCount,
         'points': points.map((p) => p.toJson()).toList(),
         'splits': splits.map((s) => s.toJson()).toList(),
       };
@@ -72,6 +81,9 @@ class ActiveRunSnapshot {
           0,
       phaseIndex: (json['phaseIndex'] as num?)?.toInt() ?? 0,
       autoPaused: json['autoPaused'] as bool? ?? false,
+      manualPaused: json['manualPaused'] as bool? ?? false,
+      pausedSec: (json['pausedSec'] as num?)?.toInt() ?? 0,
+      pauseCount: (json['pauseCount'] as num?)?.toInt() ?? 0,
       points: rawPoints
           .map((e) => TrackedPoint.fromJson(e as Map<String, dynamic>))
           .toList(),

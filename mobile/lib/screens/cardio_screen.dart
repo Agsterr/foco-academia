@@ -45,6 +45,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _loading = true;
   bool _finishing = false;
   bool _autoPaused = false;
+  bool _manualPaused = false;
   String? _error;
   String? _clientSessionId;
   String? _gpsStatus;
@@ -160,8 +161,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       movingElapsedSec: snapshot.movingElapsedSec > 0
           ? snapshot.movingElapsedSec
           : snapshot.elapsedSec,
+      pausedSec: snapshot.pausedSec,
+      pauseCount: snapshot.pauseCount,
       splits: snapshot.splits,
       autoPaused: snapshot.autoPaused,
+      manualPaused: snapshot.manualPaused,
     );
 
     setState(() {
@@ -174,12 +178,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _estimatedGap = snapshot.estimatedGapMeters;
       _elapsed = _engine.movingElapsedSec;
       _autoPaused = snapshot.autoPaused;
+      _manualPaused = snapshot.manualPaused;
       _phaseIndex = snapshot.phaseIndex.clamp(
         0,
         _intervals.isEmpty ? 0 : _intervals.length - 1,
       );
       _startedAt = snapshot.startedAt;
-      _gpsStatus = 'Retomando GPS...';
+      _gpsStatus = snapshot.manualPaused
+          ? 'Pausado — toque em Retomar'
+          : 'Retomando GPS...';
       _gpsLost = false;
       _lastCloudSeq = snapshot.points.isEmpty ? 0 : snapshot.points.last.sequenceNum + 1;
     });
@@ -194,8 +201,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   LocationSettings get _locationSettings {
     final km = (_distance / 1000).toStringAsFixed(1);
     final pace = GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
-    final notifText = _autoPaused
-        ? 'Pausado · $km km'
+    final notifText = _engine.isPaused
+        ? (_manualPaused
+            ? 'Pausado · $km km · ${_fmt(_engine.pausedSec)}'
+            : 'Auto-pause · $km km')
         : 'Distância: $km km · Ritmo: $pace';
 
     if (!kIsWeb && Platform.isAndroid) {
@@ -205,7 +214,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         intervalDuration: const Duration(seconds: 2),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationTitle: _autoPaused
+          notificationTitle: _engine.isPaused
               ? 'Corrida pausada'
               : 'Corrida em andamento',
           notificationText: notifText,
@@ -275,15 +284,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (!_running || _finishing) return;
       final since = _engine.timeSinceLastFix;
       final lost = since == null || since > _engine.gpsLossTimeout;
-      if ((lost != _gpsLost || _autoPaused != _engine.autoPaused) && mounted) {
+      final pausedChanged = _autoPaused != _engine.autoPaused ||
+          _manualPaused != _engine.manualPaused;
+      if ((lost != _gpsLost || pausedChanged) && mounted) {
         setState(() {
-          _gpsLost = lost && !_engine.autoPaused;
+          _gpsLost = lost && !_engine.isPaused;
           _autoPaused = _engine.autoPaused;
-          _gpsStatus = _engine.autoPaused
-              ? 'Auto-pause — parado. Ande para continuar.'
-              : lost
-                  ? 'Sinal de GPS perdido. Tentando reconectar...'
-                  : 'GPS ok — ${_engine.acceptedPoints.length} pontos';
+          _manualPaused = _engine.manualPaused;
+          _gpsStatus = _engine.manualPaused
+              ? 'Pausado — toque em Retomar'
+              : _engine.autoPaused
+                  ? 'Auto-pause — parado. Ande para continuar.'
+                  : lost
+                      ? 'Sinal de GPS perdido. Tentando reconectar...'
+                      : 'GPS ok — ${_engine.acceptedPoints.length} pontos';
         });
       }
     });
@@ -311,7 +325,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     var phaseRemaining = _phaseRemaining;
     var phaseChanged = false;
 
-    if (_intervals.isNotEmpty && !_engine.autoPaused) {
+    if (_intervals.isNotEmpty && !_engine.isPaused) {
       var cursor = elapsed;
       var finished = true;
       for (var i = 0; i < _intervals.length; i++) {
@@ -340,6 +354,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     setState(() {
       _elapsed = elapsed;
       _autoPaused = _engine.autoPaused;
+      _manualPaused = _engine.manualPaused;
       _phaseIndex = phaseIndex;
       _phaseRemaining = phaseRemaining;
     });
@@ -369,6 +384,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         movingElapsedSec: _engine.movingElapsedSec,
         phaseIndex: _phaseIndex,
         autoPaused: _engine.autoPaused,
+        manualPaused: _engine.manualPaused,
+        pausedSec: _engine.pausedSec,
+        pauseCount: _engine.pauseCount,
         points: _engine.acceptedPoints,
         splits: _engine.splits,
       ),
@@ -436,6 +454,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _estimatedGap = 0;
         _gpsLost = false;
         _autoPaused = false;
+        _manualPaused = false;
       });
 
       if (_intervals.isNotEmpty) {
@@ -466,6 +485,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _estimatedGap = 0;
         _gpsLost = false;
         _autoPaused = false;
+        _manualPaused = false;
       });
       if (_intervals.isNotEmpty) {
         await CardioFeedback.playPhase(_intervals.first.phase);
@@ -488,21 +508,27 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   void _onPosition(Position pos) {
     if (!_running) return;
-    final wasPaused = _engine.autoPaused;
+    final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
-    if (result.autoPaused != wasPaused && mounted) {
+    if (result.isPaused != wasPaused && mounted) {
       setState(() {
         _autoPaused = result.autoPaused;
-        _gpsStatus = result.autoPaused
-            ? 'Auto-pause — parado. Ande para continuar.'
-            : 'Retomado — ${_activityLabel(result.activity)}';
+        _manualPaused = result.manualPaused;
+        _gpsStatus = result.manualPaused
+            ? 'Pausado — toque em Retomar'
+            : result.autoPaused
+                ? 'Auto-pause — parado. Ande para continuar.'
+                : 'Retomado — ${_activityLabel(result.activity)}';
       });
     }
 
     if (!result.accepted) {
-      if (result.rejectReason == GpsRejectReason.autoPaused && mounted) {
-        setState(() => _autoPaused = true);
+      if (result.isPaused && mounted) {
+        setState(() {
+          _autoPaused = result.autoPaused;
+          _manualPaused = result.manualPaused;
+        });
       }
       return;
     }
@@ -521,6 +547,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       setState(() {
         _gpsLost = false;
         _autoPaused = false;
+        _manualPaused = false;
         _gpsStatus = _engine.acceptedPoints.length < 2
             ? 'GPS ok — pode apagar a tela'
             : '${_activityLabel(result.activity)} · '
@@ -529,6 +556,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
     }
     unawaited(_persistActiveRun());
+  }
+
+  void _toggleManualPause() {
+    if (!_running || _finishing) return;
+    _engine.toggleManualPause();
+    setState(() {
+      _manualPaused = _engine.manualPaused;
+      _autoPaused = _engine.autoPaused;
+      _gpsStatus = _manualPaused
+          ? 'Pausado — toque em Retomar'
+          : 'Retomado — continue o treino';
+    });
+    unawaited(_persistActiveRun(force: true));
+    unawaited(CardioFeedback.playBeeps(1));
   }
 
   String _activityLabel(MotionActivity a) {
@@ -595,10 +636,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       setState(() => _running = false);
     }
 
+    // Fecha o último intervalo de pausa/movimento antes de enviar.
+    _engine.tickMovingTime(DateTime.now());
+    _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
+
     final totalDistance = _distance + _estimatedGap;
     final avgSpeedKmh =
         _elapsed > 0 ? (totalDistance / 1000) / (_elapsed / 3600) : 0.0;
     final elapsedMs = _elapsed * 1000;
+    final pausedMs = _engine.pausedMs;
+    final pauseCount = _engine.pauseCount;
     final points = _engine.pointsForSync();
 
     // Oferece exportação antes de sair.
@@ -636,6 +683,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           distanceMeters: totalDistance,
           avgSpeedKmh: avgSpeedKmh,
           elapsedMs: elapsedMs,
+          pausedMs: pausedMs,
+          pauseCount: pauseCount,
           points: points,
         );
       } else {
@@ -647,6 +696,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           'distanceMeters': totalDistance,
           'avgSpeedKmh': avgSpeedKmh,
           'elapsedMs': elapsedMs,
+          'pausedMs': pausedMs,
+          'pauseCount': pauseCount,
           'points': points,
           if (_estimatedGap > 0) 'estimatedGapMeters': _estimatedGap,
         };
@@ -687,6 +738,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         'distanceMeters': totalDistance,
         'avgSpeedKmh': avgSpeedKmh,
         'elapsedMs': elapsedMs,
+        'pausedMs': pausedMs,
+        'pauseCount': pauseCount,
         'points': points,
         if (_estimatedGap > 0) 'estimatedGapMeters': _estimatedGap,
       };
@@ -777,13 +830,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     if (_running) ...[
                       const SizedBox(height: 6),
                       Text(
-                        _autoPaused
-                            ? 'Auto-pause ativo — ande para retomar'
-                            : _gpsLost
-                                ? 'Sinal de GPS perdido. Tentando reconectar...'
-                                : 'Pode apagar a tela — GPS + backup na nuvem ativos',
+                        _manualPaused
+                            ? 'Pausado — o tempo em movimento está congelado'
+                            : _autoPaused
+                                ? 'Auto-pause ativo — ande para retomar'
+                                : _gpsLost
+                                    ? 'Sinal de GPS perdido. Tentando reconectar...'
+                                    : 'Pode apagar a tela — GPS + backup na nuvem ativos',
                         style: TextStyle(
-                          color: _autoPaused || _gpsLost
+                          color: _manualPaused || _autoPaused || _gpsLost
                               ? Colors.orangeAccent
                               : Colors.lightGreenAccent,
                           fontSize: 12,
@@ -814,18 +869,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               Expanded(child: _Stat('Tempo', _fmt(_elapsed))),
                               Expanded(
                                 child: _Stat(
-                                  'Distância',
-                                  '${(_distance / 1000).toStringAsFixed(2)} km',
+                                  'Pausado',
+                                  _fmt(_engine.pausedSec),
                                 ),
                               ),
                               Expanded(
-                                child: _Stat('Ritmo agora', currentPace),
+                                child: _Stat(
+                                  'Distância',
+                                  '${(_distance / 1000).toStringAsFixed(2)} km',
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
+                              Expanded(
+                                child: _Stat('Ritmo agora', currentPace),
+                              ),
                               Expanded(child: _Stat('Ritmo médio', avgPace)),
                               Expanded(
                                 child: _Stat(
@@ -833,12 +894,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   '${_engine.elevationGainMeters.toStringAsFixed(0)} m',
                                 ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
                               Expanded(
                                 child: _Stat(
                                   'Vel. média',
                                   '${_avgSpeedKmh.toStringAsFixed(1)} km/h',
                                 ),
                               ),
+                              Expanded(
+                                child: _Stat(
+                                  'Pausas',
+                                  '${_engine.pauseCount}',
+                                ),
+                              ),
+                              const Expanded(child: SizedBox()),
                             ],
                           ),
                           if (_lastSplitToast != null) ...[
@@ -929,7 +1002,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   ),
                                   Text(
                                     'Fase ${_phaseIndex + 1} de ${_intervals.length}'
-                                    '${_autoPaused ? ' · pausado' : ''}',
+                                    '${_manualPaused || _autoPaused ? ' · pausado' : ''}',
                                     style: const TextStyle(
                                       color: Colors.white70,
                                       fontSize: 12,
@@ -971,6 +1044,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           child: FilledButton(
                             onPressed: _running || _finishing ? null : _start,
                             child: const Text('Iniciar'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _manualPaused
+                                  ? Colors.green
+                                  : Colors.orange,
+                            ),
+                            onPressed: _running && !_finishing
+                                ? _toggleManualPause
+                                : null,
+                            child: Text(_manualPaused ? 'Retomar' : 'Pausar'),
                           ),
                         ),
                         const SizedBox(width: 8),

@@ -65,6 +65,7 @@ enum GpsRejectReason {
   jump,
   tooSoon,
   autoPaused,
+  manualPaused,
 }
 
 class KmSplit {
@@ -108,12 +109,14 @@ class GpsProcessResult {
     this.newSplit,
   })  : accepted = true,
         rejectReason = null,
-        autoPaused = false;
+        autoPaused = false,
+        manualPaused = false;
 
   const GpsProcessResult.rejected(
     this.rejectReason, {
     this.activity = MotionActivity.stopped,
     this.autoPaused = false,
+    this.manualPaused = false,
   })  : accepted = false,
         point = null,
         deltaMeters = null,
@@ -125,7 +128,10 @@ class GpsProcessResult {
   final GpsRejectReason? rejectReason;
   final MotionActivity activity;
   final bool autoPaused;
+  final bool manualPaused;
   final KmSplit? newSplit;
+
+  bool get isPaused => autoPaused || manualPaused;
 }
 
 /// Filtra pontos GPS, calcula distância, pace, splits, elevação e auto-pause.
@@ -161,14 +167,18 @@ class GpsTrackingEngine {
   double elevationGainMeters = 0;
   int sequenceNum = 0;
   int movingElapsedSec = 0;
+  int pausedSec = 0;
+  int pauseCount = 0;
   DateTime? lastFixAt;
   double? lastValidSpeedKmh;
   bool autoPaused = false;
+  bool manualPaused = false;
   MotionActivity currentActivity = MotionActivity.stopped;
 
   TrackedPoint? _lastAccepted;
   DateTime? _stillSince;
   DateTime? _lastMovingTickAt;
+  DateTime? _pauseTickAt;
   double _distanceAtLastSplit = 0;
   int _movingSecAtLastSplit = 0;
   double _elevAtLastSplit = 0;
@@ -182,6 +192,8 @@ class GpsTrackingEngine {
   List<TrackedPoint> get acceptedPoints => List.unmodifiable(_accepted);
   List<KmSplit> get splits => List.unmodifiable(_splits);
   TrackedPoint? get lastAccepted => _lastAccepted;
+  bool get isPaused => manualPaused || autoPaused;
+  int get pausedMs => pausedSec * 1000;
 
   bool get hasGpsSignal {
     final last = lastFixAt;
@@ -227,8 +239,11 @@ class GpsTrackingEngine {
     double estimatedGapMeters = 0,
     double elevationGainMeters = 0,
     int movingElapsedSec = 0,
+    int pausedSec = 0,
+    int pauseCount = 0,
     List<KmSplit> splits = const [],
     bool autoPaused = false,
+    bool manualPaused = false,
   }) {
     _accepted
       ..clear()
@@ -245,12 +260,16 @@ class GpsTrackingEngine {
     this.estimatedGapMeters = estimatedGapMeters;
     this.elevationGainMeters = elevationGainMeters;
     this.movingElapsedSec = movingElapsedSec;
+    this.pausedSec = pausedSec;
+    this.pauseCount = pauseCount;
     this.autoPaused = autoPaused;
+    this.manualPaused = manualPaused;
     _distanceAtLastSplit = (distanceMeters / 1000).floor() * 1000.0;
     _movingSecAtLastSplit = movingElapsedSec;
     _elevAtLastSplit = elevationGainMeters;
     _stillSince = null;
     _lastMovingTickAt = null;
+    _pauseTickAt = isPaused ? DateTime.now() : null;
     _recentSpeeds.clear();
     if (points.isNotEmpty) {
       _lastAccepted = points.last;
@@ -268,13 +287,17 @@ class GpsTrackingEngine {
     elevationGainMeters = 0;
     sequenceNum = 0;
     movingElapsedSec = 0;
+    pausedSec = 0;
+    pauseCount = 0;
     lastFixAt = null;
     lastValidSpeedKmh = null;
     autoPaused = false;
+    manualPaused = false;
     currentActivity = MotionActivity.stopped;
     _lastAccepted = null;
     _stillSince = null;
     _lastMovingTickAt = null;
+    _pauseTickAt = null;
     _distanceAtLastSplit = 0;
     _movingSecAtLastSplit = 0;
     _elevAtLastSplit = 0;
@@ -285,6 +308,26 @@ class GpsTrackingEngine {
     _recentSpeeds.clear();
   }
 
+  /// Pausa ou retoma manualmente (botão do aluno).
+  void setManualPaused(bool paused) {
+    if (paused == manualPaused) return;
+    if (paused) {
+      manualPaused = true;
+      pauseCount++;
+      currentActivity = MotionActivity.stopped;
+      _lastMovingTickAt = null;
+      _pauseTickAt = DateTime.now();
+    } else {
+      manualPaused = false;
+      autoPaused = false;
+      _stillSince = null;
+      _pauseTickAt = null;
+      _lastMovingTickAt = DateTime.now();
+    }
+  }
+
+  void toggleManualPause() => setManualPaused(!manualPaused);
+
   MotionActivity _classify(double? speedKmh) {
     if (speedKmh == null || speedKmh < pauseBelowKmh) {
       return MotionActivity.stopped;
@@ -293,12 +336,25 @@ class GpsTrackingEngine {
     return MotionActivity.run;
   }
 
+  void _enterAutoPause() {
+    if (autoPaused) return;
+    autoPaused = true;
+    pauseCount++;
+    currentActivity = MotionActivity.stopped;
+    _lastMovingTickAt = null;
+    _pauseTickAt ??= DateTime.now();
+  }
+
   void _updateAutoPause(double? speedKmh, DateTime now) {
+    // Com pausa manual, o aluno controla; GPS não retoma sozinho.
+    if (manualPaused) return;
+
     final speed = speedKmh ?? 0;
     if (autoPaused) {
       if (speed >= resumeAboveKmh) {
         autoPaused = false;
         _stillSince = null;
+        _pauseTickAt = null;
         _lastMovingTickAt = now;
       }
       return;
@@ -306,8 +362,7 @@ class GpsTrackingEngine {
     if (speed < pauseBelowKmh) {
       _stillSince ??= now;
       if (now.difference(_stillSince!) >= autoPauseAfter) {
-        autoPaused = true;
-        currentActivity = MotionActivity.stopped;
+        _enterAutoPause();
       }
     } else {
       _stillSince = null;
@@ -315,10 +370,18 @@ class GpsTrackingEngine {
   }
 
   void tickMovingTime(DateTime now) {
-    if (autoPaused) {
+    if (isPaused) {
+      if (_pauseTickAt != null) {
+        final d = now.difference(_pauseTickAt!).inSeconds;
+        if (d > 0 && d < 5) {
+          pausedSec += d;
+        }
+      }
+      _pauseTickAt = now;
       _lastMovingTickAt = null;
       return;
     }
+    _pauseTickAt = null;
     if (_lastMovingTickAt != null) {
       final d = now.difference(_lastMovingTickAt!).inSeconds;
       if (d > 0 && d < 5) {
@@ -341,6 +404,7 @@ class GpsTrackingEngine {
         GpsRejectReason.accuracy,
         activity: currentActivity,
         autoPaused: autoPaused,
+        manualPaused: manualPaused,
       );
     }
 
@@ -349,11 +413,23 @@ class GpsTrackingEngine {
         GpsRejectReason.speed,
         activity: currentActivity,
         autoPaused: autoPaused,
+        manualPaused: manualPaused,
+      );
+    }
+
+    lastFixAt = recordedAt;
+
+    if (manualPaused) {
+      currentActivity = MotionActivity.stopped;
+      return GpsProcessResult.rejected(
+        GpsRejectReason.manualPaused,
+        activity: MotionActivity.stopped,
+        manualPaused: true,
+        autoPaused: autoPaused,
       );
     }
 
     _updateAutoPause(speedKmh, recordedAt);
-    lastFixAt = recordedAt;
 
     if (autoPaused) {
       currentActivity = MotionActivity.stopped;

@@ -62,6 +62,8 @@ public final class CardioDtos {
             Double distanceMeters,
             Double avgSpeedKmh,
             Long elapsedMs,
+            Long pausedMs,
+            Integer pauseCount,
             @Valid List<RoutePointRequest> points
     ) {}
 
@@ -76,6 +78,8 @@ public final class CardioDtos {
             Double distanceMeters,
             Double avgSpeedKmh,
             Long elapsedMs,
+            Long pausedMs,
+            Integer pauseCount,
             List<RoutePointResponse> routePoints
     ) {}
 
@@ -115,6 +119,8 @@ public final class CardioDtos {
             Double distanceMeters,
             Double avgSpeedKmh,
             Long elapsedMs,
+            Long pausedMs,
+            Integer pauseCount,
             List<RoutePointRequest> points
     ) {}
 

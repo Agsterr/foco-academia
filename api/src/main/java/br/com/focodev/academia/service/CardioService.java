@@ -178,6 +178,8 @@ public class CardioService {
         session.setDistanceMeters(request.distanceMeters());
         session.setAvgSpeedKmh(request.avgSpeedKmh());
         session.setElapsedMs(request.elapsedMs());
+        session.setPausedMs(request.pausedMs() != null ? request.pausedMs() : 0L);
+        session.setPauseCount(request.pauseCount() != null ? request.pauseCount() : 0);
         if (request.points() != null && !request.points().isEmpty()) {
             session.getRoutePoints().clear();
             for (CardioDtos.RoutePointRequest point : request.points()) {
@@ -281,6 +283,8 @@ public class CardioService {
                 session.setDistanceMeters(dto.distanceMeters());
                 session.setAvgSpeedKmh(dto.avgSpeedKmh());
                 session.setElapsedMs(dto.elapsedMs());
+                session.setPausedMs(dto.pausedMs() != null ? dto.pausedMs() : 0L);
+                session.setPauseCount(dto.pauseCount() != null ? dto.pauseCount() : 0);
                 session.setSynced(true);
                 if (dto.workoutId() != null) {
                     workoutRepository.findById(dto.workoutId()).ifPresent(session::setWorkout);
@@ -386,6 +390,8 @@ public class CardioService {
                 s.getDistanceMeters(),
                 s.getAvgSpeedKmh(),
                 s.getElapsedMs(),
+                s.getPausedMs() != null ? s.getPausedMs() : 0L,
+                s.getPauseCount() != null ? s.getPauseCount() : 0,
                 points
         );
     }

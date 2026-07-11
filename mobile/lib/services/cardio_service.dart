@@ -102,12 +102,16 @@ class CardioService {
     required double distanceMeters,
     required double avgSpeedKmh,
     required int elapsedMs,
+    int pausedMs = 0,
+    int pauseCount = 0,
     required List<Map<String, dynamic>> points,
   }) async {
     await AuthService.instance.post('/api/student/cardio-sessions/$sessionId/complete', {
       'distanceMeters': distanceMeters,
       'avgSpeedKmh': avgSpeedKmh,
       'elapsedMs': elapsedMs,
+      'pausedMs': pausedMs,
+      'pauseCount': pauseCount,
       'points': points,
     });
   }

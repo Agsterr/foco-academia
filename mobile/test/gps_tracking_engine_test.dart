@@ -129,4 +129,36 @@ void main() {
     expect(tcx.contains('TrainingCenterDatabase'), isTrue);
     expect(tcx.contains('Trackpoint'), isTrue);
   });
+
+  test('pausa manual congela movimento e acumula pausedSec', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.tickMovingTime(t0);
+    engine.tickMovingTime(t0.add(const Duration(seconds: 1)));
+    engine.tickMovingTime(t0.add(const Duration(seconds: 2)));
+    expect(engine.movingElapsedSec, greaterThanOrEqualTo(1));
+
+    engine.setManualPaused(true);
+    expect(engine.pauseCount, 1);
+    expect(engine.isPaused, isTrue);
+
+    final beforeMove = engine.movingElapsedSec;
+    engine.tickMovingTime(t0.add(const Duration(seconds: 3)));
+    engine.tickMovingTime(t0.add(const Duration(seconds: 4)));
+    expect(engine.movingElapsedSec, beforeMove);
+    expect(engine.pausedSec, greaterThanOrEqualTo(1));
+
+    final rejected = engine.process(
+      _pos(lat: -23.55, lng: -46.63, speed: 3),
+      now: t0.add(const Duration(seconds: 5)),
+    );
+    expect(rejected.accepted, isFalse);
+    expect(rejected.rejectReason, GpsRejectReason.manualPaused);
+
+    engine.setManualPaused(false);
+    expect(engine.manualPaused, isFalse);
+    engine.tickMovingTime(t0.add(const Duration(seconds: 6)));
+    engine.tickMovingTime(t0.add(const Duration(seconds: 7)));
+    expect(engine.movingElapsedSec, greaterThan(beforeMove));
+  });
 }

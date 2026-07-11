@@ -93,6 +93,8 @@ class CardioIntegrationTest {
                 "distanceMeters", 2500.0,
                 "avgSpeedKmh", 8.5,
                 "elapsedMs", 1200000,
+                "pausedMs", 180000,
+                "pauseCount", 2,
                 "points", List.of(
                         Map.of("latitude", -23.5, "longitude", -46.6, "speedKmh", 8.0,
                                 "recordedAt", "2026-01-01T12:00:00Z", "sequenceNum", 0),
@@ -106,7 +108,10 @@ class CardioIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(completeBody)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.distanceMeters").value(2500.0));
+                .andExpect(jsonPath("$.distanceMeters").value(2500.0))
+                .andExpect(jsonPath("$.elapsedMs").value(1200000))
+                .andExpect(jsonPath("$.pausedMs").value(180000))
+                .andExpect(jsonPath("$.pauseCount").value(2));
 
         mockMvc.perform(get("/api/instructor/cardio-stats")
                         .header("Authorization", "Bearer " + fixture.instructorToken()))

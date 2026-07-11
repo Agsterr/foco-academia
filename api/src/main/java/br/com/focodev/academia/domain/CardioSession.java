@@ -40,6 +40,12 @@ public class CardioSession {
 
     private Long elapsedMs;
 
+    /** Tempo total parado (pausa manual + auto-pause), em ms. */
+    private Long pausedMs = 0L;
+
+    /** Quantas vezes entrou em pausa nesta sessão. */
+    private Integer pauseCount = 0;
+
     private String clientSessionId;
 
     private boolean synced = true;
