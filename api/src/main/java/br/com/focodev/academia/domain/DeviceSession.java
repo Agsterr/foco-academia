@@ -30,6 +30,12 @@ public class DeviceSession {
 
     private String deviceLabel;
 
+    private String appVersion;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AppClientType appClient = AppClientType.WEB;
+
     @Column(nullable = false)
     private Instant lastSeenAt = Instant.now();
 

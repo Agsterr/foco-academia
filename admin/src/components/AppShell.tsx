@@ -26,6 +26,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/academias" className={`rounded-full px-3 py-1.5 text-sm ${pathname.startsWith("/academias") ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300"}`}>
             Academias
           </Link>
+          <Link href="/usuarios" className={`rounded-full px-3 py-1.5 text-sm ${pathname.startsWith("/usuarios") ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300"}`}>
+            Usuários
+          </Link>
+          <Link href="/app-mobile" className={`rounded-full px-3 py-1.5 text-sm ${pathname.startsWith("/app-mobile") ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300"}`}>
+            App mobile
+          </Link>
         </nav>
       </header>
       <main className="flex-1 px-4 py-4">{children}</main>

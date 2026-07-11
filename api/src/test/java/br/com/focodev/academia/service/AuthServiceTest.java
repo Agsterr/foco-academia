@@ -1,9 +1,11 @@
 package br.com.focodev.academia.service;
 
 import br.com.focodev.academia.domain.Academy;
+import br.com.focodev.academia.domain.AppClientType;
 import br.com.focodev.academia.domain.User;
 import br.com.focodev.academia.domain.UserRole;
 import br.com.focodev.academia.dto.AuthResponse;
+import br.com.focodev.academia.dto.HeartbeatRequest;
 import br.com.focodev.academia.dto.LoginRequest;
 import br.com.focodev.academia.dto.RegisterRequest;
 import br.com.focodev.academia.exception.ApiException;
@@ -40,6 +42,7 @@ class AuthServiceTest {
 
     private User admin;
     private User instructor;
+    private User student;
     private Academy academy;
 
     @BeforeEach
@@ -61,6 +64,13 @@ class AuthServiceTest {
         instructor.setRole(UserRole.INSTRUTOR);
         instructor.setAcademy(academy);
         instructor.setActive(true);
+
+        student = new User();
+        student.setId(UUID.randomUUID());
+        student.setEmail("aluno@test.com");
+        student.setRole(UserRole.ALUNO);
+        student.setAcademy(academy);
+        student.setActive(true);
     }
 
     @Test
@@ -75,10 +85,10 @@ class AuthServiceTest {
         when(jwtService.generateToken(any(AuthUser.class))).thenReturn("token");
 
         AuthResponse response = authService.login(new LoginRequest(
-                "admin@test.com", "senha123", null, "dev", "Chrome"));
+                "admin@test.com", "senha123", null, "dev", "Chrome", null, null));
 
         assertEquals("token", response.token());
-        verify(deviceService).registerDevice(admin, "dev", "Chrome");
+        verify(deviceService).registerDevice(admin, "dev", "Chrome", null, null);
     }
 
     @Test
@@ -86,7 +96,7 @@ class AuthServiceTest {
         when(userRepository.findByEmailWithAcademy("admin@test.com")).thenReturn(Optional.of(admin));
 
         assertThrows(ApiException.class, () -> authService.login(new LoginRequest(
-                "admin@test.com", "senha123", "academia-demo", "dev", null)));
+                "admin@test.com", "senha123", "academia-demo", "dev", null, null, null)));
     }
 
     @Test
@@ -96,10 +106,31 @@ class AuthServiceTest {
         when(jwtService.generateToken(any(AuthUser.class))).thenReturn("token");
 
         AuthResponse response = authService.login(new LoginRequest(
-                "instrutor@test.com", "senha123", "academia-demo", "dev", null));
+                "instrutor@test.com", "senha123", "academia-demo", "dev", null, null, null));
 
         assertEquals("token", response.token());
         verify(tenantService).requireUserBelongsToAcademy(instructor, academy);
+    }
+
+    @Test
+    void login_mobileStudentPersistsClientAndVersion() {
+        when(userRepository.findByEmailWithAcademy("aluno@test.com")).thenReturn(Optional.of(student));
+        when(tenantService.requireActiveAcademyBySlug("academia-demo")).thenReturn(academy);
+        when(jwtService.generateToken(any(AuthUser.class))).thenReturn("token");
+
+        AuthResponse response = authService.login(new LoginRequest(
+                "aluno@test.com",
+                "senha123",
+                "academia-demo",
+                "phone-1",
+                "Flutter Android",
+                AppClientType.MOBILE,
+                "1.0.1+16"
+        ));
+
+        assertEquals("token", response.token());
+        verify(deviceService).registerDevice(
+                student, "phone-1", "Flutter Android", AppClientType.MOBILE, "1.0.1+16");
     }
 
     @Test
@@ -108,7 +139,34 @@ class AuthServiceTest {
         when(userRepository.findByEmailWithAcademy("instrutor@test.com")).thenReturn(Optional.of(instructor));
 
         assertThrows(ApiException.class, () -> authService.login(new LoginRequest(
-                "instrutor@test.com", "senha123", "academia-demo", "dev", null)));
+                "instrutor@test.com", "senha123", "academia-demo", "dev", null, null, null)));
+    }
+
+    @Test
+    void heartbeat_updatesDeviceAndLastLogin() {
+        when(userRepository.findById(student.getId())).thenReturn(Optional.of(student));
+
+        authService.heartbeat(
+                new AuthUser(student),
+                new HeartbeatRequest("phone-1", "1.0.1+16", AppClientType.MOBILE)
+        );
+
+        verify(tenantService).requireActiveAcademy(student);
+        verify(deviceService).heartbeat(student, "phone-1", "1.0.1+16", AppClientType.MOBILE);
+        verify(userRepository).save(student);
+        assertNotNull(student.getLastLoginAt());
+    }
+
+    @Test
+    void heartbeat_rejectsInactiveUser() {
+        student.setActive(false);
+        when(userRepository.findById(student.getId())).thenReturn(Optional.of(student));
+
+        assertThrows(ApiException.class, () -> authService.heartbeat(
+                new AuthUser(student),
+                new HeartbeatRequest("phone-1", "1.0.0+1", AppClientType.MOBILE)
+        ));
+        verify(deviceService, never()).heartbeat(any(), any(), any(), any());
     }
 
     @Test

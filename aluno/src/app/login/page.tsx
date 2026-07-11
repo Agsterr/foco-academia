@@ -11,22 +11,28 @@ export default function LoginPage() {
   const router = useRouter();
   const [academySlug, setSlug] = useState("academia-demo");
   const [academyName, setAcademyName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
+  const [email, setEmail] = useState("aluno@academia.com");
+  const [password, setPassword] = useState("aluno123");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fieldsLocked, setFieldsLocked] = useState(true);
 
   useEffect(() => {
     const savedSlug = getAcademySlug();
     if (savedSlug) setSlug(savedSlug);
 
     const savedLogin = getSavedLogin();
-    if (savedLogin.remember) {
+    const savedEmail = savedLogin.email.trim().toLowerCase();
+    const looksLikeAdmin = savedEmail.startsWith("admin@");
+    if (savedLogin.remember && savedEmail && !looksLikeAdmin) {
       setEmail(savedLogin.email);
       setPassword(savedLogin.password);
       setRemember(true);
+    } else if (savedLogin.remember && looksLikeAdmin) {
+      clearSavedLogin();
     }
+    setFieldsLocked(false);
   }, []);
 
   useEffect(() => {
@@ -64,7 +70,12 @@ export default function LoginPage() {
         clearSavedLogin();
       }
       setToken(data.token);
-      router.push("/treinos");
+      try {
+        const status = await api<{ onboardingCompleted: boolean }>("/api/student/profile/status");
+        router.push(status.onboardingCompleted ? "/treinos" : "/onboarding");
+      } catch {
+        router.push("/treinos");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao entrar");
     } finally {
@@ -102,11 +113,13 @@ export default function LoginPage() {
             <input
               id="aluno-login-email"
               name="aluno-login-email"
-              type="email"
+              type="text"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="form-input"
               required
+              readOnly={fieldsLocked}
               autoComplete="off"
               data-lpignore="true"
               data-1p-ignore="true"

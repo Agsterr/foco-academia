@@ -1,14 +1,15 @@
 {
-  "id": "/aluno",
+  "id": "foco-academia-aluno",
   "name": "Foco Academia - Aluno",
   "short_name": "Aluno",
   "description": "Veja seus treinos, avalie e envie sugestões",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
   "background_color": "#0f172a",
   "theme_color": "#2563eb",
-  "orientation": "portrait",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -27,6 +28,14 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Meus treinos",
+      "short_name": "Treinos",
+      "url": "/treinos",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

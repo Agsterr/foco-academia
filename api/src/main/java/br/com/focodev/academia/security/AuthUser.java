@@ -17,6 +17,7 @@ public class AuthUser implements UserDetails {
     private final UserRole role;
     private final UUID academyId;
     private final boolean academyActive;
+    private final boolean academyAppBlocked;
     private final boolean active;
 
     public AuthUser(User user) {
@@ -26,6 +27,7 @@ public class AuthUser implements UserDetails {
         this.role = user.getRole();
         this.academyId = user.getAcademy() != null ? user.getAcademy().getId() : null;
         this.academyActive = user.getAcademy() == null || user.getAcademy().isActive();
+        this.academyAppBlocked = user.getAcademy() != null && user.getAcademy().isAppBlocked();
         this.active = user.isActive();
     }
 
@@ -35,6 +37,10 @@ public class AuthUser implements UserDetails {
 
     public boolean isAcademyActive() {
         return academyActive;
+    }
+
+    public boolean isAcademyAppBlocked() {
+        return academyAppBlocked;
     }
 
     public UUID getId() {

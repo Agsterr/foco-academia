@@ -1,0 +1,177 @@
+name: Build Mobile Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-mobile-release.yml"
+
+concurrency:
+  group: mobile-release-foco-academia
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    name: Build APK e publicar
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Aguardar API
+        env:
+          API_URL: https://academia.focodev.com.br
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "${API_URL}/api/health" >/dev/null; then
+              echo "API disponível."
+              exit 0
+            fi
+            echo "Aguardando API (${i}/12)..."
+            sleep 10
+          done
+          echo "API indisponível após 2 minutos."
+          exit 1
+
+      - name: Ajustar versionCode
+        id: version
+        working-directory: mobile
+        env:
+          API_URL: https://academia.focodev.com.br
+        run: |
+          set -euo pipefail
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          NAME="${VERSION_LINE%%+*}"
+          CODE="${VERSION_LINE##*+}"
+          BUMPED=false
+          PUBLISHED=0
+          if RESP=$(curl -fsS "${API_URL}/api/app/version" 2>/dev/null); then
+            PUBLISHED=$(echo "$RESP" | sed -n 's/.*"versionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+            PUBLISHED="${PUBLISHED:-0}"
+          fi
+          if [ "$CODE" -le "$PUBLISHED" ]; then
+            CODE=$((PUBLISHED + 1))
+            BUMPED=true
+            sed -i "s/^version: .*/version: ${NAME}+${CODE}/" pubspec.yaml
+            printf '%s\n' \
+              '/// Versão exibida/enviada à API — manter alinhada com pubspec.yaml.' \
+              'class AppVersion {' \
+              "  static const String value = '${NAME}+${CODE}';" \
+              '}' \
+              > lib/core/config/app_version.dart
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "bumped=${BUMPED}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit bump de versão
+        if: steps.version.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/pubspec.yaml mobile/lib/core/config/app_version.dart
+          git commit -m "chore(mobile): bump versionCode para ${{ steps.version.outputs.code }} [skip ci]"
+          git pull --rebase origin main
+          git push origin main
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Configurar assinatura release Android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD}" ] \
+            || [ -z "${ANDROID_KEY_ALIAS}" ] || [ -z "${ANDROID_KEY_PASSWORD}" ]; then
+            echo "ERRO: configure os secrets ANDROID_KEYSTORE_* no GitHub."
+            echo "Execute: bash scripts/setup-android-release-signing.sh"
+            exit 1
+          fi
+          KEYSTORE_PATH="mobile/android/app/upload-keystore.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          cat > mobile/android/key.properties <<EOF
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=app/upload-keystore.jks
+          EOF
+
+      - name: Build APK release
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Publicar APK na API
+        env:
+          API_URL: https://academia.focodev.com.br
+          DEPLOY_TOKEN: ${{ secrets.APP_RELEASE_DEPLOY_TOKEN }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_TOKEN}" ]; then
+            echo "Defina APP_RELEASE_DEPLOY_TOKEN no GitHub."
+            echo "Execute: bash scripts/setup-github-mobile-release-secret.sh"
+            exit 1
+          fi
+          APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
+          NOTES="Deploy automático ${COMMIT_SHA:0:7} — ${COMMIT_MSG}"
+          for i in $(seq 1 5); do
+            if curl -fsS -X POST "${API_URL}/api/app/releases/deploy" \
+              -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+              -F "file=@${APK}" \
+              -F "versionName=${VERSION_NAME}" \
+              -F "versionCode=${VERSION_CODE}" \
+              -F "releaseNotes=${NOTES}"; then
+              break
+            fi
+            if [ "$i" -eq 5 ]; then
+              echo "Falha ao publicar APK após 5 tentativas."
+              exit 1
+            fi
+            echo "Tentativa ${i} falhou; aguardando 30s..."
+            sleep 30
+          done
+
+      - name: Resumo
+        run: |
+          echo "APK publicado: ${{ steps.version.outputs.name }} (+${{ steps.version.outputs.code }})"
+
+      - name: Verificar versão publicada
+        env:
+          API_URL: https://academia.focodev.com.br
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          RESP=$(curl -fsS "${API_URL}/api/app/version")
+          echo "$RESP"
+          PUBLISHED=$(echo "$RESP" | sed -n 's/.*"versionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+          if [ "$PUBLISHED" != "$VERSION_CODE" ]; then
+            echo "Esperado versionCode ${VERSION_CODE}, obtido ${PUBLISHED}."
+            exit 1
+          fi

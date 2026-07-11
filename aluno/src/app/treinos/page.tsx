@@ -13,6 +13,7 @@ import {
   weekDayOrder,
   weekDayShort,
 } from "@/lib/api";
+import { getProfileStatus } from "@/lib/profile";
 
 export default function TreinosPage() {
   const router = useRouter();
@@ -26,13 +27,19 @@ export default function TreinosPage() {
       router.replace("/login");
       return;
     }
-    Promise.all([
-      api<WorkoutProgram>("/api/student/programs/active"),
-      api<StudentStats>("/api/student/stats"),
-    ])
-      .then(([p, s]) => {
-        setProgram(p);
-        setStats(s);
+    void getProfileStatus()
+      .then((s) => {
+        if (!s.onboardingCompleted) {
+          router.replace("/onboarding");
+          return;
+        }
+        return Promise.all([
+          api<WorkoutProgram>("/api/student/programs/active"),
+          api<StudentStats>("/api/student/stats"),
+        ]).then(([p, st]) => {
+          setProgram(p);
+          setStats(st);
+        });
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
       .finally(() => setLoading(false));

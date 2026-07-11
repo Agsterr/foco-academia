@@ -11,9 +11,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [academySlug, setSlug] = useState("academia-demo");
   const [academyName, setAcademyName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("instrutor@academia.com");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(true);
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

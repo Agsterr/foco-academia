@@ -11,6 +11,7 @@ public record AcademyResponse(
         String slug,
         int deviceLimitPerUser,
         boolean active,
+        boolean appBlocked,
         Instant createdAt,
         long instructorCount,
         long studentCount
@@ -22,6 +23,7 @@ public record AcademyResponse(
                 academy.getSlug(),
                 academy.getDeviceLimitPerUser(),
                 academy.isActive(),
+                academy.isAppBlocked(),
                 academy.getCreatedAt(),
                 instructors,
                 students

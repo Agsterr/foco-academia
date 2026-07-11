@@ -6,14 +6,17 @@ import { clearToken } from "@/lib/api";
 
 const links = [
   { href: "/treinos", label: "Treinos" },
+  { href: "/outdoor", label: "Outdoor" },
+  { href: "/evolucao", label: "Evolução" },
   { href: "/sugestoes", label: "Sugestões" },
+  { href: "/app", label: "App" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname === "/onboarding") {
     return <>{children}</>;
   }
 

@@ -32,6 +32,7 @@ export interface DeviceSession {
   deviceId: string;
   deviceLabel?: string;
   appClient: "WEB" | "MOBILE";
+  appVersion?: string;
   lastSeenAt: string;
 }
 

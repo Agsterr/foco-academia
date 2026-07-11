@@ -32,6 +32,9 @@ public class Academy {
 
     private boolean active = true;
 
+    /** Bloqueia acesso de apps aluno/instrutor desta academia. */
+    private boolean appBlocked = false;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 }

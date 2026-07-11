@@ -4,6 +4,8 @@ import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
+import br.com.focodev.academia.service.CardioService;
+import br.com.focodev.academia.service.StudentProfileService;
 import br.com.focodev.academia.service.TenantService;
 import br.com.focodev.academia.service.WorkoutProgramService;
 import jakarta.validation.Valid;
@@ -27,6 +29,8 @@ public class ApiControllers {
     private final AcademiaService academiaService;
     private final WorkoutProgramService workoutProgramService;
     private final TenantService tenantService;
+    private final StudentProfileService studentProfileService;
+    private final CardioService cardioService;
 
     @GetMapping("/health")
     public Map<String, String> health() {
@@ -51,6 +55,15 @@ public class ApiControllers {
     @GetMapping("/auth/me")
     public UserResponse me(@AuthenticationPrincipal AuthUser user) {
         return authService.me(user);
+    }
+
+    @PostMapping("/auth/heartbeat")
+    public ResponseEntity<Void> heartbeat(
+            @AuthenticationPrincipal AuthUser user,
+            @RequestBody(required = false) HeartbeatRequest request
+    ) {
+        authService.heartbeat(user, request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/instructor/students")
@@ -238,5 +251,144 @@ public class ApiControllers {
     @GetMapping("/student/suggestions")
     public List<SuggestionResponse> studentSuggestions(@AuthenticationPrincipal AuthUser user) {
         return academiaService.listStudentSuggestions(user);
+    }
+
+    @GetMapping("/student/profile/status")
+    public StudentProfileDtos.ProfileStatusResponse profileStatus(@AuthenticationPrincipal AuthUser user) {
+        return studentProfileService.getProfileStatus(user);
+    }
+
+    @GetMapping("/student/profile")
+    public StudentProfileDtos.StudentProfileResponse studentProfile(@AuthenticationPrincipal AuthUser user) {
+        return studentProfileService.getProfile(user);
+    }
+
+    @PostMapping("/student/profile/onboarding")
+    public StudentProfileDtos.StudentProfileResponse completeOnboarding(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProfileDtos.OnboardingRequest request
+    ) {
+        return studentProfileService.completeOnboarding(user, request);
+    }
+
+    @PostMapping("/student/measurements")
+    public StudentProfileDtos.BodyMeasurementResponse addMeasurement(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProfileDtos.BodyMeasurementRequest request
+    ) {
+        return studentProfileService.addMeasurement(user, request);
+    }
+
+    @GetMapping("/student/measurements")
+    public List<StudentProfileDtos.BodyMeasurementResponse> listMeasurements(@AuthenticationPrincipal AuthUser user) {
+        return studentProfileService.listMeasurements(user);
+    }
+
+    @PostMapping("/student/goal-checkins")
+    public StudentProfileDtos.GoalCheckInResponse submitGoalCheckIn(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProfileDtos.GoalCheckInRequest request
+    ) {
+        return studentProfileService.submitGoalCheckIn(user, request);
+    }
+
+    @GetMapping("/student/cardio-workouts/active")
+    public CardioDtos.CardioWorkoutResponse activeCardioWorkout(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.getActiveStudentWorkout(user);
+    }
+
+    @PostMapping("/student/cardio-sessions/start")
+    public CardioDtos.CardioSessionResponse startCardioSession(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody CardioDtos.StartCardioSessionRequest request
+    ) {
+        return cardioService.startSession(user, request);
+    }
+
+    @PostMapping("/student/cardio-sessions/{sessionId}/points")
+    public CardioDtos.CardioSessionResponse addCardioPoints(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody CardioDtos.AddRoutePointsRequest request
+    ) {
+        return cardioService.addRoutePoints(user, sessionId, request);
+    }
+
+    @PostMapping("/student/cardio-sessions/{sessionId}/complete")
+    public CardioDtos.CardioSessionResponse completeCardioSession(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody CardioDtos.CompleteCardioSessionRequest request
+    ) {
+        return cardioService.completeSession(user, sessionId, request);
+    }
+
+    @GetMapping("/student/cardio-sessions")
+    public List<CardioDtos.CardioSessionResponse> listStudentCardioSessions(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.listStudentSessions(user);
+    }
+
+    @PostMapping("/student/sync")
+    public CardioDtos.StudentSyncResponse syncStudentData(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody CardioDtos.StudentSyncRequest request
+    ) {
+        return cardioService.sync(user, request);
+    }
+
+    @GetMapping("/instructor/students/{studentId}/profile")
+    public StudentProfileDtos.StudentProfileResponse instructorStudentProfile(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID studentId
+    ) {
+        return studentProfileService.getStudentProfile(user, studentId);
+    }
+
+    @PostMapping("/instructor/students/{studentId}/weight-schedule")
+    public StudentProfileDtos.WeightCheckScheduleResponse scheduleWeightCheck(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID studentId,
+            @Valid @RequestBody StudentProfileDtos.WeightCheckScheduleRequest request
+    ) {
+        return studentProfileService.scheduleWeightCheck(user, studentId, request);
+    }
+
+    @GetMapping("/instructor/students/{studentId}/goal-checkins")
+    public List<StudentProfileDtos.GoalCheckInResponse> listGoalCheckIns(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID studentId
+    ) {
+        return studentProfileService.listGoalCheckIns(user, studentId);
+    }
+
+    @PostMapping("/instructor/programs/quick")
+    public WorkoutProgramResponse createQuickProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProfileDtos.QuickProgramRequest request
+    ) {
+        return studentProfileService.createQuickProgram(user, request);
+    }
+
+    @PostMapping("/instructor/cardio-workouts")
+    public CardioDtos.CardioWorkoutResponse createCardioWorkout(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody CardioDtos.CreateCardioWorkoutRequest request
+    ) {
+        return cardioService.createWorkout(user, request);
+    }
+
+    @GetMapping("/instructor/cardio-workouts")
+    public List<CardioDtos.CardioWorkoutResponse> listInstructorCardioWorkouts(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.listInstructorWorkouts(user);
+    }
+
+    @GetMapping("/instructor/cardio-sessions")
+    public List<CardioDtos.CardioSessionResponse> listInstructorCardioSessions(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.listInstructorSessions(user);
+    }
+
+    @GetMapping("/instructor/cardio-stats")
+    public CardioDtos.InstructorCardioStatsResponse instructorCardioStats(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.instructorStats(user);
     }
 }

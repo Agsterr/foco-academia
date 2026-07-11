@@ -1,0 +1,330 @@
+package br.com.focodev.academia.service;
+
+import br.com.focodev.academia.domain.*;
+import br.com.focodev.academia.dto.CardioDtos;
+import br.com.focodev.academia.dto.StudentProfileDtos;
+import br.com.focodev.academia.exception.ApiException;
+import br.com.focodev.academia.repository.*;
+import br.com.focodev.academia.security.AuthUser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class CardioService {
+
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_INSTANT;
+    private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
+
+    private final CardioWorkoutRepository workoutRepository;
+    private final CardioSessionRepository sessionRepository;
+    private final BodyMeasurementRepository measurementRepository;
+    private final WeightCheckScheduleRepository scheduleRepository;
+    private final UserRepository userRepository;
+    private final TenantService tenantService;
+    private final ObjectMapper objectMapper;
+
+    @Transactional
+    public CardioDtos.CardioWorkoutResponse createWorkout(AuthUser instructor, CardioDtos.CreateCardioWorkoutRequest request) {
+        User instructorUser = tenantService.requireInstructor(instructor);
+        User student = userRepository.findById(request.studentId())
+                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        tenantService.requireStudentInInstructorAcademy(instructorUser, student);
+
+        workoutRepository.findByStudentIdAndActiveTrueOrderByCreatedAtDesc(student.getId())
+                .forEach(w -> {
+                    w.setActive(false);
+                    workoutRepository.save(w);
+                });
+
+        CardioWorkout workout = new CardioWorkout();
+        workout.setInstructor(instructorUser);
+        workout.setStudent(student);
+        workout.setTitle(request.title().trim());
+        workout.setType(request.type());
+        if (request.intervals() != null && !request.intervals().isEmpty()) {
+            try {
+                workout.setIntervalsJson(objectMapper.writeValueAsString(request.intervals()));
+            } catch (JsonProcessingException e) {
+                throw new ApiException("Intervalos inválidos");
+            }
+        }
+        return toWorkoutResponse(workoutRepository.save(workout));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CardioDtos.CardioWorkoutResponse> listInstructorWorkouts(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
+        return workoutRepository.findByInstructorIdOrderByCreatedAtDesc(instructor.getId()).stream()
+                .map(this::toWorkoutResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CardioDtos.CardioWorkoutResponse getActiveStudentWorkout(AuthUser student) {
+        User user = requireStudent(student);
+        CardioWorkout workout = workoutRepository.findFirstByStudentIdAndActiveTrueOrderByCreatedAtDesc(user.getId())
+                .orElseThrow(() -> new ApiException("Nenhum treino outdoor ativo"));
+        return toWorkoutResponse(workout);
+    }
+
+    @Transactional
+    public CardioDtos.CardioSessionResponse startSession(AuthUser student, CardioDtos.StartCardioSessionRequest request) {
+        User user = requireStudent(student);
+        sessionRepository.findByStudentIdAndCompletedAtIsNull(user.getId())
+                .ifPresent(s -> {
+                    throw new ApiException("Já existe uma sessão em andamento");
+                });
+
+        CardioWorkout workout = null;
+        if (request.workoutId() != null) {
+            workout = workoutRepository.findById(request.workoutId())
+                    .orElseThrow(() -> new ApiException("Treino não encontrado"));
+            if (!workout.getStudent().getId().equals(user.getId())) {
+                throw new ApiException("Acesso negado");
+            }
+        }
+
+        CardioSession session = new CardioSession();
+        session.setStudent(user);
+        session.setWorkout(workout);
+        session.setClientSessionId(request.clientSessionId());
+        session.setStartedAt(Instant.now());
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    @Transactional
+    public CardioDtos.CardioSessionResponse addRoutePoints(
+            AuthUser student,
+            UUID sessionId,
+            CardioDtos.AddRoutePointsRequest request
+    ) {
+        CardioSession session = requireStudentSession(student, sessionId);
+        for (CardioDtos.RoutePointRequest point : request.points()) {
+            RoutePoint rp = new RoutePoint();
+            rp.setSession(session);
+            rp.setLatitude(point.latitude());
+            rp.setLongitude(point.longitude());
+            rp.setSpeedKmh(point.speedKmh());
+            rp.setRecordedAt(parseInstant(point.recordedAt()));
+            rp.setSequenceNum(point.sequenceNum());
+            session.getRoutePoints().add(rp);
+        }
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    @Transactional
+    public CardioDtos.CardioSessionResponse completeSession(
+            AuthUser student,
+            UUID sessionId,
+            CardioDtos.CompleteCardioSessionRequest request
+    ) {
+        CardioSession session = requireStudentSession(student, sessionId);
+        session.setCompletedAt(Instant.now());
+        session.setDistanceMeters(request.distanceMeters());
+        session.setAvgSpeedKmh(request.avgSpeedKmh());
+        session.setElapsedMs(request.elapsedMs());
+        if (request.points() != null && !request.points().isEmpty()) {
+            session.getRoutePoints().clear();
+            for (CardioDtos.RoutePointRequest point : request.points()) {
+                RoutePoint rp = new RoutePoint();
+                rp.setSession(session);
+                rp.setLatitude(point.latitude());
+                rp.setLongitude(point.longitude());
+                rp.setSpeedKmh(point.speedKmh());
+                rp.setRecordedAt(parseInstant(point.recordedAt()));
+                rp.setSequenceNum(point.sequenceNum());
+                session.getRoutePoints().add(rp);
+            }
+        }
+        return toSessionResponse(sessionRepository.save(session));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CardioDtos.CardioSessionResponse> listStudentSessions(AuthUser student) {
+        User user = requireStudent(student);
+        return sessionRepository.findByStudentIdOrderByStartedAtDesc(user.getId()).stream()
+                .map(this::toSessionResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CardioDtos.CardioSessionResponse> listInstructorSessions(AuthUser instructor) {
+        tenantService.requireInstructor(instructor);
+        return sessionRepository.findByInstructorStudents(instructor.getId()).stream()
+                .map(this::toSessionResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public CardioDtos.InstructorCardioStatsResponse instructorStats(AuthUser instructor) {
+        User instructorUser = tenantService.requireInstructor(instructor);
+        Instant weekStart = LocalDate.now(ZONE).with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                .atStartOfDay(ZONE).toInstant();
+
+        List<CardioSession> sessions = sessionRepository.findByInstructorStudents(instructorUser.getId()).stream()
+                .filter(s -> s.getCompletedAt() != null && s.getCompletedAt().isAfter(weekStart))
+                .toList();
+
+        double totalKm = sessions.stream()
+                .mapToDouble(s -> s.getDistanceMeters() != null ? s.getDistanceMeters() / 1000.0 : 0)
+                .sum();
+        double avgSpeed = sessions.stream()
+                .filter(s -> s.getAvgSpeedKmh() != null)
+                .mapToDouble(CardioSession::getAvgSpeedKmh)
+                .average()
+                .orElse(0);
+
+        List<StudentProfileDtos.WeightCheckScheduleResponse> overdue = new ArrayList<>();
+        for (User student : userRepository.findByInstructorIdAndRoleAndActiveTrueOrderByNameAsc(
+                instructorUser.getId(), UserRole.ALUNO)) {
+            scheduleRepository.findFirstByStudentIdAndCompletedFalseOrderByDueDateAsc(student.getId())
+                    .filter(s -> LocalDate.now().isAfter(s.getDueDate()))
+                    .ifPresent(s -> overdue.add(new StudentProfileDtos.WeightCheckScheduleResponse(
+                            s.getId(), s.getStudent().getId(), s.getStudent().getName(),
+                            s.getDueDate(), s.isCompleted(), true
+                    )));
+        }
+
+        List<CardioDtos.CardioSessionResponse> recent = sessionRepository
+                .findByInstructorStudents(instructorUser.getId()).stream()
+                .limit(10)
+                .map(this::toSessionResponse)
+                .toList();
+
+        return new CardioDtos.InstructorCardioStatsResponse(
+                sessions.size(), totalKm, avgSpeed, recent, overdue
+        );
+    }
+
+    @Transactional
+    public CardioDtos.StudentSyncResponse sync(AuthUser student, CardioDtos.StudentSyncRequest request) {
+        User user = requireStudent(student);
+        int measurementsSynced = 0;
+        int sessionsSynced = 0;
+
+        if (request.measurements() != null) {
+            for (CardioDtos.SyncMeasurementDto m : request.measurements()) {
+                BodyMeasurement bm = new BodyMeasurement();
+                bm.setStudent(user);
+                bm.setWeightKg(m.weightKg());
+                bm.setWaistCm(m.waistCm());
+                bm.setRecordedAt(parseInstant(m.recordedAt()));
+                bm.setSource(MeasurementSource.STUDENT);
+                measurementRepository.save(bm);
+                measurementsSynced++;
+            }
+        }
+
+        if (request.cardioSessions() != null) {
+            for (CardioDtos.SyncCardioSessionDto dto : request.cardioSessions()) {
+                CardioSession session = sessionRepository.findByClientSessionId(dto.clientSessionId())
+                        .orElseGet(CardioSession::new);
+                session.setStudent(user);
+                session.setClientSessionId(dto.clientSessionId());
+                session.setStartedAt(parseInstant(dto.startedAt()));
+                session.setCompletedAt(dto.completedAt() != null ? parseInstant(dto.completedAt()) : null);
+                session.setDistanceMeters(dto.distanceMeters());
+                session.setAvgSpeedKmh(dto.avgSpeedKmh());
+                session.setElapsedMs(dto.elapsedMs());
+                session.setSynced(true);
+                if (dto.workoutId() != null) {
+                    workoutRepository.findById(dto.workoutId()).ifPresent(session::setWorkout);
+                }
+                session.getRoutePoints().clear();
+                if (dto.points() != null) {
+                    for (CardioDtos.RoutePointRequest point : dto.points()) {
+                        RoutePoint rp = new RoutePoint();
+                        rp.setSession(session);
+                        rp.setLatitude(point.latitude());
+                        rp.setLongitude(point.longitude());
+                        rp.setSpeedKmh(point.speedKmh());
+                        rp.setRecordedAt(parseInstant(point.recordedAt()));
+                        rp.setSequenceNum(point.sequenceNum());
+                        session.getRoutePoints().add(rp);
+                    }
+                }
+                sessionRepository.save(session);
+                sessionsSynced++;
+            }
+        }
+
+        return new CardioDtos.StudentSyncResponse(measurementsSynced, sessionsSynced);
+    }
+
+    private CardioSession requireStudentSession(AuthUser student, UUID sessionId) {
+        CardioSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ApiException("Sessão não encontrada"));
+        if (!session.getStudent().getId().equals(student.getId())) {
+            throw new ApiException("Acesso negado");
+        }
+        if (session.getCompletedAt() != null) {
+            throw new ApiException("Sessão já finalizada");
+        }
+        return session;
+    }
+
+    private User requireStudent(AuthUser student) {
+        User user = userRepository.findById(student.getId())
+                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        tenantService.requireActiveAcademy(user);
+        if (user.getRole() != UserRole.ALUNO) {
+            throw new ApiException("Acesso negado");
+        }
+        return user;
+    }
+
+    private Instant parseInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return Instant.now();
+        }
+        return Instant.parse(value);
+    }
+
+    private CardioDtos.CardioWorkoutResponse toWorkoutResponse(CardioWorkout w) {
+        return new CardioDtos.CardioWorkoutResponse(
+                w.getId(),
+                w.getStudent().getId(),
+                w.getStudent().getName(),
+                w.getTitle(),
+                w.getType(),
+                w.getIntervalsJson(),
+                w.isActive(),
+                ISO.format(w.getCreatedAt())
+        );
+    }
+
+    private CardioDtos.CardioSessionResponse toSessionResponse(CardioSession s) {
+        List<CardioDtos.RoutePointResponse> points = s.getRoutePoints().stream()
+                .map(p -> new CardioDtos.RoutePointResponse(
+                        p.getLatitude(), p.getLongitude(), p.getSpeedKmh(),
+                        ISO.format(p.getRecordedAt()), p.getSequenceNum()
+                ))
+                .toList();
+        return new CardioDtos.CardioSessionResponse(
+                s.getId(),
+                s.getWorkout() != null ? s.getWorkout().getId() : null,
+                s.getWorkout() != null ? s.getWorkout().getTitle() : null,
+                s.getStudent().getId(),
+                s.getStudent().getName(),
+                ISO.format(s.getStartedAt()),
+                s.getCompletedAt() != null ? ISO.format(s.getCompletedAt()) : null,
+                s.getDistanceMeters(),
+                s.getAvgSpeedKmh(),
+                s.getElapsedMs(),
+                points
+        );
+    }
+}

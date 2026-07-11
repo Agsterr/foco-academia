@@ -32,6 +32,13 @@ public class TenantActiveFilter extends OncePerRequestFilter {
                 response.getWriter().write("{\"message\":\"Academia desativada ou não vinculada\"}");
                 return;
             }
+            if ((role == UserRole.INSTRUTOR || role == UserRole.ALUNO) && authUser.isAcademyAppBlocked()) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                response.getWriter().write("{\"message\":\"Aplicativo bloqueado para esta academia\"}");
+                return;
+            }
         }
         filterChain.doFilter(request, response);
     }

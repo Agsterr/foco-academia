@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import MediaPicker from "@/components/MediaPicker";
 import {
   MediaType,
   User,
@@ -13,6 +14,7 @@ import {
   weekDayLabels,
   weekDayOrder,
 } from "@/lib/api";
+import { addRecentMedia } from "@/lib/recent-media";
 
 interface ExerciseForm {
   name: string;
@@ -108,11 +110,20 @@ export default function NovaFichaPage() {
       const url = await uploadMedia(file);
       const mediaType: MediaType = file.type.startsWith("video/") ? "VIDEO" : "IMAGE";
       updateExercise(weekDay, index, { videoUrl: url, mediaType });
+      addRecentMedia({ url, mediaType, name: file.name || "Mídia do exercício" });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Erro no upload");
     } finally {
       setUploadingKey(null);
     }
+  }
+
+  function handleRecentMedia(
+    weekDay: WeekDay,
+    index: number,
+    item: { url: string; mediaType: MediaType }
+  ) {
+    updateExercise(weekDay, index, { videoUrl: item.url, mediaType: item.mediaType });
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -307,29 +318,17 @@ export default function NovaFichaPage() {
                       placeholder="Variação (ex: pegada neutra, halteres...)"
                       className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
                     />
-                    <label className="block">
-                      <span className="mb-1 block text-sm text-slate-400">
-                        Vídeo ou foto do exercício
-                      </span>
-                      <input
-                        type="file"
-                        accept="video/*,image/*"
-                        capture="environment"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleMediaUpload(activeDay, index, file);
-                        }}
-                        className="w-full text-sm"
-                      />
-                      {uploadingKey === `${activeDay}-${index}` && (
-                        <span className="text-xs text-violet-300">Enviando...</span>
-                      )}
-                      {exercise.videoUrl && (
-                        <span className="text-xs text-green-400">
-                          Mídia anexada ({exercise.mediaType === "IMAGE" ? "foto" : "vídeo"}) ✓
-                        </span>
-                      )}
-                    </label>
+                    <MediaPicker
+                      onSelectFile={(file) => handleMediaUpload(activeDay, index, file)}
+                      onSelectRecent={(item) => handleRecentMedia(activeDay, index, item)}
+                      onRemove={() =>
+                        updateExercise(activeDay, index, { videoUrl: "", mediaType: "NONE" })
+                      }
+                      uploading={uploadingKey === `${activeDay}-${index}`}
+                      attached={Boolean(exercise.videoUrl)}
+                      mediaType={exercise.mediaType}
+                      videoUrl={exercise.videoUrl}
+                    />
                     <input
                       value={exercise.notes}
                       onChange={(e) =>

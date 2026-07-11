@@ -1,6 +1,7 @@
 package br.com.focodev.academia.service;
 
 import br.com.focodev.academia.domain.Academy;
+import br.com.focodev.academia.domain.AppClientType;
 import br.com.focodev.academia.domain.User;
 import br.com.focodev.academia.domain.UserRole;
 import br.com.focodev.academia.dto.*;
@@ -68,7 +69,13 @@ public class AuthService {
             tenantService.requireUserBelongsToAcademy(user, academy);
         }
 
-        deviceService.registerDevice(user, request.deviceId(), request.deviceLabel());
+        deviceService.registerDevice(
+                user,
+                request.deviceId(),
+                request.deviceLabel(),
+                request.appClient(),
+                request.appVersion()
+        );
 
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
@@ -82,5 +89,23 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException("Usuário não encontrado"));
         tenantService.requireActiveAcademy(user);
         return UserResponse.from(user);
+    }
+
+    @Transactional
+    public void heartbeat(AuthUser authUser, HeartbeatRequest request) {
+        User user = userRepository.findById(authUser.getId())
+                .orElseThrow(() -> new ApiException("Usuário não encontrado"));
+        if (!user.isActive()) {
+            throw new ApiException("Conta desativada");
+        }
+        tenantService.requireActiveAcademy(user);
+
+        String deviceId = request != null ? request.deviceId() : null;
+        String appVersion = request != null ? request.appVersion() : null;
+        AppClientType appClient = request != null ? request.appClient() : null;
+
+        deviceService.heartbeat(user, deviceId, appVersion, appClient);
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
     }
 }

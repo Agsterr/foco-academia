@@ -83,6 +83,9 @@ public class AdminService {
         if (request.active() != null) {
             academy.setActive(request.active());
         }
+        if (request.appBlocked() != null) {
+            academy.setAppBlocked(request.appBlocked());
+        }
         return toAcademyResponse(academyRepository.save(academy));
     }
 
@@ -144,13 +147,35 @@ public class AdminService {
                 .orElseThrow(() -> new ApiException("Usuário não encontrado"));
         return deviceSessionRepository.findByUserIdOrderByLastSeenAtDesc(user.getId()).stream()
                 .map(s -> new DeviceSessionResponse(
-                        s.getId(), s.getDeviceId(), s.getDeviceLabel(), s.getLastSeenAt()))
+                        s.getId(),
+                        s.getDeviceId(),
+                        s.getDeviceLabel(),
+                        s.getAppClient(),
+                        s.getAppVersion(),
+                        s.getLastSeenAt()))
                 .toList();
     }
 
     @Transactional
     public void removeUserDevice(UUID userId, String deviceId) {
         deviceSessionRepository.deleteByUserIdAndDeviceId(userId, deviceId);
+    }
+
+    @Transactional
+    public AdminUserResponse updateUser(UUID userId, UpdateUserRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ApiException("Usuário não encontrado"));
+        user.setActive(request.active());
+        userRepository.save(user);
+        return toAdminUser(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminUserResponse> listAllUsers() {
+        return userRepository.findAll().stream()
+                .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
+                .map(this::toAdminUser)
+                .toList();
     }
 
     private Academy getAcademyEntity(UUID id) {

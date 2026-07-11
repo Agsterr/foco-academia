@@ -85,11 +85,12 @@ public class MediaStorageService {
                 if (s3Client == null) {
                     s3Client = S3Client.builder()
                             .endpointOverride(URI.create(r2Endpoint))
-                            .region(Region.US_EAST_1)
+                            .region(Region.of("auto"))
                             .credentialsProvider(StaticCredentialsProvider.create(
                                     AwsBasicCredentials.create(r2AccessKeyId, r2SecretAccessKey)))
                             .serviceConfiguration(S3Configuration.builder()
                                     .pathStyleAccessEnabled(true)
+                                    .chunkedEncodingEnabled(false)
                                     .build())
                             .build();
                 }

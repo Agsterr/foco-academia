@@ -28,6 +28,9 @@ public class TenantService {
         if (!academy.isActive()) {
             throw new ApiException("Academia desativada. Contate o administrador.");
         }
+        if (academy.isAppBlocked()) {
+            throw new ApiException("Aplicativo bloqueado para esta academia. Contate o administrador.");
+        }
         return academy;
     }
 
@@ -63,6 +66,9 @@ public class TenantService {
         }
         if (!user.getAcademy().isActive()) {
             throw new ApiException("Academia desativada. Contate o administrador.");
+        }
+        if (user.getAcademy().isAppBlocked()) {
+            throw new ApiException("Aplicativo bloqueado para esta academia. Contate o administrador.");
         }
     }
 

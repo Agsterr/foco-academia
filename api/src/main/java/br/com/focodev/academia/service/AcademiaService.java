@@ -223,6 +223,7 @@ public class AcademiaService {
         return SuggestionResponse.from(suggestionRepository.save(suggestion));
     }
 
+    @Transactional(readOnly = true)
     public String uploadMedia(AuthUser instructor, MultipartFile file) throws IOException {
         tenantService.requireInstructor(instructor);
         if (file.isEmpty()) {

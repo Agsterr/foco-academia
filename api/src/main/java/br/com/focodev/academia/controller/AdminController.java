@@ -1,10 +1,17 @@
 package br.com.focodev.academia.controller;
 
+import br.com.focodev.academia.domain.AppRelease;
 import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.service.AdminService;
+import br.com.focodev.academia.service.AppReleaseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -15,7 +22,7 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService adminService;
-
+    private final AppReleaseService appReleaseService;
     @GetMapping("/dashboard")
     public AdminDashboardResponse dashboard() {
         return adminService.dashboard();
@@ -73,5 +80,64 @@ public class AdminController {
     @DeleteMapping("/users/{userId}/devices/{deviceId}")
     public void removeDevice(@PathVariable UUID userId, @PathVariable String deviceId) {
         adminService.removeUserDevice(userId, deviceId);
+    }
+
+    @GetMapping("/users")
+    public List<AdminUserResponse> listAllUsers() {
+        return adminService.listAllUsers();
+    }
+
+    @PatchMapping("/users/{userId}")
+    public AdminUserResponse updateUser(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateUserRequest request
+    ) {
+        return adminService.updateUser(userId, request);
+    }
+
+    @GetMapping("/releases")
+    public List<AppReleaseDtos.AdminAppReleaseResponse> listReleases() {
+        return appReleaseService.listActiveReleases();
+    }
+
+    @GetMapping("/releases/connected-devices")
+    public List<AppReleaseDtos.AdminConnectedDeviceResponse> listConnectedDevices() {
+        return appReleaseService.listConnectedDevices();
+    }
+
+    @PatchMapping("/releases/{id}/force-update")
+    public AppReleaseDtos.AdminAppReleaseResponse updateForceUpdate(
+            @PathVariable UUID id,
+            @Valid @RequestBody AppReleaseDtos.UpdateForceReleaseRequest request
+    ) {
+        return appReleaseService.updateForceUpdate(id, request.forceUpdate());
+    }
+
+    @GetMapping("/releases/{id}/download")
+    public ResponseEntity<Resource> downloadRelease(@PathVariable UUID id) {
+        AppRelease release = appReleaseService.getReleaseEntity(id);
+        Resource resource = appReleaseService.loadApkResource(release);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + release.getFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentLength(release.getFileSizeBytes())
+                .body(resource);
+    }
+
+    @PostMapping(value = "/releases", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AppReleaseDtos.AdminAppReleaseResponse uploadRelease(
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("versionName") String versionName,
+            @RequestPart("versionCode") String versionCodeRaw,
+            @RequestParam(required = false) String releaseNotes,
+            @RequestParam(defaultValue = "false") boolean forceUpdate
+    ) {
+        return appReleaseService.publishRelease(
+                file,
+                versionName,
+                Integer.parseInt(versionCodeRaw.trim()),
+                releaseNotes,
+                forceUpdate
+        );
     }
 }

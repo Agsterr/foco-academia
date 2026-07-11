@@ -132,7 +132,7 @@ class AdminServiceTest {
         when(userRepository.countByAcademyIdAndRole(academyId, UserRole.ALUNO)).thenReturn(2L);
 
         AcademyResponse response = adminService.updateAcademy(academyId,
-                new UpdateAcademyRequest("Novo Nome", 5, false));
+                new UpdateAcademyRequest("Novo Nome", 5, false, null));
 
         assertEquals("Novo Nome", response.name());
         assertEquals(5, response.deviceLimitPerUser());
@@ -303,7 +303,7 @@ class AdminServiceTest {
         when(userRepository.countByAcademyIdAndRole(academyId, UserRole.ALUNO)).thenReturn(0L);
 
         AcademyResponse response = adminService.updateAcademy(academyId,
-                new UpdateAcademyRequest(null, null, null));
+                new UpdateAcademyRequest(null, null, null, null));
 
         assertEquals("Academia Teste", response.name());
     }

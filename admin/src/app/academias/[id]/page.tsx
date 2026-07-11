@@ -13,6 +13,8 @@ export default function AcademiaDetailPage() {
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [usersError, setUsersError] = useState("");
   const [deviceLimit, setDeviceLimit] = useState(3);
+  const [appBlocked, setAppBlocked] = useState(false);
+  const [academyActive, setAcademyActive] = useState(true);
   const [tab, setTab] = useState<"users" | "add-instructor" | "add-student">("users");
   const [message, setMessage] = useState("");
   const [selectedInstructorId, setSelectedInstructorId] = useState("");
@@ -21,6 +23,8 @@ export default function AcademiaDetailPage() {
     api<Academy>(`/api/admin/academies/${id}`).then((a) => {
       setAcademy(a);
       setDeviceLimit(a.deviceLimitPerUser);
+      setAppBlocked(a.appBlocked);
+      setAcademyActive(a.active);
     });
     setUsersLoaded(false);
     setUsersError("");
@@ -51,12 +55,16 @@ export default function AcademiaDetailPage() {
     });
   }, [instructors]);
 
-  async function saveLimit() {
+  async function saveAcademySettings() {
     await api(`/api/admin/academies/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ deviceLimitPerUser: deviceLimit }),
+      body: JSON.stringify({
+        deviceLimitPerUser: deviceLimit,
+        appBlocked,
+        active: academyActive,
+      }),
     });
-    setMessage("Limite atualizado!");
+    setMessage("Configurações atualizadas!");
     load();
   }
 
@@ -97,13 +105,22 @@ export default function AcademiaDetailPage() {
     <AppShell>
       <h2 className="text-xl font-semibold">{academy.name}</h2>
       <p className="mt-1 text-sm text-emerald-400">Código de login: <code className="rounded bg-slate-800 px-2 py-0.5">{academy.slug}</code></p>
-      <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <p className="text-sm text-slate-400">Limite de dispositivos por usuário</p>
-        <div className="mt-2 flex gap-2">
+      <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+        <p className="text-sm text-slate-400">Configurações da academia</p>
+        <div className="flex gap-2 items-center">
+          <label className="text-sm text-slate-300">Limite de dispositivos</label>
           <input type="number" min={1} max={20} value={deviceLimit} onChange={(e) => setDeviceLimit(Number(e.target.value))} className="form-input w-24" />
-          <button onClick={saveLimit} className="btn-primary text-sm">Salvar</button>
         </div>
-        {message && <p className="mt-2 text-sm text-green-400">{message}</p>}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={academyActive} onChange={(e) => setAcademyActive(e.target.checked)} />
+          Academia ativa
+        </label>
+        <label className="flex items-center gap-2 text-sm text-red-300">
+          <input type="checkbox" checked={appBlocked} onChange={(e) => setAppBlocked(e.target.checked)} />
+          Bloquear apps (aluno/instrutor)
+        </label>
+        <button onClick={saveAcademySettings} className="btn-primary text-sm">Salvar</button>
+        {message && <p className="text-sm text-green-400">{message}</p>}
       </div>
 
       <div className="mt-4 flex gap-2">
