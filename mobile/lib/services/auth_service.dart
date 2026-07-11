@@ -105,6 +105,33 @@ class AuthService {
       throw SessionExpiredException();
     }
     if (response.statusCode != 200) {
+      String message = 'Erro ${response.statusCode}';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['message'] != null) {
+          message = body['message'] as String;
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Retorna null em 404 (ex.: sem treino outdoor ativo).
+  Future<Map<String, dynamic>?> getOptional(String path) async {
+    final response = await http.get(
+      Uri.parse('$apiBase$path'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+    if (response.statusCode == 401) {
+      await logout();
+      throw SessionExpiredException();
+    }
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
       throw Exception('Erro ${response.statusCode}');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
