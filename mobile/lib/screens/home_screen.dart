@@ -7,9 +7,12 @@ import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'cardio_screen.dart';
+import 'calorie_stats_screen.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
 import 'weight_screen.dart';
 import 'workouts_screen.dart';
+import '../services/profile_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +27,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _versionLabel = '...';
   bool _checkingUpdate = false;
   bool _hasActiveRun = false;
+  int _caloriesToday = 0;
+  double _kmToday = 0;
+  double _totalKm = 0;
+  int _minutesToday = 0;
 
   @override
   void initState() {
@@ -33,7 +40,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _sendHeartbeat();
       _loadVersion();
       _checkActiveRun();
+      _loadTodayStats();
     });
+  }
+
+  Future<void> _loadTodayStats() async {
+    try {
+      final stats = await ProfileService.instance.getCalorieStats();
+      if (!mounted) return;
+      setState(() {
+        _caloriesToday = stats.caloriesToday;
+        _kmToday = stats.kmToday;
+        _totalKm = stats.totalKm;
+        _minutesToday = stats.minutesToday;
+      });
+    } catch (_) {}
   }
 
   Future<void> _checkActiveRun() async {
@@ -146,6 +167,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            color: const Color(0xFF0F172A),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Hoje', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('$_caloriesToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                            const Text('kcal', style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(_kmToday.toStringAsFixed(1), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                            const Text('km hoje', style: TextStyle(color: Colors.lightBlueAccent, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text('$_minutesToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                            const Text('min', style: TextStyle(color: Colors.amberAccent, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.route, size: 16, color: Colors.tealAccent),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Total percorrido: ${_totalKm.toStringAsFixed(1)} km',
+                        style: const TextStyle(color: Colors.tealAccent, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Estimativa MET — atualize o peso no perfil para mais precisão',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (_hasActiveRun)
             Card(
               color: const Color(0xFF14532D),
@@ -161,9 +240,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   );
                   await _checkActiveRun();
+                  await _loadTodayStats();
                 },
               ),
             ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Perfil físico'),
+              subtitle: const Text('Peso, altura, idade e objetivo'),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+                await _loadTodayStats();
+              },
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Estatísticas'),
+              subtitle: const Text('Calorias, km, rankings e períodos'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CalorieStatsScreen()),
+              ),
+            ),
+          ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.monitor_weight_outlined),
@@ -178,12 +281,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: ListTile(
               leading: const Icon(Icons.directions_run),
               title: const Text('Treino outdoor'),
-              subtitle: const Text('GPS, ritmo, splits, GPX/TCX e backup'),
+              subtitle: const Text('GPS, ritmo, calorias, splits e backup'),
               onTap: () async {
                 await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const CardioScreen()),
                 );
                 await _checkActiveRun();
+                await _loadTodayStats();
               },
             ),
           ),
@@ -199,10 +303,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: ListTile(
               leading: const Icon(Icons.fitness_center),
               title: const Text('Musculação'),
-              subtitle: const Text('Ficha semanal, séries e mídia'),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const WorkoutsScreen()),
-              ),
+              subtitle: const Text('Ficha semanal, séries e calorias'),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WorkoutsScreen()),
+                );
+                await _loadTodayStats();
+              },
             ),
           ),
           Card(

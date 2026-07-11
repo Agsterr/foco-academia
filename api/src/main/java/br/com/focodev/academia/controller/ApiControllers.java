@@ -4,6 +4,7 @@ import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
+import br.com.focodev.academia.service.CalorieStatsService;
 import br.com.focodev.academia.service.CardioService;
 import br.com.focodev.academia.service.StudentProfileService;
 import br.com.focodev.academia.service.TenantService;
@@ -32,6 +33,7 @@ public class ApiControllers {
     private final TenantService tenantService;
     private final StudentProfileService studentProfileService;
     private final CardioService cardioService;
+    private final CalorieStatsService calorieStatsService;
 
     @GetMapping("/health")
     public Map<String, String> health() {
@@ -270,6 +272,24 @@ public class ApiControllers {
             @Valid @RequestBody StudentProfileDtos.OnboardingRequest request
     ) {
         return studentProfileService.completeOnboarding(user, request);
+    }
+
+    @PutMapping("/student/profile")
+    public StudentProfileDtos.StudentProfileResponse updateProfile(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProfileDtos.UpdateProfileRequest request
+    ) {
+        return studentProfileService.updateProfile(user, request);
+    }
+
+    @GetMapping("/student/calorie-stats")
+    public CalorieStatsResponse calorieStats(@AuthenticationPrincipal AuthUser user) {
+        return calorieStatsService.getStudentStats(user);
+    }
+
+    @GetMapping("/student/dashboard")
+    public CalorieStatsResponse studentDashboard(@AuthenticationPrincipal AuthUser user) {
+        return calorieStatsService.getStudentStats(user);
     }
 
     @PostMapping("/student/measurements")

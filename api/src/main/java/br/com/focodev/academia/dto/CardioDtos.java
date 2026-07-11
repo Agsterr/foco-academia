@@ -64,6 +64,7 @@ public final class CardioDtos {
             Long elapsedMs,
             Long pausedMs,
             Integer pauseCount,
+            Integer caloriesKcal,
             @Valid List<RoutePointRequest> points
     ) {}
 
@@ -80,6 +81,7 @@ public final class CardioDtos {
             Long elapsedMs,
             Long pausedMs,
             Integer pauseCount,
+            Integer caloriesKcal,
             List<RoutePointResponse> routePoints
     ) {}
 
@@ -121,6 +123,7 @@ public final class CardioDtos {
             Long elapsedMs,
             Long pausedMs,
             Integer pauseCount,
+            Integer caloriesKcal,
             List<RoutePointRequest> points
     ) {}
 

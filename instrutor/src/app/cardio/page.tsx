@@ -14,6 +14,7 @@ interface CardioSession {
   elapsedMs?: number;
   pausedMs?: number;
   pauseCount?: number;
+  caloriesKcal?: number;
   startedAt: string;
 }
 
@@ -292,6 +293,7 @@ export default function CardioPage() {
             <p className="font-medium">{s.studentName}</p>
             <p className="text-slate-400">
               {((s.distanceMeters ?? 0) / 1000).toFixed(2)} km · {(s.avgSpeedKmh ?? 0).toFixed(1)} km/h
+              {s.caloriesKcal != null && <> · {s.caloriesKcal} kcal</>}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Em movimento {formatDuration(s.elapsedMs)}

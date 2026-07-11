@@ -18,6 +18,12 @@ import {
 } from "@/lib/api";
 
 const ratings: RatingLevel[] = ["MUITO_BOM", "BOM", "FACIL", "RUIM", "MUITO_RUIM"];
+const intensities = [
+  { value: "LEVE", label: "Leve" },
+  { value: "MODERADA", label: "Moderada" },
+  { value: "PESADA", label: "Pesada" },
+  { value: "MUITO_INTENSA", label: "Muito intensa" },
+] as const;
 
 export default function TreinoDiaPage() {
   const { dayId } = useParams<{ dayId: string }>();
@@ -28,6 +34,7 @@ export default function TreinoDiaPage() {
   const [saving, setSaving] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
   const [rating, setRating] = useState<RatingLevel>("BOM");
+  const [intensity, setIntensity] = useState<(typeof intensities)[number]["value"]>("MODERADA");
   const [comment, setComment] = useState("");
   const [celebration, setCelebration] = useState<SessionComplete | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -104,7 +111,7 @@ export default function TreinoDiaPage() {
         `/api/student/sessions/${session.id}/complete`,
         {
           method: "POST",
-          body: JSON.stringify({ rating, comment }),
+          body: JSON.stringify({ rating, comment, intensity }),
         }
       );
       setCelebration(result);
@@ -150,7 +157,18 @@ export default function TreinoDiaPage() {
               <p className="text-xs text-slate-400">Treinos totais</p>
               <p className="font-semibold">{celebration.stats.totalWorkoutsCompleted}</p>
             </div>
+            <div className="rounded-lg bg-slate-900 p-3">
+              <p className="text-xs text-slate-400">Calorias*</p>
+              <p className="font-semibold text-orange-300">
+                {celebration.session.caloriesKcal ?? 0} kcal
+              </p>
+            </div>
+            <div className="rounded-lg bg-slate-900 p-3">
+              <p className="text-xs text-slate-400">Hoje</p>
+              <p className="font-semibold">{celebration.stats.caloriesToday ?? 0} kcal</p>
+            </div>
           </div>
+          <p className="mt-3 text-xs text-slate-500">*Estimativa MET</p>
           <button
             onClick={() => router.push("/treinos")}
             className="mt-6 w-full rounded-lg bg-green-600 py-2.5 font-medium"
@@ -289,6 +307,21 @@ export default function TreinoDiaPage() {
                 }`}
               >
                 {ratingLabels[r]}
+              </button>
+            ))}
+          </div>
+          <h3 className="mt-4 font-medium">Intensidade (calorias)</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {intensities.map((i) => (
+              <button
+                key={i.value}
+                type="button"
+                onClick={() => setIntensity(i.value)}
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  intensity === i.value ? "bg-orange-600 text-white" : "bg-slate-800 text-slate-300"
+                }`}
+              >
+                {i.label}
               </button>
             ))}
           </div>

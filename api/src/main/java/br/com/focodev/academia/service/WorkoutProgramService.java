@@ -26,6 +26,9 @@ public class WorkoutProgramService {
     private final SetLogRepository setLogRepository;
     private final UserRepository userRepository;
     private final TenantService tenantService;
+    private final StudentProfileRepository profileRepository;
+    private final CalorieEstimationService calorieEstimationService;
+    private final CalorieStatsService calorieStatsService;
 
     @Transactional
     public WorkoutProgramResponse createProgram(AuthUser instructor, CreateWorkoutProgramRequest request) {
@@ -175,9 +178,20 @@ public class WorkoutProgramService {
 
         Instant now = Instant.now();
         session.setCompletedAt(now);
-        session.setTotalDurationSeconds(now.getEpochSecond() - session.getStartedAt().getEpochSecond());
+        long durationSeconds = now.getEpochSecond() - session.getStartedAt().getEpochSecond();
+        session.setTotalDurationSeconds(durationSeconds);
         session.setRating(request.rating());
         session.setComment(request.comment());
+        WorkoutIntensity intensity = request.intensity() != null ? request.intensity() : WorkoutIntensity.MODERADA;
+        session.setIntensity(intensity);
+        Double weight = profileRepository.findByUserId(student.getId())
+                .map(StudentProfile::getCurrentWeightKg)
+                .orElse(null);
+        session.setCaloriesKcal(calorieEstimationService.estimateStrengthKcal(
+                calorieEstimationService.resolveWeightKg(weight),
+                durationSeconds,
+                intensity
+        ));
         sessionRepository.save(session);
 
         StudentStatsResponse stats = buildStats(student.getId());
@@ -255,7 +269,10 @@ public class WorkoutProgramService {
                 completedWeekDays.size(),
                 (int) sessionRepository.countByStudentIdAndCompletedAtIsNotNull(studentId),
                 calculateStreak(studentId),
-                completedWeekDays.stream().map(Enum::name).sorted().toList()
+                completedWeekDays.stream().map(Enum::name).sorted().toList(),
+                calorieStatsService.sumCaloriesSince(studentId, LocalDate.now(ZoneId.of("America/Sao_Paulo"))
+                        .atStartOfDay(ZoneId.of("America/Sao_Paulo")).toInstant()),
+                calorieStatsService.sumCaloriesSince(studentId, weekStart)
         );
     }
 

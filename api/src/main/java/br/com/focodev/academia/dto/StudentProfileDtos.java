@@ -1,8 +1,11 @@
 package br.com.focodev.academia.dto;
 
+import br.com.focodev.academia.domain.ActivityLevel;
+import br.com.focodev.academia.domain.BiologicalSex;
 import br.com.focodev.academia.domain.FitnessGoal;
 import jakarta.validation.constraints.*;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 public final class StudentProfileDtos {
@@ -12,7 +15,19 @@ public final class StudentProfileDtos {
     public record OnboardingRequest(
             @NotNull @DecimalMin("50") @DecimalMax("250") Double heightCm,
             @NotNull @DecimalMin("20") @DecimalMax("500") Double weightKg,
-            @NotNull FitnessGoal goal
+            @NotNull FitnessGoal goal,
+            BiologicalSex sex,
+            LocalDate birthDate,
+            ActivityLevel activityLevel
+    ) {}
+
+    public record UpdateProfileRequest(
+            @DecimalMin("50") @DecimalMax("250") Double heightCm,
+            @DecimalMin("20") @DecimalMax("500") Double weightKg,
+            FitnessGoal goal,
+            BiologicalSex sex,
+            LocalDate birthDate,
+            ActivityLevel activityLevel
     ) {}
 
     public record StudentProfileResponse(
@@ -21,7 +36,11 @@ public final class StudentProfileDtos {
             Double heightCm,
             Double currentWeightKg,
             FitnessGoal goal,
-            boolean onboardingCompleted
+            boolean onboardingCompleted,
+            BiologicalSex sex,
+            LocalDate birthDate,
+            Integer age,
+            ActivityLevel activityLevel
     ) {}
 
     public record ProfileStatusResponse(

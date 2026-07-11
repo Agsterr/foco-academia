@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -29,6 +30,16 @@ public class StudentProfile {
 
     @Enumerated(EnumType.STRING)
     private FitnessGoal goal;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 24)
+    private BiologicalSex sex = BiologicalSex.NAO_INFORMADO;
+
+    private LocalDate birthDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 24)
+    private ActivityLevel activityLevel;
 
     private Instant onboardingCompletedAt;
 

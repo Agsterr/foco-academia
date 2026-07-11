@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/calorie_estimator.dart';
+import '../services/profile_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/exercise_media_view.dart';
 import 'login_screen.dart';
@@ -24,9 +26,18 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
   bool _saving = false;
   bool _showFinish = false;
   String _rating = 'BOM';
+  String _intensity = 'MODERADA';
+  double _weightKg = CalorieEstimator.defaultWeightKg;
   final _commentCtrl = TextEditingController();
   int _elapsed = 0;
   Timer? _timer;
+
+  static const _intensities = {
+    'LEVE': 'Leve',
+    'MODERADA': 'Moderada',
+    'PESADA': 'Pesada',
+    'MUITO_INTENSA': 'Muito intensa',
+  };
 
   @override
   void initState() {
@@ -63,6 +74,10 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     try {
       final day = await WorkoutService.instance.getDay(widget.dayId);
       final session = await WorkoutService.instance.startOrResumeSession(widget.dayId);
+      try {
+        final profile = await ProfileService.instance.getProfile();
+        _weightKg = CalorieEstimator.resolveWeight(profile.currentWeightKg);
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _day = day;
@@ -121,6 +136,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
       final result = await WorkoutService.instance.completeSession(
         sessionId: session.id,
         rating: _rating,
+        intensity: _intensity,
         comment: _commentCtrl.text.trim(),
       );
       if (!mounted) return;
@@ -212,6 +228,30 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MiniStat(
+                        'Calorias*',
+                        '${celebration.session.caloriesKcal ?? 0} kcal',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _MiniStat(
+                        'Hoje',
+                        '${celebration.stats.caloriesToday} kcal',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '*Estimativa baseada em MET, peso e intensidade',
+                  style: TextStyle(color: Colors.white38, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
                 const Spacer(),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -278,6 +318,11 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                           color: Colors.amberAccent,
                           fontFeatures: [FontFeature.tabularFigures()],
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${CalorieEstimator.strengthKcal(weightKg: _weightKg, durationSeconds: _elapsed, intensity: _intensity)} kcal*',
+                        style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
                       ),
                     ],
                   ),
@@ -453,6 +498,24 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                             label: Text(ratingLabel(r)),
                             selected: _rating == r,
                             onSelected: (_) => setState(() => _rating = r),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Intensidade (estimativa de calorias)',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _intensities.entries)
+                          ChoiceChip(
+                            label: Text(entry.value),
+                            selected: _intensity == entry.key,
+                            onSelected: (_) => setState(() => _intensity = entry.key),
                           ),
                       ],
                     ),

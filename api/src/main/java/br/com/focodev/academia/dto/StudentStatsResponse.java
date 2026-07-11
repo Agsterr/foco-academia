@@ -6,5 +6,7 @@ public record StudentStatsResponse(
         int daysCompletedThisWeek,
         int totalWorkoutsCompleted,
         int currentStreak,
-        List<String> completedWeekDays
+        List<String> completedWeekDays,
+        int caloriesToday,
+        int caloriesThisWeek
 ) {}

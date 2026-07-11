@@ -10,6 +10,7 @@ import {
   CardioWorkout,
   RoutePoint,
   completeCardioSession,
+  estimateCardioKcal,
   getActiveCardioWorkout,
   haversineMeters,
   parseIntervals,
@@ -17,6 +18,7 @@ import {
   playPhaseSound,
   startCardioSession,
 } from "@/lib/cardio";
+import { getProfile } from "@/lib/profile";
 import { getToken } from "@/lib/api";
 
 export default function OutdoorPage() {
@@ -31,6 +33,7 @@ export default function OutdoorPage() {
   const [points, setPoints] = useState<RoutePoint[]>([]);
   const [distance, setDistance] = useState(0);
   const [error, setError] = useState("");
+  const [weightKg, setWeightKg] = useState(70);
   const watchId = useRef<number | null>(null);
   const seq = useRef(0);
 
@@ -45,6 +48,11 @@ export default function OutdoorPage() {
         setIntervals(parseIntervals(w.intervalsJson));
       })
       .catch(() => setWorkout(null));
+    getProfile()
+      .then((p) => {
+        if (p.currentWeightKg) setWeightKg(p.currentWeightKg);
+      })
+      .catch(() => undefined);
   }, [router]);
 
   const currentPhase = intervals[phaseIndex];
@@ -124,16 +132,20 @@ export default function OutdoorPage() {
     if (!session) return;
     const elapsedMs = elapsed * 1000;
     const avgSpeedKmh = elapsed > 0 ? distance / 1000 / (elapsed / 3600) : 0;
+    const caloriesKcal = estimateCardioKcal(weightKg, avgSpeedKmh, elapsedMs);
     await completeCardioSession(session.id, {
       distanceMeters: distance,
       avgSpeedKmh,
       elapsedMs,
+      caloriesKcal,
       points,
     });
-    router.push("/evolucao");
+    router.push("/dashboard");
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+  const liveSpeed = elapsed > 0 ? distance / 1000 / (elapsed / 3600) : 0;
+  const liveCalories = estimateCardioKcal(weightKg, liveSpeed, elapsed * 1000);
 
   return (
     <AppShell>
@@ -144,7 +156,7 @@ export default function OutdoorPage() {
 
       <RouteMap points={points} />
 
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+      <div className="mt-4 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
           <p className="text-xs text-slate-500">Tempo</p>
           <p className="text-lg font-semibold">{formatTime(elapsed)}</p>
@@ -154,12 +166,22 @@ export default function OutdoorPage() {
           <p className="text-lg font-semibold">{(distance / 1000).toFixed(2)} km</p>
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-          <p className="text-xs text-slate-500">Fase</p>
-          <p className="text-lg font-semibold">
-            {currentPhase ? `${currentPhase.phase} ${phaseRemaining}s` : "—"}
-          </p>
+          <p className="text-xs text-slate-500">Vel. média</p>
+          <p className="text-lg font-semibold">{liveSpeed.toFixed(1)} km/h</p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+          <p className="text-xs text-slate-500">Calorias*</p>
+          <p className="text-lg font-semibold text-orange-300">{liveCalories}</p>
         </div>
       </div>
+      {currentPhase && (
+        <p className="mt-2 text-center text-sm text-slate-400">
+          Fase: {currentPhase.phase} · {phaseRemaining}s
+        </p>
+      )}
+      <p className="mt-1 text-center text-[11px] text-slate-500">
+        *Estimativa MET com base no peso do perfil ({weightKg} kg)
+      </p>
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 

@@ -46,6 +46,9 @@ public class CardioSession {
     /** Quantas vezes entrou em pausa nesta sessão. */
     private Integer pauseCount = 0;
 
+    /** Estimativa MET (kcal). */
+    private Integer caloriesKcal;
+
     private String clientSessionId;
 
     private boolean synced = true;

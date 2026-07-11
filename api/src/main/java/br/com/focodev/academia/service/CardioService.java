@@ -35,6 +35,8 @@ public class CardioService {
     private final UserRepository userRepository;
     private final TenantService tenantService;
     private final ObjectMapper objectMapper;
+    private final StudentProfileRepository profileRepository;
+    private final CalorieEstimationService calorieEstimationService;
 
     @Transactional
     public CardioDtos.CardioWorkoutResponse createWorkout(AuthUser instructor, CardioDtos.CreateCardioWorkoutRequest request) {
@@ -180,6 +182,8 @@ public class CardioService {
         session.setElapsedMs(request.elapsedMs());
         session.setPausedMs(request.pausedMs() != null ? request.pausedMs() : 0L);
         session.setPauseCount(request.pauseCount() != null ? request.pauseCount() : 0);
+        session.setCaloriesKcal(resolveCardioCalories(student.getId(), request.distanceMeters(),
+                request.avgSpeedKmh(), request.elapsedMs(), request.pausedMs(), request.caloriesKcal()));
         if (request.points() != null && !request.points().isEmpty()) {
             session.getRoutePoints().clear();
             for (CardioDtos.RoutePointRequest point : request.points()) {
@@ -285,6 +289,8 @@ public class CardioService {
                 session.setElapsedMs(dto.elapsedMs());
                 session.setPausedMs(dto.pausedMs() != null ? dto.pausedMs() : 0L);
                 session.setPauseCount(dto.pauseCount() != null ? dto.pauseCount() : 0);
+                session.setCaloriesKcal(resolveCardioCalories(user.getId(), dto.distanceMeters(),
+                        dto.avgSpeedKmh(), dto.elapsedMs(), dto.pausedMs(), dto.caloriesKcal()));
                 session.setSynced(true);
                 if (dto.workoutId() != null) {
                     workoutRepository.findById(dto.workoutId()).ifPresent(session::setWorkout);
@@ -392,7 +398,34 @@ public class CardioService {
                 s.getElapsedMs(),
                 s.getPausedMs() != null ? s.getPausedMs() : 0L,
                 s.getPauseCount() != null ? s.getPauseCount() : 0,
+                s.getCaloriesKcal(),
                 points
+        );
+    }
+
+    private int resolveCardioCalories(
+            UUID studentId,
+            Double distanceMeters,
+            Double avgSpeedKmh,
+            Long elapsedMs,
+            Long pausedMs,
+            Integer clientCalories
+    ) {
+        if (clientCalories != null && clientCalories >= 0) {
+            return clientCalories;
+        }
+        Double weight = profileRepository.findByUserId(studentId)
+                .map(StudentProfile::getCurrentWeightKg)
+                .orElse(null);
+        double speed = avgSpeedKmh != null ? avgSpeedKmh : 0;
+        if (speed <= 0 && distanceMeters != null && elapsedMs != null && elapsedMs > 0) {
+            speed = (distanceMeters / 1000.0) / (elapsedMs / 3_600_000.0);
+        }
+        return calorieEstimationService.estimateCardioKcal(
+                calorieEstimationService.resolveWeightKg(weight),
+                speed,
+                elapsedMs,
+                pausedMs
         );
     }
 }

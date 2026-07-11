@@ -32,6 +32,7 @@ export interface CardioSession {
   distanceMeters?: number;
   avgSpeedKmh?: number;
   elapsedMs?: number;
+  caloriesKcal?: number;
   routePoints: RoutePoint[];
 }
 
@@ -61,6 +62,7 @@ export function completeCardioSession(
     distanceMeters: number;
     avgSpeedKmh: number;
     elapsedMs: number;
+    caloriesKcal?: number;
     points: RoutePoint[];
   }
 ) {
@@ -68,6 +70,30 @@ export function completeCardioSession(
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+/** Estimativa MET: kcal = MET × peso × horas */
+export function estimateCardioKcal(weightKg: number, avgSpeedKmh: number, elapsedMs: number): number {
+  if (elapsedMs <= 0) return 0;
+  const met = metForSpeed(avgSpeedKmh);
+  return Math.round(met * weightKg * (elapsedMs / 3_600_000));
+}
+
+function metForSpeed(speed: number): number {
+  if (speed <= 0) return 2.5;
+  if (speed < 6.5) {
+    if (speed <= 3) return 2.5;
+    if (speed <= 4) return 3.0;
+    if (speed <= 5) return 3.8;
+    return 4.8;
+  }
+  if (speed <= 7) return 7.0;
+  if (speed <= 8) return 8.3;
+  if (speed <= 9) return 9.0;
+  if (speed <= 10) return 9.8;
+  if (speed <= 11) return 10.5;
+  if (speed <= 12) return 11.8;
+  return 12.8;
 }
 
 export function listCardioSessions() {

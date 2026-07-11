@@ -22,4 +22,21 @@ public interface CardioSessionRepository extends JpaRepository<CardioSession, UU
     long countByStudentIdAndCompletedAtAfter(UUID studentId, Instant after);
 
     List<CardioSession> findByWorkoutId(UUID workoutId);
+
+    @Query("""
+            SELECT s FROM CardioSession s
+            WHERE s.student.id = :studentId
+            AND s.completedAt IS NOT NULL
+            AND s.completedAt >= :since
+            ORDER BY s.completedAt DESC
+            """)
+    List<CardioSession> findCompletedSince(UUID studentId, Instant since);
+
+    @Query("""
+            SELECT s FROM CardioSession s
+            WHERE s.student.id = :studentId
+            AND s.completedAt IS NOT NULL
+            ORDER BY s.completedAt DESC
+            """)
+    List<CardioSession> findCompletedByStudentId(UUID studentId);
 }

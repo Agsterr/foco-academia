@@ -8,10 +8,12 @@ import 'package:uuid/uuid.dart';
 
 import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
+import '../services/calorie_estimator.dart';
 import '../services/cardio_feedback.dart';
 import '../services/cardio_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/location_permission_helper.dart';
+import '../services/profile_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
 import '../widgets/route_map_view.dart';
@@ -48,6 +50,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _manualPaused = false;
   String? _error;
   String? _clientSessionId;
+  double _weightKg = CalorieEstimator.defaultWeightKg;
   String? _gpsStatus;
   DateTime? _startedAt;
   bool _gpsLost = false;
@@ -81,6 +84,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     });
     try {
       final workout = await CardioService.instance.getActiveWorkout();
+      try {
+        final profile = await ProfileService.instance.getProfile();
+        _weightKg = CalorieEstimator.resolveWeight(profile.currentWeightKg);
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _workout = workout;
@@ -99,6 +106,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
       await _offerResumeIfNeeded();
     }
+  }
+
+  int get _liveCalories {
+    final dist = _distance + _estimatedGap;
+    final speed = _elapsed > 0 ? (dist / 1000) / (_elapsed / 3600) : 0.0;
+    return CalorieEstimator.cardioKcal(
+      weightKg: _weightKg,
+      avgSpeedKmh: speed,
+      elapsedMs: _elapsed * 1000,
+    );
   }
 
   Future<void> _offerResumeIfNeeded() async {
@@ -646,6 +663,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final elapsedMs = _elapsed * 1000;
     final pausedMs = _engine.pausedMs;
     final pauseCount = _engine.pauseCount;
+    final caloriesKcal = CalorieEstimator.cardioKcal(
+      weightKg: _weightKg,
+      avgSpeedKmh: avgSpeedKmh,
+      elapsedMs: elapsedMs,
+    );
     final points = _engine.pointsForSync();
 
     // Oferece exportação antes de sair.
@@ -654,7 +676,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Treino finalizado'),
-          content: const Text('Deseja exportar a rota (GPX/TCX)?'),
+          content: Text(
+            'Estimativa: $caloriesKcal kcal\n\nDeseja exportar a rota (GPX/TCX)?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -685,6 +709,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           elapsedMs: elapsedMs,
           pausedMs: pausedMs,
           pauseCount: pauseCount,
+          caloriesKcal: caloriesKcal,
           points: points,
         );
       } else {
@@ -698,6 +723,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           'elapsedMs': elapsedMs,
           'pausedMs': pausedMs,
           'pauseCount': pauseCount,
+          'caloriesKcal': caloriesKcal,
           'points': points,
           if (_estimatedGap > 0) 'estimatedGapMeters': _estimatedGap,
         };
@@ -740,6 +766,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         'elapsedMs': elapsedMs,
         'pausedMs': pausedMs,
         'pauseCount': pauseCount,
+        'caloriesKcal': caloriesKcal,
         'points': points,
         if (_estimatedGap > 0) 'estimatedGapMeters': _estimatedGap,
       };
@@ -911,8 +938,19 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   '${_engine.pauseCount}',
                                 ),
                               ),
-                              const Expanded(child: SizedBox()),
+                              Expanded(
+                                child: _Stat(
+                                  'Calorias*',
+                                  '$_liveCalories kcal',
+                                ),
+                              ),
                             ],
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            '*Estimativa MET (peso × intensidade × tempo)',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white38, fontSize: 11),
                           ),
                           if (_lastSplitToast != null) ...[
                             const SizedBox(height: 8),

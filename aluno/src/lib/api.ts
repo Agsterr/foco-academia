@@ -76,6 +76,8 @@ export interface WorkoutSession {
   startedAt: string;
   completedAt?: string;
   totalDurationSeconds?: number;
+  caloriesKcal?: number;
+  intensity?: "LEVE" | "MODERADA" | "PESADA" | "MUITO_INTENSA";
   rating?: RatingLevel;
   comment?: string;
   setLogs: SetLog[];
@@ -86,6 +88,8 @@ export interface StudentStats {
   totalWorkoutsCompleted: number;
   currentStreak: number;
   completedWeekDays: string[];
+  caloriesToday?: number;
+  caloriesThisWeek?: number;
 }
 
 export interface SessionComplete {

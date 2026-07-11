@@ -71,7 +71,8 @@ public class StudentProfileService {
                 .orElse(null);
         if (profile == null) {
             return new StudentProfileDtos.StudentProfileResponse(
-                    student.getId(), student.getName(), null, null, null, false
+                    student.getId(), student.getName(), null, null, null, false,
+                    null, null, null, null
             );
         }
         return toProfileResponse(student, profile);
@@ -88,6 +89,15 @@ public class StudentProfileService {
         profile.setHeightCm(request.heightCm());
         profile.setCurrentWeightKg(request.weightKg());
         profile.setGoal(request.goal());
+        if (request.sex() != null) {
+            profile.setSex(request.sex());
+        }
+        if (request.birthDate() != null) {
+            profile.setBirthDate(request.birthDate());
+        }
+        if (request.activityLevel() != null) {
+            profile.setActivityLevel(request.activityLevel());
+        }
         profile.setOnboardingCompletedAt(Instant.now());
         profile.setUpdatedAt(Instant.now());
         profileRepository.save(profile);
@@ -98,6 +108,44 @@ public class StudentProfileService {
         measurement.setSource(MeasurementSource.STUDENT);
         measurementRepository.save(measurement);
 
+        return toProfileResponse(user, profile);
+    }
+
+    @Transactional
+    public StudentProfileDtos.StudentProfileResponse updateProfile(
+            AuthUser student,
+            StudentProfileDtos.UpdateProfileRequest request
+    ) {
+        User user = requireStudent(student);
+        StudentProfile profile = profileRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new ApiException("Perfil não encontrado. Conclua o onboarding primeiro."));
+
+        if (request.heightCm() != null) {
+            profile.setHeightCm(request.heightCm());
+        }
+        if (request.goal() != null) {
+            profile.setGoal(request.goal());
+        }
+        if (request.sex() != null) {
+            profile.setSex(request.sex());
+        }
+        if (request.birthDate() != null) {
+            profile.setBirthDate(request.birthDate());
+        }
+        if (request.activityLevel() != null) {
+            profile.setActivityLevel(request.activityLevel());
+        }
+        if (request.weightKg() != null) {
+            profile.setCurrentWeightKg(request.weightKg());
+            BodyMeasurement measurement = new BodyMeasurement();
+            measurement.setStudent(user);
+            measurement.setWeightKg(request.weightKg());
+            measurement.setSource(MeasurementSource.STUDENT);
+            measurement.setNotes("Atualização de perfil");
+            measurementRepository.save(measurement);
+        }
+        profile.setUpdatedAt(Instant.now());
+        profileRepository.save(profile);
         return toProfileResponse(user, profile);
     }
 
@@ -245,13 +293,21 @@ public class StudentProfileService {
     }
 
     private StudentProfileDtos.StudentProfileResponse toProfileResponse(User user, StudentProfile profile) {
+        Integer age = null;
+        if (profile.getBirthDate() != null) {
+            age = java.time.Period.between(profile.getBirthDate(), LocalDate.now()).getYears();
+        }
         return new StudentProfileDtos.StudentProfileResponse(
                 user.getId(),
                 user.getName(),
                 profile.getHeightCm(),
                 profile.getCurrentWeightKg(),
                 profile.getGoal(),
-                profile.getOnboardingCompletedAt() != null
+                profile.getOnboardingCompletedAt() != null,
+                profile.getSex(),
+                profile.getBirthDate(),
+                age,
+                profile.getActivityLevel()
         );
     }
 

@@ -104,6 +104,7 @@ class CardioService {
     required int elapsedMs,
     int pausedMs = 0,
     int pauseCount = 0,
+    int? caloriesKcal,
     required List<Map<String, dynamic>> points,
   }) async {
     await AuthService.instance.post('/api/student/cardio-sessions/$sessionId/complete', {
@@ -112,6 +113,7 @@ class CardioService {
       'elapsedMs': elapsedMs,
       'pausedMs': pausedMs,
       'pauseCount': pauseCount,
+      if (caloriesKcal != null) 'caloriesKcal': caloriesKcal,
       'points': points,
     });
   }

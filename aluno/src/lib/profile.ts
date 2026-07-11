@@ -24,6 +24,10 @@ export interface StudentProfile {
   currentWeightKg?: number;
   goal?: FitnessGoal;
   onboardingCompleted: boolean;
+  sex?: "MASCULINO" | "FEMININO" | "NAO_INFORMADO";
+  birthDate?: string;
+  age?: number;
+  activityLevel?: "SEDENTARIO" | "LEVE" | "MODERADO" | "INTENSO" | "MUITO_INTENSO";
 }
 
 export interface ProfileStatus {
@@ -60,11 +64,66 @@ export function completeOnboarding(data: {
   heightCm: number;
   weightKg: number;
   goal: FitnessGoal;
+  sex?: StudentProfile["sex"];
+  birthDate?: string;
+  activityLevel?: StudentProfile["activityLevel"];
 }) {
   return api<StudentProfile>("/api/student/profile/onboarding", {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+export function updateProfile(data: {
+  heightCm?: number;
+  weightKg?: number;
+  goal?: FitnessGoal;
+  sex?: StudentProfile["sex"];
+  birthDate?: string;
+  activityLevel?: StudentProfile["activityLevel"];
+}) {
+  return api<StudentProfile>("/api/student/profile", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export interface CalorieStats {
+  caloriesToday: number;
+  kmToday: number;
+  minutesToday: number;
+  caloriesLast7Days: number;
+  kmLast7Days: number;
+  caloriesLast30Days: number;
+  kmLast30Days: number;
+  caloriesLast12Months: number;
+  kmLast12Months: number;
+  totalKm: number;
+  totalHours: number;
+  totalSessions: number;
+  cardioSessions: number;
+  avgCaloriesPerSession: number;
+  maxCaloriesSingleSession: number;
+  maxDistanceKm: number;
+  maxDurationMinutes: number;
+  currentStreakDays: number;
+  weekly: { label: string; calories: number; km: number; sessions: number }[];
+  monthly: { label: string; calories: number; km: number; sessions: number }[];
+  yearly: { label: string; calories: number; km: number; sessions: number }[];
+  recentDistances: {
+    id: string;
+    completedAt: string;
+    title: string;
+    distanceKm: number;
+    caloriesKcal?: number;
+    elapsedMs?: number;
+    avgSpeedKmh?: number;
+  }[];
+  estimateDisclaimer: string;
+}
+
+export function getCalorieStats() {
+  return api<CalorieStats>("/api/student/calorie-stats");
 }
 
 export function addMeasurement(data: {

@@ -32,6 +32,14 @@ public interface WorkoutSessionRepository extends JpaRepository<WorkoutSession, 
 
     @Query("""
             SELECT s FROM WorkoutSession s
+            WHERE s.student.id = :studentId
+            AND s.completedAt IS NOT NULL
+            ORDER BY s.completedAt DESC
+            """)
+    List<WorkoutSession> findCompletedByStudentId(UUID studentId);
+
+    @Query("""
+            SELECT s FROM WorkoutSession s
             JOIN FETCH s.workoutDay d
             JOIN FETCH d.program p
             JOIN FETCH s.student st

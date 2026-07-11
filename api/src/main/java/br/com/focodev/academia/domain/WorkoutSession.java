@@ -36,6 +36,13 @@ public class WorkoutSession {
 
     private Long totalDurationSeconds;
 
+    /** Estimativa MET (kcal). */
+    private Integer caloriesKcal;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 24)
+    private WorkoutIntensity intensity;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 16)
     private RatingLevel rating;

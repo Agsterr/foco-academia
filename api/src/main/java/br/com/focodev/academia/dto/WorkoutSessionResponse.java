@@ -1,6 +1,7 @@
 package br.com.focodev.academia.dto;
 
 import br.com.focodev.academia.domain.RatingLevel;
+import br.com.focodev.academia.domain.WorkoutIntensity;
 import br.com.focodev.academia.domain.WorkoutSession;
 
 import java.time.Instant;
@@ -13,6 +14,8 @@ public record WorkoutSessionResponse(
         Instant startedAt,
         Instant completedAt,
         Long totalDurationSeconds,
+        Integer caloriesKcal,
+        WorkoutIntensity intensity,
         RatingLevel rating,
         String comment,
         List<SetLogResponse> setLogs
@@ -24,6 +27,8 @@ public record WorkoutSessionResponse(
                 session.getStartedAt(),
                 session.getCompletedAt(),
                 session.getTotalDurationSeconds(),
+                session.getCaloriesKcal(),
+                session.getIntensity(),
                 session.getRating(),
                 session.getComment(),
                 session.getSetLogs().stream().map(SetLogResponse::from).toList()

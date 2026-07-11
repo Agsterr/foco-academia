@@ -183,4 +183,31 @@ class AuthService {
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
+    final response = await http.put(
+      Uri.parse('$apiBase$path'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 401) {
+      await logout();
+      throw SessionExpiredException();
+    }
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      String message = 'Erro ${response.statusCode}';
+      try {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map && parsed['message'] != null) {
+          message = parsed['message'] as String;
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+    if (response.body.isEmpty) return {};
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
 }

@@ -71,12 +71,16 @@ class StudentStats {
     required this.totalWorkoutsCompleted,
     required this.currentStreak,
     this.completedWeekDays = const [],
+    this.caloriesToday = 0,
+    this.caloriesThisWeek = 0,
   });
 
   final int daysCompletedThisWeek;
   final int totalWorkoutsCompleted;
   final int currentStreak;
   final List<String> completedWeekDays;
+  final int caloriesToday;
+  final int caloriesThisWeek;
 
   factory StudentStats.fromJson(Map<String, dynamic> json) {
     return StudentStats(
@@ -87,6 +91,8 @@ class StudentStats {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      caloriesToday: (json['caloriesToday'] as num?)?.toInt() ?? 0,
+      caloriesThisWeek: (json['caloriesThisWeek'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -249,6 +255,8 @@ class WorkoutSession {
     required this.startedAt,
     this.completedAt,
     this.totalDurationSeconds,
+    this.caloriesKcal,
+    this.intensity,
     this.rating,
     this.comment,
     this.setLogs = const [],
@@ -259,6 +267,8 @@ class WorkoutSession {
   final String startedAt;
   final String? completedAt;
   final int? totalDurationSeconds;
+  final int? caloriesKcal;
+  final String? intensity;
   final String? rating;
   final String? comment;
   final List<SetLog> setLogs;
@@ -270,6 +280,8 @@ class WorkoutSession {
       startedAt: json['startedAt'] as String,
       completedAt: json['completedAt'] as String?,
       totalDurationSeconds: (json['totalDurationSeconds'] as num?)?.toInt(),
+      caloriesKcal: (json['caloriesKcal'] as num?)?.toInt(),
+      intensity: json['intensity'] as String?,
       rating: json['rating'] as String?,
       comment: json['comment'] as String?,
       setLogs: (json['setLogs'] as List<dynamic>?)
@@ -356,9 +368,11 @@ class WorkoutService {
     required String sessionId,
     required String rating,
     String? comment,
+    String intensity = 'MODERADA',
   }) async {
     final data = await AuthService.instance.post('/api/student/sessions/$sessionId/complete', {
       'rating': rating,
+      'intensity': intensity,
       if (comment != null && comment.isNotEmpty) 'comment': comment,
     });
     return SessionComplete.fromJson(data);
