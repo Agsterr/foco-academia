@@ -17,3 +17,9 @@ ALTER TABLE device_sessions ALTER COLUMN app_client SET DEFAULT 'WEB';
 ALTER TABLE device_sessions ALTER COLUMN app_client SET NOT NULL;
 
 ALTER TABLE device_sessions ADD COLUMN IF NOT EXISTS app_version VARCHAR(255);
+
+-- Fontes de medição: balança BLE, relógio e import
+ALTER TABLE body_measurements DROP CONSTRAINT IF EXISTS body_measurements_source_check;
+ALTER TABLE body_measurements ADD CONSTRAINT body_measurements_source_check
+  CHECK (source IS NULL OR source::text = ANY (ARRAY['STUDENT','INSTRUCTOR','SCALE_BLE','WATCH','IMPORT']::text[]));
+
