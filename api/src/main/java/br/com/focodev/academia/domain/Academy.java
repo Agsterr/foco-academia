@@ -33,6 +33,7 @@ public class Academy {
     private boolean active = true;
 
     /** Bloqueia acesso de apps aluno/instrutor desta academia. */
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean appBlocked = false;
 
     @Column(nullable = false, updatable = false)
