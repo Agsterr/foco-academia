@@ -55,7 +55,7 @@ export default function AppDownloadPage() {
       <ul className="mt-6 space-y-2 text-sm text-slate-400">
         <li>• GPS, mapa e treinos outdoor offline</li>
         <li>• Atualização automática quando o instrutor publicar nova versão</li>
-        <li>• Musculação continua disponível na web</li>
+        <li>• Musculação e outdoor disponíveis no app</li>
       </ul>
     </AppShell>
   );

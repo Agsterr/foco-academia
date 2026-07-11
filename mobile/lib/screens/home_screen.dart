@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'cardio_screen.dart';
 import 'login_screen.dart';
+import 'workouts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -102,11 +103,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: _sync,
             ),
           ),
-          const Card(
+          Card(
             child: ListTile(
-              leading: Icon(Icons.fitness_center),
-              title: Text('Musculação'),
-              subtitle: Text('Consulte a ficha na web'),
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('Musculação'),
+              subtitle: const Text('Ficha semanal, séries e mídia'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkoutsScreen()),
+              ),
             ),
           ),
         ],

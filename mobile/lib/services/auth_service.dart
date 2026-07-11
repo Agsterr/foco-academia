@@ -151,7 +151,14 @@ class AuthService {
       throw SessionExpiredException();
     }
     if (response.statusCode != 200 && response.statusCode != 204) {
-      throw Exception('Erro ${response.statusCode}');
+      String message = 'Erro ${response.statusCode}';
+      try {
+        final parsed = jsonDecode(response.body);
+        if (parsed is Map && parsed['message'] != null) {
+          message = parsed['message'] as String;
+        }
+      } catch (_) {}
+      throw Exception(message);
     }
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
