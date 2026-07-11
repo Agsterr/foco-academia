@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/services/app_update_service.dart';
+import 'app_update_prompt.dart';
 
 class AppUpdateListener extends StatefulWidget {
   const AppUpdateListener({super.key, required this.child});
@@ -51,9 +52,12 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
   Future<void> _checkUpdate({bool resumeOnly = false}) async {
     if (_checking || !mounted) return;
     _checking = true;
+    AppUpdateInfo? pendingForceDownload;
     try {
       final update = await _updateService.checkForUpdate();
-      if (!mounted || update == null || !update.hasUpdate) {
+      if (!mounted) return;
+
+      if (update == null || !update.hasUpdate) {
         setState(() {
           _forceUpdate = null;
           _forceApkReady = false;
@@ -82,7 +86,7 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
             !_forceAutoDownloadStarted;
         if (shouldAutoDownload) {
           _forceAutoDownloadStarted = true;
-          await _downloadForceUpdate(update);
+          pendingForceDownload = update;
         }
         return;
       }
@@ -94,12 +98,23 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
         _readyVersionCode = null;
       });
       if (!resumeOnly) {
-        await _showOptionalDialog(update);
+        // Libera o lock antes do diálogo (usuário pode demorar).
+        _checking = false;
+        await AppUpdatePrompt.showUpdateDialog(
+          context,
+          service: _updateService,
+          update: update,
+          force: false,
+        );
       }
     } catch (_) {
-      // Silencioso — app continua offline-first.
+      // Silencioso no auto-check — app continua offline-first.
     } finally {
       _checking = false;
+    }
+
+    if (pendingForceDownload != null && mounted) {
+      await _downloadForceUpdate(pendingForceDownload);
     }
   }
 
@@ -151,126 +166,6 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
     }
   }
 
-  Future<void> _showOptionalDialog(AppUpdateInfo update) async {
-    if (!mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        var downloading = false;
-        var progress = 0.0;
-        var apkReady = false;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Future<void> prepareApk({bool forceDownload = false}) async {
-              setDialogState(() {
-                downloading = true;
-                progress = 0;
-              });
-              try {
-                await _updateService.downloadAndInstall(
-                  update,
-                  forceDownload: forceDownload,
-                  onProgress: (value) {
-                    setDialogState(() => progress = value);
-                  },
-                );
-                if (!dialogContext.mounted) return;
-                setDialogState(() => apkReady = true);
-              } catch (error) {
-                if (!dialogContext.mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(content: Text('Erro ao atualizar: $error')),
-                );
-                setDialogState(() {
-                  downloading = false;
-                  progress = 0;
-                });
-              } finally {
-                if (dialogContext.mounted) {
-                  setDialogState(() => downloading = false);
-                }
-              }
-            }
-
-            Future<void> install() async {
-              if (!apkReady) {
-                await prepareApk();
-                if (!dialogContext.mounted || !apkReady) return;
-              }
-              try {
-                await _updateService.openCachedInstaller(update);
-              } catch (error) {
-                if (!dialogContext.mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(content: Text('Erro ao instalar: $error')),
-                );
-              }
-            }
-
-            return AlertDialog(
-              title: const Text('Atualização disponível'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Versão ${update.latestVersionName} disponível '
-                    '(você está na ${update.currentVersionName}).',
-                  ),
-                  if (update.releaseNotes != null &&
-                      update.releaseNotes!.trim().isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(update.releaseNotes!.trim()),
-                  ],
-                  if (downloading) ...[
-                    const SizedBox(height: 16),
-                    LinearProgressIndicator(value: progress > 0 ? progress : null),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${(progress * 100).clamp(0, 100).toStringAsFixed(0)}% baixado',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ] else if (apkReady) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Download concluído. Toque em Instalar para abrir o instalador.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: downloading ? null : () => Navigator.pop(context),
-                  child: const Text('Agora não'),
-                ),
-                if (apkReady)
-                  TextButton(
-                    onPressed: downloading
-                        ? null
-                        : () => prepareApk(forceDownload: true),
-                    child: const Text('Baixar de novo'),
-                  ),
-                FilledButton(
-                  onPressed: downloading ? null : install,
-                  child: Text(
-                    downloading
-                        ? 'Baixando...'
-                        : apkReady
-                            ? 'Instalar'
-                            : 'Atualizar',
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final force = _forceUpdate;
@@ -301,7 +196,8 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Versão ${force.latestVersionName} disponível.\n'
+                              'Servidor: ${force.latestVersionName}+${force.latestVersionCode}\n'
+                              'Seu app: ${force.currentVersionName}+${force.currentVersionCode}\n\n'
                               'Instale para continuar.',
                               textAlign: TextAlign.center,
                             ),

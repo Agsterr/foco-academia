@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import '../data/services/app_update_service.dart';
+import '../presentation/widgets/app_update_prompt.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'cardio_screen.dart';
@@ -13,13 +17,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  final _updateService = AppUpdateService();
   String _status = '';
+  String _versionLabel = '...';
+  bool _checkingUpdate = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _sendHeartbeat());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sendHeartbeat();
+      _loadVersion();
+    });
   }
 
   @override
@@ -32,6 +42,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _sendHeartbeat();
+      _loadVersion();
+    }
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _versionLabel = '${info.version}+${info.buildNumber}');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _versionLabel = 'desconhecida');
     }
   }
 
@@ -62,6 +84,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       await _goToLogin();
     } catch (e) {
       setState(() => _status = 'Offline ou erro: $e');
+    }
+  }
+
+  Future<void> _checkUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      final message = await AppUpdatePrompt.checkAndPrompt(
+        context,
+        service: _updateService,
+        manual: true,
+      );
+      if (!mounted) return;
+      await _loadVersion();
+      if (!mounted) return;
+      if (message != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), duration: const Duration(seconds: 5)),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao verificar atualização: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
     }
   }
 
@@ -111,6 +160,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const WorkoutsScreen()),
               ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: _checkingUpdate
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.system_update),
+              title: const Text('Atualização do app'),
+              subtitle: Text('Versão instalada: $_versionLabel'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _checkingUpdate ? null : _checkUpdate,
             ),
           ),
         ],

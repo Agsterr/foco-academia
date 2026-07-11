@@ -71,7 +71,7 @@ class AppUpdateService {
         currentVersionCode: currentCode,
         latestVersionName: data['versionName'] as String,
         latestVersionCode: (data['versionCode'] as num).toInt(),
-        downloadUrl: data['downloadUrl'] as String,
+        downloadUrl: _absoluteUrl(data['downloadUrl'] as String),
         releaseNotes: data['releaseNotes'] as String?,
         forceUpdate: data['forceUpdate'] as bool? ?? false,
         sha256: data['sha256'] as String?,
@@ -80,6 +80,12 @@ class AppUpdateService {
       if (error.response?.statusCode == 404) return null;
       rethrow;
     }
+  }
+
+  String _absoluteUrl(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    final base = AuthService.apiBase.replaceAll(RegExp(r'/$'), '');
+    return url.startsWith('/') ? '$base$url' : '$base/$url';
   }
 
   Future<void> downloadAndInstall(

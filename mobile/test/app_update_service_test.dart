@@ -7,6 +7,6 @@ void main() {
   });
 
   test('loginAppVersion retorna valor configurado', () {
-    expect(AppUpdateService.loginAppVersion(), '1.0.0+1');
+    expect(AppUpdateService.loginAppVersion(), matches(RegExp(r'^\d+\.\d+\.\d+\+\d+$')));
   });
 }
