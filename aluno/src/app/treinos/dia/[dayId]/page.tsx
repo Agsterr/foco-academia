@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import ExerciseMedia from "@/components/ExerciseMedia";
 import {
   RatingLevel,
   SessionComplete,
@@ -12,34 +13,11 @@ import {
   formatDuration,
   formatElapsed,
   getToken,
-  mediaUrl,
   ratingLabels,
   weekDayLabels,
 } from "@/lib/api";
 
 const ratings: RatingLevel[] = ["MUITO_BOM", "BOM", "FACIL", "RUIM", "MUITO_RUIM"];
-
-function ExerciseMedia({ url, mediaType }: { url?: string; mediaType?: string }) {
-  if (!url) return null;
-  const src = mediaUrl(url);
-  if (mediaType === "IMAGE") {
-    return (
-      <img
-        src={src}
-        alt="Referência do exercício"
-        className="mt-3 max-h-48 w-full rounded-lg object-cover"
-      />
-    );
-  }
-  return (
-    <video
-      src={src}
-      controls
-      playsInline
-      className="mt-3 w-full rounded-lg bg-black"
-    />
-  );
-}
 
 export default function TreinoDiaPage() {
   const { dayId } = useParams<{ dayId: string }>();
@@ -230,7 +208,11 @@ export default function TreinoDiaPage() {
                 {exercise.duration && <span>{exercise.duration}</span>}
               </div>
 
-              <ExerciseMedia url={exercise.videoUrl} mediaType={exercise.mediaType} />
+              <ExerciseMedia
+                url={exercise.videoUrl}
+                mediaType={exercise.mediaType}
+                name={exercise.name}
+              />
 
               {exercise.variationNotes && (
                 <p className="mt-2 rounded-lg bg-violet-950/40 px-3 py-2 text-sm text-violet-200">

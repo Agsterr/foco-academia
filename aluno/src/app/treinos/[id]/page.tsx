@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import ExerciseMedia from "@/components/ExerciseMedia";
 import {
-  API_URL,
   RatingLevel,
   Workout,
   api,
@@ -90,14 +90,11 @@ export default function TreinoDetalhePage() {
               {exercise.duration && <span>{exercise.duration}</span>}
             </div>
             {exercise.videoUrl && (
-              <a
-                href={exercise.videoUrl.startsWith("http") ? exercise.videoUrl : `${API_URL}${exercise.videoUrl}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-block text-sm text-blue-400 underline"
-              >
-                Ver vídeo explicativo
-              </a>
+              <ExerciseMedia
+                url={exercise.videoUrl}
+                mediaType={exercise.mediaType}
+                name={exercise.name}
+              />
             )}
             {exercise.notes && (
               <p className="mt-2 text-sm text-amber-300">{exercise.notes}</p>
