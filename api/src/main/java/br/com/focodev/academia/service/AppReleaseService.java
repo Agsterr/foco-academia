@@ -120,7 +120,7 @@ public class AppReleaseService {
         release.setFileName(safeFileName);
         release.setFileSizeBytes(size);
         release.setSha256(sha256);
-        release.setReleaseNotes(releaseNotes != null ? releaseNotes.trim() : null);
+        release.setReleaseNotes(truncateNotes(releaseNotes));
         release.setForceUpdate(forceUpdate);
         release.setActive(true);
 
@@ -273,5 +273,17 @@ public class AppReleaseService {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private static String truncateNotes(String releaseNotes) {
+        if (releaseNotes == null) {
+            return null;
+        }
+        String notes = releaseNotes.trim();
+        if (notes.isEmpty()) {
+            return null;
+        }
+        final int max = 2000;
+        return notes.length() <= max ? notes : notes.substring(0, max);
     }
 }

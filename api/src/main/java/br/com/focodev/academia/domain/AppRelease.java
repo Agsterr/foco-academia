@@ -34,6 +34,7 @@ public class AppRelease {
     @Column(nullable = false, length = 64)
     private String sha256;
 
+    @Column(length = 2000)
     private String releaseNotes;
 
     @Column(nullable = false)

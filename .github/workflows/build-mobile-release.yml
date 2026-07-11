@@ -141,7 +141,8 @@ jobs:
             exit 1
           fi
           APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
-          NOTES="Deploy automático ${COMMIT_SHA:0:7} — ${COMMIT_MSG}"
+          SHORT_MSG=$(printf '%s' "$COMMIT_MSG" | head -n1 | cut -c1-180)
+          NOTES="Deploy automático ${COMMIT_SHA:0:7} — ${SHORT_MSG}"
           for i in $(seq 1 5); do
             if curl -fsS -X POST "${API_URL}/api/app/releases/deploy" \
               -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
