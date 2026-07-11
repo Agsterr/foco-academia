@@ -206,7 +206,7 @@ class BleScaleService {
               ? 'Peso estável: ${sample.kg.toStringAsFixed(1)} kg'
               : 'Medindo: ${sample.kg.toStringAsFixed(1)} kg…',
         );
-        if (sample.stable && sample.kg >= 20 && sample.kg <= 300) {
+        if (sample.stable && sample.kg >= 5 && sample.kg <= 300) {
           finish(sample.kg);
         }
       },
@@ -363,39 +363,35 @@ class BleScaleService {
     if (raw.isEmpty) return null;
     final bytes = raw.map((e) => e & 0xff).toList();
 
-    // Formato clássico CA … (issue openScale #496)
+    // Formato clássico CA … (openScale #496): peso em décimos → /10
     final ca = bytes.indexOf(0xca);
     if (ca >= 0 && bytes.length >= ca + 12) {
       final finalFlag = bytes[ca + 8];
       final w = (bytes[ca + 10] << 8) | bytes[ca + 11];
-      // Tentativas: /10 e /100
-      for (final div in [10.0, 100.0]) {
-        final kg = w / div;
-        if (kg >= 20 && kg <= 300) {
-          return (kg: kg, stable: finalFlag == 0x01);
-        }
+      final kg = w / 10.0;
+      if (_plausibleKg(kg)) {
+        return (kg: kg, stable: finalFlag == 0x01);
       }
     }
 
-    // Formato C0 (issue #950): c0 seq weightHi weightLo … status
-    // 81.50 kg → 1F D6 = 8150 → /100
+    // Formato C0 (openScale #950 / OKOK): peso em centésimos → /100
+    // 81.50 kg → 0x1FD6 = 8150. NÃO usar /10 (6.8 virava 68).
     for (var i = 0; i < bytes.length - 8; i++) {
       if (bytes[i] != 0xc0) continue;
       final w = (bytes[i + 2] << 8) | bytes[i + 3];
       final status = bytes.length > i + 8 ? bytes[i + 8] : 0x24;
       final kg = w / 100.0;
-      if (kg >= 20 && kg <= 300) {
-        final stable = status == 0x25 || status == 0x21 || (status & 0x01) == 1;
+      if (_plausibleKg(kg)) {
+        final stable =
+            status == 0x25 || status == 0x21 || status == 0x01 || (status & 0x01) == 1;
         return (kg: kg, stable: stable);
-      }
-      final kg10 = w / 10.0;
-      if (kg10 >= 20 && kg10 <= 300) {
-        return (kg: kg10, stable: status == 0x25 || status == 0x01);
       }
     }
 
     return null;
   }
+
+  static bool _plausibleKg(double kg) => kg >= 5 && kg <= 300;
 
   static double? parseWeightMeasurement(List<int> bytes) {
     if (bytes.length < 3) return null;
