@@ -204,9 +204,13 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                                         if (!isRest) ...[
                                           const SizedBox(height: 4),
                                           Text(
-                                            '${day.exercises.length} exercícios',
-                                            style: const TextStyle(
-                                              color: Colors.white54,
+                                            day.exercises.isEmpty
+                                                ? 'Sem exercícios'
+                                                : '${day.exercises.length} exercícios',
+                                            style: TextStyle(
+                                              color: day.exercises.isEmpty
+                                                  ? Colors.amberAccent
+                                                  : Colors.white54,
                                               fontSize: 13,
                                             ),
                                           ),

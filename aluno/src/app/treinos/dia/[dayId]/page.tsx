@@ -75,6 +75,8 @@ export default function TreinoDiaPage() {
   );
   const doneSets = session?.setLogs.length ?? 0;
   const progress = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+  const hasExercises = (day?.exercises.length ?? 0) > 0;
+  const canFinish = !hasExercises || doneSets > 0;
 
   async function toggleSet(exerciseId: string, setNumber: number) {
     if (!session || saving) return;
@@ -192,6 +194,12 @@ export default function TreinoDiaPage() {
       </div>
 
       <div className="space-y-4">
+        {!hasExercises && (
+          <div className="rounded-xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-200">
+            Este dia não tem exercícios cadastrados. Você pode finalizar o treino
+            para liberar a ficha, ou peça ao instrutor para completar a ficha.
+          </div>
+        )}
         {day.exercises.map((exercise, index) => {
           const sets = exercise.sets ?? 1;
           const done = completedSets.get(exercise.id) ?? new Set<number>();
@@ -262,10 +270,10 @@ export default function TreinoDiaPage() {
       {!showFinish ? (
         <button
           onClick={() => setShowFinish(true)}
-          disabled={doneSets === 0}
+          disabled={!canFinish}
           className="mt-6 w-full rounded-lg bg-blue-600 py-3 font-medium disabled:opacity-40"
         >
-          Finalizar treino
+          {hasExercises ? "Finalizar treino" : "Finalizar mesmo sem exercícios"}
         </button>
       ) : (
         <form onSubmit={handleFinish} className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">

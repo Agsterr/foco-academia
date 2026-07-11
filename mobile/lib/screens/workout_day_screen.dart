@@ -231,6 +231,8 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     final totalSets = day.exercises.fold<int>(0, (acc, ex) => acc + ex.setCount);
     final doneSets = session.setLogs.length;
     final progress = totalSets > 0 ? (doneSets / totalSets).clamp(0.0, 1.0) : 0.0;
+    final hasExercises = day.exercises.isNotEmpty;
+    final canFinish = !hasExercises || doneSets > 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -303,6 +305,22 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            if (!hasExercises)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade700),
+                  color: Colors.amber.withValues(alpha: 0.1),
+                ),
+                child: const Text(
+                  'Este dia não tem exercícios cadastrados. '
+                  'Você pode finalizar o treino para liberar a ficha, '
+                  'ou peça ao instrutor para completar a ficha.',
+                  style: TextStyle(color: Colors.amberAccent, fontSize: 13),
+                ),
+              ),
             ...day.exercises.asMap().entries.map((entry) {
               final index = entry.key;
               final exercise = entry.value;
@@ -407,8 +425,8 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
             const SizedBox(height: 8),
             if (!_showFinish)
               FilledButton(
-                onPressed: doneSets == 0 ? null : () => setState(() => _showFinish = true),
-                child: const Text('Finalizar treino'),
+                onPressed: canFinish ? () => setState(() => _showFinish = true) : null,
+                child: Text(hasExercises ? 'Finalizar treino' : 'Finalizar mesmo sem exercícios'),
               )
             else ...[
               Container(

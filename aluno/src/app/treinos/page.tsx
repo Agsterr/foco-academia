@@ -112,8 +112,10 @@ export default function TreinosPage() {
                       {isRest ? "Descanso" : day.muscleGroup || "Treino"}
                     </p>
                     {!isRest && (
-                      <p className="mt-1 text-sm text-slate-400">
-                        {day.exercises.length} exercícios
+                      <p className={`mt-1 text-sm ${day.exercises.length === 0 ? "text-amber-400" : "text-slate-400"}`}>
+                        {day.exercises.length === 0
+                          ? "Sem exercícios"
+                          : `${day.exercises.length} exercícios`}
                       </p>
                     )}
                   </div>
