@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
 import '../services/auth_service.dart';
@@ -19,10 +20,9 @@ class CardioScreen extends StatefulWidget {
   State<CardioScreen> createState() => _CardioScreenState();
 }
 
-class _CardioScreenState extends State<CardioScreen> {
+class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver {
   StreamSubscription<Position>? _gpsSub;
-  Timer? _elapsedTimer;
-  Timer? _phaseTimer;
+  Timer? _clockTimer;
 
   CardioWorkout? _workout;
   CardioSession? _session;
@@ -41,11 +41,20 @@ class _CardioScreenState extends State<CardioScreen> {
   int _seq = 0;
   Position? _lastPos;
   String? _gpsStatus;
+  DateTime? _startedAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadWorkout();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _running) {
+      _syncFromWallClock();
+    }
   }
 
   Future<void> _loadWorkout() async {
@@ -76,10 +85,28 @@ class _CardioScreenState extends State<CardioScreen> {
   LocationSettings get _locationSettings {
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.best,
         distanceFilter: 0,
         intervalDuration: const Duration(seconds: 1),
-        forceLocationManager: true,
+        forceLocationManager: false,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Treino outdoor em andamento',
+          notificationText: 'Gravando GPS com a tela apagada — toque para voltar',
+          notificationChannelName: 'Treino outdoor',
+          enableWakeLock: true,
+          setOngoing: true,
+          notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+        ),
+      );
+    }
+    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.best,
+        activityType: ActivityType.fitness,
+        distanceFilter: 0,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
       );
     }
     return const LocationSettings(
@@ -93,12 +120,12 @@ class _CardioScreenState extends State<CardioScreen> {
     try {
       final current = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.best,
-        forceAndroidLocationManager: !kIsWeb && Platform.isAndroid,
+        forceAndroidLocationManager: false,
         timeLimit: const Duration(seconds: 20),
       );
       _onPosition(current);
       if (mounted) {
-        setState(() => _gpsStatus = 'GPS ok — ande para traçar a rota');
+        setState(() => _gpsStatus = 'GPS ok — pode apagar a tela');
       }
     } catch (_) {
       if (mounted) {
@@ -120,6 +147,17 @@ class _CardioScreenState extends State<CardioScreen> {
   }
 
   Future<bool> _ensureLocationPermission() async {
+    if (!kIsWeb && Platform.isAndroid) {
+      final notif = await Permission.notification.request();
+      if (!notif.isGranted && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ative notificações para gravar o GPS com a tela apagada'),
+          ),
+        );
+      }
+    }
+
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -132,6 +170,40 @@ class _CardioScreenState extends State<CardioScreen> {
       );
       return false;
     }
+
+    // Android 10+: precisa de "Permitir o tempo todo" para tela apagada / segundo plano.
+    if (!kIsWeb && Platform.isAndroid && permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.whileInUse) {
+        final always = await Permission.locationAlways.request();
+        if (!always.isGranted && mounted) {
+          final open = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Localização em segundo plano'),
+              content: const Text(
+                'Para gravar a rota com a tela apagada, escolha '
+                '"Permitir o tempo todo" nas configurações de localização.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Agora não'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Abrir configurações'),
+                ),
+              ],
+            ),
+          );
+          if (open == true) {
+            await Geolocator.openAppSettings();
+          }
+        }
+      }
+    }
+
     final enabled = await Geolocator.isLocationServiceEnabled();
     if (!enabled) {
       if (!mounted) return false;
@@ -142,6 +214,61 @@ class _CardioScreenState extends State<CardioScreen> {
       return false;
     }
     return true;
+  }
+
+  void _startClocks() {
+    _startedAt = DateTime.now();
+    _elapsed = 0;
+    _phaseIndex = 0;
+    _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
+    _clockTimer?.cancel();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) => _syncFromWallClock());
+  }
+
+  void _syncFromWallClock() {
+    if (!_running || _finishing || _startedAt == null) return;
+    final elapsed = DateTime.now().difference(_startedAt!).inSeconds;
+    if (elapsed < 0) return;
+
+    var phaseIndex = _phaseIndex;
+    var phaseRemaining = _phaseRemaining;
+    var phaseChanged = false;
+
+    if (_intervals.isNotEmpty) {
+      var cursor = elapsed;
+      var finished = true;
+      for (var i = 0; i < _intervals.length; i++) {
+        final dur = _intervals[i].durationSec;
+        if (cursor < dur) {
+          phaseIndex = i;
+          phaseRemaining = dur - cursor;
+          finished = false;
+          break;
+        }
+        cursor -= dur;
+      }
+      if (finished) {
+        if (!_finishing) {
+          unawaited(CardioFeedback.playFinish());
+          unawaited(_finish(auto: true));
+        }
+        return;
+      }
+      if (phaseIndex != _phaseIndex) {
+        phaseChanged = true;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _elapsed = elapsed;
+      _phaseIndex = phaseIndex;
+      _phaseRemaining = phaseRemaining;
+    });
+    if (phaseChanged) {
+      unawaited(CardioFeedback.playBeeps(phaseIndex.clamp(1, 5)));
+      unawaited(CardioFeedback.playPhase(_intervals[phaseIndex].phase));
+    }
   }
 
   Future<void> _start() async {
@@ -164,13 +291,10 @@ class _CardioScreenState extends State<CardioScreen> {
       setState(() {
         _session = session;
         _running = true;
-        _elapsed = 0;
         _distance = 0;
         _points.clear();
         _seq = 0;
         _lastPos = null;
-        _phaseIndex = 0;
-        _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
       });
 
       if (_intervals.isNotEmpty) {
@@ -180,18 +304,15 @@ class _CardioScreenState extends State<CardioScreen> {
         await CardioFeedback.playBeeps(1);
       }
 
-      _elapsedTimer?.cancel();
-      _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted || !_running) return;
-        setState(() => _elapsed++);
-      });
-
-      _phaseTimer?.cancel();
-      if (_intervals.isNotEmpty) {
-        _phaseTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickPhase());
-      }
-
+      _startClocks();
       await _startGpsTracking();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GPS em segundo plano ativo — pode apagar a tela'),
+          duration: Duration(seconds: 3),
+        ),
+      );
     } on SessionExpiredException {
       if (!mounted) return;
       setState(() => _error = 'Sessão expirada. Faça login novamente.');
@@ -201,55 +322,22 @@ class _CardioScreenState extends State<CardioScreen> {
       setState(() {
         _session = null;
         _running = true;
-        _elapsed = 0;
         _distance = 0;
         _points.clear();
         _seq = 0;
         _lastPos = null;
-        _phaseIndex = 0;
-        _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
       });
       await CardioFeedback.playBeeps(1);
       if (_intervals.isNotEmpty) {
         await CardioFeedback.playPhase(_intervals.first.phase);
       }
-      _elapsedTimer?.cancel();
-      _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted || !_running) return;
-        setState(() => _elapsed++);
-      });
-      _phaseTimer?.cancel();
-      if (_intervals.isNotEmpty) {
-        _phaseTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickPhase());
-      }
+      _startClocks();
       await _startGpsTracking();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Modo offline — o treino será sincronizado ao finalizar')),
+        const SnackBar(content: Text('Modo offline — GPS em segundo plano; sincroniza ao finalizar')),
       );
     }
-  }
-
-  void _tickPhase() {
-    if (!_running || _intervals.isEmpty || !mounted) return;
-
-    if (_phaseRemaining <= 1) {
-      final next = _phaseIndex + 1;
-      if (next >= _intervals.length) {
-        unawaited(CardioFeedback.playFinish());
-        unawaited(_finish(auto: true));
-        return;
-      }
-      unawaited(CardioFeedback.playBeeps(next.clamp(1, 5)));
-      unawaited(CardioFeedback.playPhase(_intervals[next].phase));
-      setState(() {
-        _phaseIndex = next;
-        _phaseRemaining = _intervals[next].durationSec;
-      });
-      return;
-    }
-
-    setState(() => _phaseRemaining--);
   }
 
   void _onPosition(Position pos) {
@@ -277,8 +365,8 @@ class _CardioScreenState extends State<CardioScreen> {
     if (mounted) {
       setState(() {
         _gpsStatus = _points.length < 2
-            ? 'GPS ok — ande para traçar a rota'
-            : 'GPS ativo · ${_points.length} pontos';
+            ? 'GPS ok — pode apagar a tela'
+            : 'GPS em 2º plano · ${_points.length} pontos';
       });
     }
   }
@@ -288,8 +376,12 @@ class _CardioScreenState extends State<CardioScreen> {
     _finishing = true;
     await _gpsSub?.cancel();
     _gpsSub = null;
-    _elapsedTimer?.cancel();
-    _phaseTimer?.cancel();
+    _clockTimer?.cancel();
+    _clockTimer = null;
+
+    if (_startedAt != null) {
+      _elapsed = DateTime.now().difference(_startedAt!).inSeconds.clamp(0, 86400 * 7);
+    }
 
     if (mounted) {
       setState(() => _running = false);
@@ -388,9 +480,9 @@ class _CardioScreenState extends State<CardioScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _gpsSub?.cancel();
-    _elapsedTimer?.cancel();
-    _phaseTimer?.cancel();
+    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -433,6 +525,13 @@ class _CardioScreenState extends State<CardioScreen> {
                               : '${_intervals.length} fases · ${_workout!.type}',
                       style: const TextStyle(color: Colors.white54, fontSize: 13),
                     ),
+                    if (_running) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Pode apagar a tela — o GPS continua em segundo plano',
+                        style: TextStyle(color: Colors.lightGreenAccent, fontSize: 12),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     RouteMapView(
                       statusMessage: _running

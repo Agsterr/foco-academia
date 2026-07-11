@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: ListTile(
               leading: const Icon(Icons.directions_run),
               title: const Text('Treino outdoor'),
-              subtitle: const Text('GPS, mapa, intervalos, bipes e vibração'),
+              subtitle: const Text('GPS em 2º plano, mapa, intervalos e bipes'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CardioScreen()),
               ),
