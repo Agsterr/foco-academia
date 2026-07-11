@@ -23,11 +23,40 @@ interface CardioStats {
   overdueWeightChecks: { studentName: string; dueDate: string }[];
 }
 
+interface CardioInterval {
+  phase: string;
+  durationSec: number;
+}
+
 interface CardioWorkout {
   id: string;
+  studentId: string;
   studentName: string;
   title: string;
   type: string;
+  intervalsJson?: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+function parseIntervals(json?: string | null): CardioInterval[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as CardioInterval[];
+  } catch {
+    return [];
+  }
+}
+
+function summarizeIntervals(json?: string | null): string {
+  const intervals = parseIntervals(json);
+  if (intervals.length === 0) return "Sem intervalos";
+  const walk = intervals.filter((i) => i.phase === "WALK").length;
+  const run = intervals.filter((i) => i.phase === "RUN").length;
+  const walkSec = intervals.find((i) => i.phase === "WALK")?.durationSec ?? 0;
+  const runSec = intervals.find((i) => i.phase === "RUN")?.durationSec ?? 0;
+  const rounds = Math.max(walk, run);
+  return `${rounds} rodadas · ${Math.round(walkSec / 60)} min caminhada / ${Math.round(runSec / 60)} min corrida`;
 }
 
 export default function CardioPage() {
@@ -41,6 +70,14 @@ export default function CardioPage() {
   const [runMin, setRunMin] = useState(1);
   const [rounds, setRounds] = useState(5);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function refreshWorkouts() {
+    const w = await api<CardioWorkout[]>("/api/instructor/cardio-workouts");
+    setWorkouts(w);
+  }
 
   useEffect(() => {
     if (!getToken()) {
@@ -59,25 +96,111 @@ export default function CardioPage() {
     });
   }, [router]);
 
-  async function createWorkout(e: FormEvent) {
-    e.preventDefault();
-    const intervals = [];
+  function buildIntervals() {
+    const intervals: CardioInterval[] = [];
     for (let i = 0; i < rounds; i++) {
       intervals.push({ phase: "WALK", durationSec: walkMin * 60 });
       intervals.push({ phase: "RUN", durationSec: runMin * 60 });
     }
-    await api("/api/instructor/cardio-workouts", {
-      method: "POST",
-      body: JSON.stringify({
-        studentId,
-        title,
-        type: "INTERVAL",
-        intervals,
-      }),
-    });
-    setMessage("Treino outdoor criado!");
-    const w = await api<CardioWorkout[]>("/api/instructor/cardio-workouts");
-    setWorkouts(w);
+    return intervals;
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setTitle("Caminhada intervalada");
+    setWalkMin(2);
+    setRunMin(1);
+    setRounds(5);
+    if (students.length > 0) setStudentId(students[0].id);
+  }
+
+  function startEdit(w: CardioWorkout) {
+    const intervals = parseIntervals(w.intervalsJson);
+    const walk = intervals.find((i) => i.phase === "WALK");
+    const run = intervals.find((i) => i.phase === "RUN");
+    const walkCount = intervals.filter((i) => i.phase === "WALK").length;
+    const runCount = intervals.filter((i) => i.phase === "RUN").length;
+
+    setEditingId(w.id);
+    setStudentId(w.studentId);
+    setTitle(w.title);
+    setWalkMin(Math.max(1, Math.round((walk?.durationSec ?? 120) / 60)));
+    setRunMin(Math.max(1, Math.round((run?.durationSec ?? 60) / 60)));
+    setRounds(Math.max(1, Math.max(walkCount, runCount) || 1));
+    setMessage("");
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveWorkout(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      const intervals = buildIntervals();
+      if (editingId) {
+        await api(`/api/instructor/cardio-workouts/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            title,
+            type: "INTERVAL",
+            intervals,
+            active: true,
+          }),
+        });
+        setMessage("Treino atualizado!");
+      } else {
+        await api("/api/instructor/cardio-workouts", {
+          method: "POST",
+          body: JSON.stringify({
+            studentId,
+            title,
+            type: "INTERVAL",
+            intervals,
+          }),
+        });
+        setMessage("Treino outdoor criado!");
+      }
+      resetForm();
+      await refreshWorkouts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao salvar treino");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleActive(w: CardioWorkout) {
+    setError("");
+    try {
+      await api(`/api/instructor/cardio-workouts/${w.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: w.title,
+          type: w.type,
+          intervals: parseIntervals(w.intervalsJson),
+          active: !w.active,
+        }),
+      });
+      setMessage(w.active ? "Treino desativado." : "Treino reativado para o aluno.");
+      await refreshWorkouts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao atualizar status");
+    }
+  }
+
+  async function deleteWorkout(w: CardioWorkout) {
+    if (!confirm(`Apagar o treino "${w.title}" de ${w.studentName}?`)) return;
+    setError("");
+    try {
+      await api(`/api/instructor/cardio-workouts/${w.id}`, { method: "DELETE" });
+      if (editingId === w.id) resetForm();
+      setMessage("Treino apagado.");
+      await refreshWorkouts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao apagar treino");
+    }
   }
 
   return (
@@ -101,25 +224,56 @@ export default function CardioPage() {
         </div>
       )}
 
-      <form onSubmit={createWorkout} className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <h3 className="font-medium">Prescrever treino intervalado</h3>
+      <form onSubmit={saveWorkout} className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-medium">
+            {editingId ? "Editar treino outdoor" : "Prescrever treino intervalado"}
+          </h3>
+          {editingId && (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="text-xs text-slate-400 hover:text-white"
+            >
+              Cancelar edição
+            </button>
+          )}
+        </div>
         <div className="mt-3 space-y-2">
-          <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="form-input" required>
+          <select
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+            className="form-input"
+            required
+            disabled={!!editingId}
+          >
             {students.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="form-input" required />
           <div className="grid grid-cols-3 gap-2">
-            <input type="number" min={1} value={walkMin} onChange={(e) => setWalkMin(Number(e.target.value))} className="form-input" placeholder="Caminhada min" />
-            <input type="number" min={1} value={runMin} onChange={(e) => setRunMin(Number(e.target.value))} className="form-input" placeholder="Corrida min" />
-            <input type="number" min={1} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} className="form-input" placeholder="Rodadas" />
+            <label className="text-xs text-slate-400">
+              Caminhada (min)
+              <input type="number" min={1} value={walkMin} onChange={(e) => setWalkMin(Number(e.target.value))} className="form-input mt-1" />
+            </label>
+            <label className="text-xs text-slate-400">
+              Corrida (min)
+              <input type="number" min={1} value={runMin} onChange={(e) => setRunMin(Number(e.target.value))} className="form-input mt-1" />
+            </label>
+            <label className="text-xs text-slate-400">
+              Rodadas
+              <input type="number" min={1} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} className="form-input mt-1" />
+            </label>
           </div>
         </div>
-        <button type="submit" className="btn-primary mt-3 text-sm">Publicar treino outdoor</button>
+        <button type="submit" disabled={saving} className="btn-primary mt-3 text-sm">
+          {saving ? "Salvando..." : editingId ? "Salvar alterações" : "Publicar treino outdoor"}
+        </button>
       </form>
 
       {message && <p className="mt-3 text-sm text-green-400">{message}</p>}
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
       <h3 className="mt-6 font-medium">Execuções recentes</h3>
       <div className="mt-2 space-y-2">
@@ -140,10 +294,48 @@ export default function CardioPage() {
       <div className="mt-2 space-y-2">
         {workouts.map((w) => (
           <div key={w.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm">
-            <p className="font-medium">{w.title}</p>
-            <p className="text-slate-400">{w.studentName} · {w.type}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{w.title}</p>
+                <p className="text-slate-400">
+                  {w.studentName} · {w.type}
+                  {w.active ? (
+                    <span className="ml-2 text-green-400">Ativo</span>
+                  ) : (
+                    <span className="ml-2 text-slate-500">Inativo</span>
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{summarizeIntervals(w.intervalsJson)}</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => startEdit(w)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:bg-slate-800"
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleActive(w)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:bg-slate-800"
+              >
+                {w.active ? "Desativar" : "Reativar"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteWorkout(w)}
+                className="rounded-lg border border-red-900/60 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/40"
+              >
+                Apagar
+              </button>
+            </div>
           </div>
         ))}
+        {workouts.length === 0 && (
+          <p className="text-sm text-slate-500">Nenhum treino prescrito ainda.</p>
+        )}
       </div>
     </AppShell>
   );

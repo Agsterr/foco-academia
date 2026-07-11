@@ -36,7 +36,9 @@ public final class StudentProfileDtos {
             Double waistCm,
             Double hipsCm,
             Double chestCm,
-            String notes
+            String notes,
+            /** Opcional: STUDENT, SCALE_BLE, WATCH, IMPORT */
+            String source
     ) {}
 
     public record BodyMeasurementResponse(

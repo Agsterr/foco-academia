@@ -111,4 +111,16 @@ class CardioService {
       'points': points,
     });
   }
+
+  /// Backup incremental na nuvem durante a corrida.
+  Future<void> backupRoutePoints({
+    required String sessionId,
+    required List<Map<String, dynamic>> points,
+  }) async {
+    if (points.isEmpty) return;
+    await AuthService.instance.post(
+      '/api/student/cardio-sessions/$sessionId/points',
+      {'points': points},
+    );
+  }
 }

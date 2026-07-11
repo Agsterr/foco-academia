@@ -20,4 +20,6 @@ public interface CardioSessionRepository extends JpaRepository<CardioSession, UU
     Optional<CardioSession> findByClientSessionId(String clientSessionId);
 
     long countByStudentIdAndCompletedAtAfter(UUID studentId, Instant after);
+
+    List<CardioSession> findByWorkoutId(UUID workoutId);
 }

@@ -20,8 +20,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -110,5 +112,62 @@ class CardioIntegrationTest {
                         .header("Authorization", "Bearer " + fixture.instructorToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sessionsThisWeek").value(1));
+    }
+
+    @Test
+    void instructorCanUpdateAndDeleteCardioWorkout() throws Exception {
+        Map<String, Object> workoutBody = Map.of(
+                "studentId", fixture.student().getId().toString(),
+                "title", "Caminhada intervalada",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 120),
+                        Map.of("phase", "RUN", "durationSec", 60)
+                )
+        );
+
+        String workoutJson = mockMvc.perform(post("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(workoutBody)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID workoutId = UUID.fromString(
+                workoutJson.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1"));
+
+        Map<String, Object> updateBody = Map.of(
+                "title", "Intervalado atualizado",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 90),
+                        Map.of("phase", "RUN", "durationSec", 90)
+                ),
+                "active", true
+        );
+
+        mockMvc.perform(put("/api/instructor/cardio-workouts/" + workoutId)
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateBody)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Intervalado atualizado"))
+                .andExpect(jsonPath("$.active").value(true));
+
+        mockMvc.perform(get("/api/student/cardio-workouts/active")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Intervalado atualizado"));
+
+        mockMvc.perform(delete("/api/instructor/cardio-workouts/" + workoutId)
+                        .header("Authorization", "Bearer " + fixture.instructorToken()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
     }
 }

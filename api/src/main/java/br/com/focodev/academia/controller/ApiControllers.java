@@ -10,6 +10,7 @@ import br.com.focodev.academia.service.TenantService;
 import br.com.focodev.academia.service.WorkoutProgramService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -344,6 +345,14 @@ public class ApiControllers {
         return studentProfileService.getStudentProfile(user, studentId);
     }
 
+    @GetMapping("/instructor/students/{studentId}/measurements")
+    public List<StudentProfileDtos.BodyMeasurementResponse> instructorStudentMeasurements(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID studentId
+    ) {
+        return studentProfileService.listInstructorStudentMeasurements(user, studentId);
+    }
+
     @PostMapping("/instructor/students/{studentId}/weight-schedule")
     public StudentProfileDtos.WeightCheckScheduleResponse scheduleWeightCheck(
             @AuthenticationPrincipal AuthUser user,
@@ -375,6 +384,24 @@ public class ApiControllers {
             @Valid @RequestBody CardioDtos.CreateCardioWorkoutRequest request
     ) {
         return cardioService.createWorkout(user, request);
+    }
+
+    @PutMapping("/instructor/cardio-workouts/{workoutId}")
+    public CardioDtos.CardioWorkoutResponse updateCardioWorkout(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID workoutId,
+            @Valid @RequestBody CardioDtos.UpdateCardioWorkoutRequest request
+    ) {
+        return cardioService.updateWorkout(user, workoutId, request);
+    }
+
+    @DeleteMapping("/instructor/cardio-workouts/{workoutId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCardioWorkout(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID workoutId
+    ) {
+        cardioService.deleteWorkout(user, workoutId);
     }
 
     @GetMapping("/instructor/cardio-workouts")

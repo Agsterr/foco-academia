@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import ExerciseNameField from "@/components/ExerciseNameField";
 import MediaPicker from "@/components/MediaPicker";
 import {
   MediaType,
@@ -16,14 +17,19 @@ import {
 } from "@/lib/api";
 import { addRecentMedia } from "@/lib/recent-media";
 import {
+  DAY_SCOPE_TEMPLATES,
   EXERCISE_LIBRARY,
+  ExerciseGoal,
   LibraryExercise,
   MuscleTag,
-  WEEK_TEMPLATES,
+  WEEK_SCOPE_TEMPLATES,
   WeekTemplate,
+  countByMuscle,
   getExercisesByMuscle,
+  goalLabels,
   libraryExerciseToForm,
   muscleLabels,
+  muscleOrder,
   resolveTemplateExercises,
 } from "@/lib/exercise-library";
 
@@ -109,9 +115,11 @@ export default function NovaFichaPage() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  const [muscleFilter, setMuscleFilter] = useState<MuscleTag | "TODOS">("TODOS");
+  const [muscleFilter, setMuscleFilter] = useState<MuscleTag | "TODOS">("PEITO");
+  const [goalFilter, setGoalFilter] = useState<ExerciseGoal | "TODOS">("TODOS");
   const [libraryQuery, setLibraryQuery] = useState("");
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const muscleCounts = useMemo(() => countByMuscle(), []);
 
   useEffect(() => {
     if (!getToken()) {
@@ -125,16 +133,30 @@ export default function NovaFichaPage() {
   }, [router]);
 
   const libraryItems = useMemo(() => {
-    const base = getExercisesByMuscle(muscleFilter);
+    let base = getExercisesByMuscle(muscleFilter);
+    if (goalFilter !== "TODOS") {
+      base = base.filter((e) => e.goal === goalFilter);
+    }
     const q = libraryQuery.trim().toLowerCase();
     if (!q) return base;
     return base.filter(
       (e) =>
         e.name.toLowerCase().includes(q) ||
         e.description.toLowerCase().includes(q) ||
-        muscleLabels[e.muscle].toLowerCase().includes(q)
+        muscleLabels[e.muscle].toLowerCase().includes(q) ||
+        goalLabels[e.goal].toLowerCase().includes(q)
     );
-  }, [muscleFilter, libraryQuery]);
+  }, [muscleFilter, goalFilter, libraryQuery]);
+
+  const dayExerciseNames = useMemo(
+    () =>
+      new Set(
+        days[activeDay].exercises
+          .map((e) => e.name.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    [days, activeDay]
+  );
 
   function updateDay(weekDay: WeekDay, patch: Partial<DayForm>) {
     setDays((prev) => ({ ...prev, [weekDay]: { ...prev[weekDay], ...patch } }));
@@ -197,6 +219,21 @@ export default function NovaFichaPage() {
   }
 
   function handleApplyTemplate(template: WeekTemplate) {
+    if (template.scope === "DAY") {
+      const dayDef = Object.values(template.days)[0];
+      if (!dayDef) return;
+      updateDay(activeDay, {
+        muscleGroup: dayDef.muscleGroup,
+        notes: dayDef.notes,
+        restDay: false,
+        exercises: resolveTemplateExercises(dayDef.exerciseIds),
+      });
+      setMessage(
+        `Modelo "${template.name}" aplicado em ${weekDayLabels[activeDay]} — revise e continue.`
+      );
+      return;
+    }
+
     const applied = applyTemplate(template);
     setTitle(applied.title);
     setDescription(applied.description);
@@ -285,20 +322,43 @@ export default function NovaFichaPage() {
         Use uma ficha pronta ou monte arrastando exercícios da biblioteca.
       </p>
 
-      <div className="mb-4 space-y-2">
-        <p className="text-sm font-medium text-slate-300">Fichas prontas</p>
-        <div className="flex flex-wrap gap-2">
-          {WEEK_TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => handleApplyTemplate(t)}
-              className="rounded-lg border border-violet-700/60 bg-violet-950/40 px-3 py-2 text-left text-sm hover:bg-violet-900/50"
-            >
-              <span className="font-medium text-violet-200">{t.name}</span>
-              <span className="mt-0.5 block text-xs text-slate-400">{t.description}</span>
-            </button>
-          ))}
+      <div className="mb-4 space-y-4">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-300">Fichas da semana</p>
+          <div className="flex flex-wrap gap-2">
+            {WEEK_SCOPE_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleApplyTemplate(t)}
+                className="rounded-lg border border-violet-700/60 bg-violet-950/40 px-3 py-2 text-left text-sm hover:bg-violet-900/50"
+              >
+                <span className="font-medium text-violet-200">{t.name}</span>
+                <span className="mt-0.5 block text-xs text-slate-400">{t.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-300">
+            Modelos de dia{" "}
+            <span className="font-normal text-slate-500">
+              (aplica em {weekDayLabels[activeDay]})
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {DAY_SCOPE_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleApplyTemplate(t)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left text-sm hover:bg-slate-800"
+              >
+                <span className="font-medium text-slate-200">{t.name}</span>
+                <span className="mt-0.5 block text-xs text-slate-500">{t.description}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -438,13 +498,15 @@ export default function NovaFichaPage() {
                           Remover
                         </button>
                       </div>
-                      <input
+                      <ExerciseNameField
                         value={exercise.name}
-                        onChange={(e) =>
-                          updateExercise(activeDay, index, { name: e.target.value })
+                        onChange={(name) =>
+                          updateExercise(activeDay, index, { name })
                         }
-                        placeholder="Nome (ex: Supino reto)"
-                        className="mb-2 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+                        onSelectLibrary={(patch) =>
+                          updateExercise(activeDay, index, patch)
+                        }
+                        placeholder="Digite ou selecione (ex: Supino reto)"
                       />
                       <textarea
                         value={exercise.description}
@@ -527,60 +589,142 @@ export default function NovaFichaPage() {
           </div>
 
           <aside className="rounded-xl border border-slate-800 bg-slate-900 p-3 lg:sticky lg:top-4 lg:max-h-[80vh] lg:overflow-y-auto">
-            <h3 className="text-sm font-medium text-slate-200">Biblioteca</h3>
+            <h3 className="text-sm font-medium text-slate-200">
+              Escolher exercícios
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              1) Selecione o músculo · 2) Toque para adicionar em{" "}
+              {weekDayLabels[activeDay]}
+            </p>
+
             <input
               value={libraryQuery}
               onChange={(e) => setLibraryQuery(e.target.value)}
-              placeholder="Buscar exercício..."
-              className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
+              placeholder="Buscar por nome..."
+              className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm"
             />
-            <div className="mt-2 flex flex-wrap gap-1">
+
+            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              Músculo
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={() => setMuscleFilter("TODOS")}
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  muscleFilter === "TODOS" ? "bg-violet-600" : "bg-slate-800"
+                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                  muscleFilter === "TODOS"
+                    ? "bg-violet-600 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                 }`}
               >
-                Todos
+                Todos ({EXERCISE_LIBRARY.length})
               </button>
-              {(Object.keys(muscleLabels) as MuscleTag[]).map((m) => (
+              {muscleOrder.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMuscleFilter(m)}
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    muscleFilter === m ? "bg-violet-600" : "bg-slate-800"
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    muscleFilter === m
+                      ? "bg-violet-600 text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
                 >
-                  {muscleLabels[m]}
+                  {muscleLabels[m]} ({muscleCounts[m]})
                 </button>
               ))}
             </div>
-            <ul className="mt-3 space-y-2">
-              {libraryItems.map((ex) => (
-                <li key={ex.id}>
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("application/x-exercise-id", ex.id);
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onClick={() => addLibraryExercise(ex)}
-                    disabled={currentDay.restDay}
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2 text-left text-sm hover:border-violet-600 disabled:opacity-40"
-                  >
-                    <span className="font-medium text-slate-100">{ex.name}</span>
-                    <span className="mt-0.5 block text-[11px] text-violet-300">
-                      {muscleLabels[ex.muscle]} · {ex.sets}x{ex.reps || ex.duration}
-                    </span>
-                    <span className="mt-1 block text-[11px] text-slate-500 line-clamp-2">
-                      {ex.notes}
-                    </span>
-                  </button>
-                </li>
+
+            <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              Objetivo
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setGoalFilter("TODOS")}
+                className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                  goalFilter === "TODOS"
+                    ? "bg-emerald-700 text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                Qualquer
+              </button>
+              {(Object.keys(goalLabels) as ExerciseGoal[]).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGoalFilter(g)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                    goalFilter === g
+                      ? "bg-emerald-700 text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {goalLabels[g]}
+                </button>
               ))}
+            </div>
+
+            {!currentDay.restDay && currentDay.muscleGroup.trim() === "" && muscleFilter !== "TODOS" && (
+              <button
+                type="button"
+                onClick={() =>
+                  updateDay(activeDay, { muscleGroup: muscleLabels[muscleFilter] })
+                }
+                className="mt-3 w-full rounded-lg border border-dashed border-violet-600/50 py-1.5 text-xs text-violet-300 hover:bg-violet-950/40"
+              >
+                Usar “{muscleLabels[muscleFilter]}” como grupo do dia
+              </button>
+            )}
+
+            <ul className="mt-3 space-y-2">
+              {libraryItems.length === 0 && (
+                <li className="text-xs text-slate-500">Nenhum exercício neste filtro.</li>
+              )}
+              {libraryItems.map((ex) => {
+                const alreadyIn =
+                  dayExerciseNames.has(ex.name.trim().toLowerCase());
+                return (
+                  <li key={ex.id}>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("application/x-exercise-id", ex.id);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={() => addLibraryExercise(ex)}
+                      disabled={currentDay.restDay}
+                      className={`w-full rounded-lg border p-2.5 text-left text-sm transition disabled:opacity-40 ${
+                        alreadyIn
+                          ? "border-emerald-800/60 bg-emerald-950/30"
+                          : "border-slate-800 bg-slate-950 hover:border-violet-600"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-medium text-slate-100">{ex.name}</span>
+                        <span
+                          className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            alreadyIn
+                              ? "bg-emerald-800 text-emerald-100"
+                              : "bg-violet-700 text-white"
+                          }`}
+                        >
+                          {alreadyIn ? "No dia" : "+ Add"}
+                        </span>
+                      </div>
+                      <span className="mt-1 block text-[11px] text-violet-300">
+                        {muscleLabels[ex.muscle]} · {goalLabels[ex.goal]} ·{" "}
+                        {ex.sets}x{ex.reps || ex.duration}
+                      </span>
+                      <span className="mt-1 block text-[11px] text-slate-500 line-clamp-2">
+                        {ex.notes}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </aside>
         </div>

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import BluetoothScaleButton from "@/components/BluetoothScaleButton";
 import WeightChart from "@/components/WeightChart";
 import {
   BodyMeasurement,
@@ -94,8 +95,13 @@ export default function EvolucaoPage() {
 
       <WeightChart measurements={measurements} />
 
+      <BluetoothScaleButton onSaved={load} />
+
       <form onSubmit={handleWeight} className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <h3 className="font-medium">Registrar peso</h3>
+        <h3 className="font-medium">Registrar peso (manual)</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Sem balança Bluetooth? Digite o valor normalmente.
+        </p>
         <div className="mt-2 flex gap-2">
           <input
             type="number"

@@ -3,10 +3,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/services/app_update_service.dart';
 import '../presentation/widgets/app_update_prompt.dart';
+import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
 import 'cardio_screen.dart';
 import 'login_screen.dart';
+import 'weight_screen.dart';
 import 'workouts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String _status = '';
   String _versionLabel = '...';
   bool _checkingUpdate = false;
+  bool _hasActiveRun = false;
 
   @override
   void initState() {
@@ -29,7 +32,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _sendHeartbeat();
       _loadVersion();
+      _checkActiveRun();
     });
+  }
+
+  Future<void> _checkActiveRun() async {
+    final flag = await ActiveRunStore.instance.hasActiveFlag();
+    final snap = flag ? await ActiveRunStore.instance.load() : null;
+    if (!mounted) return;
+    setState(() => _hasActiveRun = snap != null);
   }
 
   @override
@@ -43,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _sendHeartbeat();
       _loadVersion();
+      _checkActiveRun();
     }
   }
 
@@ -134,14 +146,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_hasActiveRun)
+            Card(
+              color: const Color(0xFF14532D),
+              child: ListTile(
+                leading: const Icon(Icons.restore, color: Colors.lightGreenAccent),
+                title: const Text('Corrida interrompida'),
+                subtitle: const Text('Toque para retomar o rastreamento GPS'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CardioScreen(autoResume: true),
+                    ),
+                  );
+                  await _checkActiveRun();
+                },
+              ),
+            ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.monitor_weight_outlined),
+              title: const Text('Evolução e peso'),
+              subtitle: const Text('Gráfico, balança Bluetooth e import do relógio'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WeightScreen()),
+              ),
+            ),
+          ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.directions_run),
               title: const Text('Treino outdoor'),
-              subtitle: const Text('GPS em 2º plano, mapa, intervalos e bipes'),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CardioScreen()),
-              ),
+              subtitle: const Text('GPS, ritmo, splits, GPX/TCX e backup'),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CardioScreen()),
+                );
+                await _checkActiveRun();
+              },
             ),
           ),
           Card(

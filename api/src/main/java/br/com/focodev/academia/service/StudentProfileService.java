@@ -114,7 +114,7 @@ public class StudentProfileService {
         m.setHipsCm(request.hipsCm());
         m.setChestCm(request.chestCm());
         m.setNotes(request.notes());
-        m.setSource(MeasurementSource.STUDENT);
+        m.setSource(resolveMeasurementSource(request.source()));
         measurementRepository.save(m);
 
         profileRepository.findByUserId(user.getId()).ifPresent(profile -> {
@@ -138,6 +138,20 @@ public class StudentProfileService {
     public List<StudentProfileDtos.BodyMeasurementResponse> listMeasurements(AuthUser student) {
         User user = requireStudent(student);
         return measurementRepository.findByStudentIdOrderByRecordedAtDesc(user.getId()).stream()
+                .map(this::toMeasurementResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentProfileDtos.BodyMeasurementResponse> listInstructorStudentMeasurements(
+            AuthUser instructor,
+            UUID studentId
+    ) {
+        User instructorUser = tenantService.requireInstructor(instructor);
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        tenantService.requireStudentInInstructorAcademy(instructorUser, student);
+        return measurementRepository.findByStudentIdOrderByRecordedAtDesc(studentId).stream()
                 .map(this::toMeasurementResponse)
                 .toList();
     }
@@ -213,6 +227,21 @@ public class StudentProfileService {
             throw new ApiException("Acesso negado");
         }
         return user;
+    }
+
+    private MeasurementSource resolveMeasurementSource(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return MeasurementSource.STUDENT;
+        }
+        try {
+            MeasurementSource source = MeasurementSource.valueOf(raw.trim().toUpperCase());
+            if (source == MeasurementSource.INSTRUCTOR) {
+                return MeasurementSource.STUDENT;
+            }
+            return source;
+        } catch (IllegalArgumentException ex) {
+            return MeasurementSource.STUDENT;
+        }
     }
 
     private StudentProfileDtos.StudentProfileResponse toProfileResponse(User user, StudentProfile profile) {

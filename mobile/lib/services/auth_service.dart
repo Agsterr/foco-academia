@@ -117,6 +117,26 @@ class AuthService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> getList(String path) async {
+    final response = await http.get(
+      Uri.parse('$apiBase$path'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+    if (response.statusCode == 401) {
+      await logout();
+      throw SessionExpiredException();
+    }
+    if (response.statusCode != 200) {
+      throw Exception('Erro ${response.statusCode}');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) return decoded;
+    throw Exception('Resposta inválida');
+  }
+
   /// Retorna null em 404 (ex.: sem treino outdoor ativo).
   Future<Map<String, dynamic>?> getOptional(String path) async {
     final response = await http.get(

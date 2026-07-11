@@ -23,6 +23,13 @@ public final class CardioDtos {
             @Valid List<CardioIntervalDto> intervals
     ) {}
 
+    public record UpdateCardioWorkoutRequest(
+            @NotBlank @Size(max = 200) String title,
+            @NotNull CardioType type,
+            @Valid List<CardioIntervalDto> intervals,
+            Boolean active
+    ) {}
+
     public record CardioWorkoutResponse(
             UUID id,
             UUID studentId,

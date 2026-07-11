@@ -64,6 +64,48 @@ public class CardioService {
         return toWorkoutResponse(workoutRepository.save(workout));
     }
 
+    @Transactional
+    public CardioDtos.CardioWorkoutResponse updateWorkout(
+            AuthUser instructor,
+            UUID workoutId,
+            CardioDtos.UpdateCardioWorkoutRequest request
+    ) {
+        CardioWorkout workout = requireInstructorWorkout(instructor, workoutId);
+        workout.setTitle(request.title().trim());
+        workout.setType(request.type());
+        if (request.intervals() != null) {
+            try {
+                workout.setIntervalsJson(
+                        request.intervals().isEmpty()
+                                ? null
+                                : objectMapper.writeValueAsString(request.intervals())
+                );
+            } catch (JsonProcessingException e) {
+                throw new ApiException("Intervalos inválidos");
+            }
+        }
+        if (request.active() != null) {
+            if (Boolean.TRUE.equals(request.active())) {
+                deactivateOtherActiveWorkouts(workout.getStudent().getId(), workout.getId());
+                workout.setActive(true);
+            } else {
+                workout.setActive(false);
+            }
+        }
+        return toWorkoutResponse(workoutRepository.save(workout));
+    }
+
+    @Transactional
+    public void deleteWorkout(AuthUser instructor, UUID workoutId) {
+        CardioWorkout workout = requireInstructorWorkout(instructor, workoutId);
+        // Mantém histórico das sessões; apenas desvincula o treino prescrito.
+        for (CardioSession session : sessionRepository.findByWorkoutId(workoutId)) {
+            session.setWorkout(null);
+            sessionRepository.save(session);
+        }
+        workoutRepository.delete(workout);
+    }
+
     @Transactional(readOnly = true)
     public List<CardioDtos.CardioWorkoutResponse> listInstructorWorkouts(AuthUser instructor) {
         tenantService.requireInstructor(instructor);
@@ -284,6 +326,26 @@ public class CardioService {
             throw new ApiException("Acesso negado");
         }
         return user;
+    }
+
+    private CardioWorkout requireInstructorWorkout(AuthUser instructor, UUID workoutId) {
+        User instructorUser = tenantService.requireInstructor(instructor);
+        CardioWorkout workout = workoutRepository.findById(workoutId)
+                .orElseThrow(() -> new ApiException("Treino outdoor não encontrado"));
+        if (!workout.getInstructor().getId().equals(instructorUser.getId())) {
+            throw new ApiException("Acesso negado");
+        }
+        return workout;
+    }
+
+    private void deactivateOtherActiveWorkouts(UUID studentId, UUID keepWorkoutId) {
+        workoutRepository.findByStudentIdAndActiveTrueOrderByCreatedAtDesc(studentId)
+                .forEach(w -> {
+                    if (!w.getId().equals(keepWorkoutId)) {
+                        w.setActive(false);
+                        workoutRepository.save(w);
+                    }
+                });
     }
 
     private Instant parseInstant(String value) {

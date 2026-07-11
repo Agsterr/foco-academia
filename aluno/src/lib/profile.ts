@@ -73,6 +73,8 @@ export function addMeasurement(data: {
   hipsCm?: number;
   chestCm?: number;
   notes?: string;
+  /** STUDENT | SCALE_BLE | WATCH | IMPORT */
+  source?: string;
 }) {
   return api<BodyMeasurement>("/api/student/measurements", {
     method: "POST",

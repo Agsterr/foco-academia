@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import StudentWeightChart, { WeightPoint } from "@/components/StudentWeightChart";
 import { User, api, getToken } from "@/lib/api";
 import { FitnessGoal, StudentProfile, goalLabels } from "@/lib/profile";
 
@@ -11,6 +12,7 @@ export default function AlunosPage() {
   const [students, setStudents] = useState<User[]>([]);
   const [selected, setSelected] = useState<User | null>(null);
   const [profile, setProfile] = useState<StudentProfile | null>(null);
+  const [measurements, setMeasurements] = useState<WeightPoint[]>([]);
   const [weightDate, setWeightDate] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,11 +40,17 @@ export default function AlunosPage() {
   async function selectStudent(student: User) {
     setSelected(student);
     setMessage("");
+    setMeasurements([]);
     try {
-      const p = await api<StudentProfile>(`/api/instructor/students/${student.id}/profile`);
+      const [p, m] = await Promise.all([
+        api<StudentProfile>(`/api/instructor/students/${student.id}/profile`),
+        api<WeightPoint[]>(`/api/instructor/students/${student.id}/measurements`),
+      ]);
       setProfile(p);
+      setMeasurements(m);
     } catch {
       setProfile(null);
+      setMeasurements([]);
     }
   }
 
@@ -150,6 +158,8 @@ export default function AlunosPage() {
             ) : (
               <p className="mt-2 text-sm text-amber-400">Aguardando onboarding do aluno</p>
             )}
+
+            <StudentWeightChart measurements={measurements} />
 
             <button
               type="button"
