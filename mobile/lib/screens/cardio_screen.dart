@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
@@ -38,6 +40,7 @@ class _CardioScreenState extends State<CardioScreen> {
   String? _clientSessionId;
   int _seq = 0;
   Position? _lastPos;
+  String? _gpsStatus;
 
   @override
   void initState() {
@@ -70,6 +73,52 @@ class _CardioScreenState extends State<CardioScreen> {
     }
   }
 
+  LocationSettings get _locationSettings {
+    if (!kIsWeb && Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+        intervalDuration: const Duration(seconds: 1),
+        forceLocationManager: true,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.best,
+      distanceFilter: 0,
+    );
+  }
+
+  Future<void> _startGpsTracking() async {
+    setState(() => _gpsStatus = 'Buscando sinal GPS...');
+    try {
+      final current = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        forceAndroidLocationManager: !kIsWeb && Platform.isAndroid,
+        timeLimit: const Duration(seconds: 20),
+      );
+      _onPosition(current);
+      if (mounted) {
+        setState(() => _gpsStatus = 'GPS ok — ande para traçar a rota');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _gpsStatus = 'Sem fix ainda — mantenha o GPS ligado e vá para área aberta');
+      }
+    }
+
+    await _gpsSub?.cancel();
+    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings).listen(
+      (pos) {
+        _onPosition(pos);
+      },
+      onError: (Object err) {
+        if (mounted) {
+          setState(() => _gpsStatus = 'Erro no GPS: $err');
+        }
+      },
+    );
+  }
+
   Future<bool> _ensureLocationPermission() async {
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -89,6 +138,7 @@ class _CardioScreenState extends State<CardioScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ative o GPS do aparelho')),
       );
+      await Geolocator.openLocationSettings();
       return false;
     }
     return true;
@@ -141,13 +191,7 @@ class _CardioScreenState extends State<CardioScreen> {
         _phaseTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickPhase());
       }
 
-      await _gpsSub?.cancel();
-      _gpsSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 3,
-        ),
-      ).listen(_onPosition, onError: (_) {});
+      await _startGpsTracking();
     } on SessionExpiredException {
       if (!mounted) return;
       setState(() => _error = 'Sessão expirada. Faça login novamente.');
@@ -178,13 +222,7 @@ class _CardioScreenState extends State<CardioScreen> {
       if (_intervals.isNotEmpty) {
         _phaseTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickPhase());
       }
-      await _gpsSub?.cancel();
-      _gpsSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 3,
-        ),
-      ).listen(_onPosition, onError: (_) {});
+      await _startGpsTracking();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Modo offline — o treino será sincronizado ao finalizar')),
@@ -236,7 +274,13 @@ class _CardioScreenState extends State<CardioScreen> {
       'recordedAt': DateTime.now().toUtc().toIso8601String(),
       'sequenceNum': _seq++,
     });
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _gpsStatus = _points.length < 2
+            ? 'GPS ok — ande para traçar a rota'
+            : 'GPS ativo · ${_points.length} pontos';
+      });
+    }
   }
 
   Future<void> _finish({bool auto = false}) async {
@@ -369,127 +413,134 @@ class _CardioScreenState extends State<CardioScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _workout == null
-                        ? 'Sem treino prescrito — modo livre'
-                        : _intervals.isEmpty
-                            ? 'Treino sem intervalos'
-                            : '${_intervals.length} fases · ${_workout!.type}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  RouteMapView(
-                    points: _points
-                        .map(
-                          (p) => RoutePointView(
-                            latitude: (p['latitude'] as num).toDouble(),
-                            longitude: (p['longitude'] as num).toDouble(),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: _Stat('Tempo', _fmt(_elapsed))),
-                      Expanded(
-                        child: _Stat(
-                          'Distância',
-                          '${(_distance / 1000).toStringAsFixed(2)} km',
-                        ),
-                      ),
-                      Expanded(
-                        child: _Stat(
-                          'Vel. média',
-                          '${_avgSpeedKmh.toStringAsFixed(1)} km/h',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (phase != null)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: phase.isRun
-                            ? const Color(0xFF7F1D1D)
-                            : const Color(0xFF14532D),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: phase.isRun ? Colors.redAccent : Colors.greenAccent,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            phase.isRun ? 'CORRIDA' : 'CAMINHADA',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _fmt(_phaseRemaining),
-                            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            'Fase ${_phaseIndex + 1} de ${_intervals.length}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Text(
-                        _running
-                            ? 'GPS ativo · ${_points.length} pontos'
-                            : 'Inicie para começar o rastreio GPS',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-                  ],
-                  const Spacer(),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _running || _finishing ? null : _start,
-                          child: const Text('Iniciar'),
+                    const SizedBox(height: 4),
+                    Text(
+                      _workout == null
+                          ? 'Sem treino prescrito — modo livre'
+                          : _intervals.isEmpty
+                              ? 'Treino sem intervalos'
+                              : '${_intervals.length} fases · ${_workout!.type}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    RouteMapView(
+                      statusMessage: _running
+                          ? (_gpsStatus ?? 'Buscando sinal GPS...')
+                          : 'Inicie para começar o rastreio GPS',
+                      points: _points
+                          .map(
+                            (p) => RoutePointView(
+                              latitude: (p['latitude'] as num).toDouble(),
+                              longitude: (p['longitude'] as num).toDouble(),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(child: _Stat('Tempo', _fmt(_elapsed))),
+                        Expanded(
+                          child: _Stat(
+                            'Distância',
+                            '${(_distance / 1000).toStringAsFixed(2)} km',
+                          ),
+                        ),
+                        Expanded(
+                          child: _Stat(
+                            'Vel. média',
+                            '${_avgSpeedKmh.toStringAsFixed(1)} km/h',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (phase != null)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: phase.isRun
+                              ? const Color(0xFF7F1D1D)
+                              : const Color(0xFF14532D),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: phase.isRun ? Colors.redAccent : Colors.greenAccent,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              phase.isRun ? 'CORRIDA' : 'CAMINHADA',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _fmt(_phaseRemaining),
+                              style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              'Fase ${_phaseIndex + 1} de ${_intervals.length}',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Text(
+                          _running
+                              ? (_gpsStatus ?? 'GPS ativo · ${_points.length} pontos')
+                              : 'Inicie para começar o rastreio GPS',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                          onPressed: _running && !_finishing ? () => _finish() : null,
-                          child: Text(_finishing ? 'Salvando...' : 'Finalizar'),
-                        ),
-                      ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Text(_error!, style: const TextStyle(color: Colors.redAccent)),
                     ],
-                  ),
-                ],
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _running || _finishing ? null : _start,
+                            child: const Text('Iniciar'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                            onPressed: _running && !_finishing ? () => _finish() : null,
+                            child: Text(_finishing ? 'Salvando...' : 'Finalizar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
             ),
     );

@@ -9,13 +9,25 @@ class RoutePointView {
 
 /// Mapa simplificado da rota (mesmo conceito do SVG do aluno web).
 class RouteMapView extends StatelessWidget {
-  const RouteMapView({super.key, required this.points, this.height = 200});
+  const RouteMapView({
+    super.key,
+    required this.points,
+    this.height = 200,
+    this.statusMessage,
+  });
 
   final List<RoutePointView> points;
   final double height;
+  final String? statusMessage;
 
   @override
   Widget build(BuildContext context) {
+    final waitingLabel = points.isEmpty
+        ? (statusMessage ?? 'Aguardando GPS...')
+        : points.length == 1
+            ? (statusMessage ?? 'GPS ok — ande para traçar a rota')
+            : null;
+
     return Container(
       height: height,
       width: double.infinity,
@@ -24,11 +36,15 @@ class RouteMapView extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white24),
       ),
-      child: points.length < 2
-          ? const Center(
-              child: Text(
-                'Aguardando GPS...',
-                style: TextStyle(color: Colors.white54),
+      child: waitingLabel != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  waitingLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white54),
+                ),
               ),
             )
           : ClipRRect(
@@ -80,6 +96,7 @@ class _RoutePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+
     canvas.drawPath(path, line);
 
     final start = toOffset(points.first);
@@ -90,5 +107,5 @@ class _RoutePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RoutePainter oldDelegate) =>
-      oldDelegate.points.length != points.length;
+      oldDelegate.points != points;
 }
