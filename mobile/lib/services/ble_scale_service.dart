@@ -5,7 +5,44 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// Lê peso de balanças BLE com perfil padrão Weight Scale (0x181D).
+/// Dispositivo visto no scan BLE.
+class BleScaleCandidate {
+  const BleScaleCandidate({
+    required this.remoteId,
+    required this.name,
+    required this.rssi,
+    required this.likelyScale,
+    this.liveWeightKg,
+    this.stable = false,
+    this.hint,
+  });
+
+  final String remoteId;
+  final String name;
+  final int rssi;
+  final bool likelyScale;
+  final double? liveWeightKg;
+  final bool stable;
+  final String? hint;
+}
+
+class ScaleWeightSample {
+  const ScaleWeightSample({
+    required this.kg,
+    required this.stable,
+    required this.remoteId,
+    required this.name,
+  });
+
+  final double kg;
+  final bool stable;
+  final String remoteId;
+  final String name;
+}
+
+/// Balanças BLE:
+/// - OKOK / Chipsea ("Ocoq"): peso no anúncio (sem pareamento GATT).
+/// - Perfil padrão Weight Scale (0x181D): conexão GATT.
 class BleScaleService {
   BleScaleService._();
   static final instance = BleScaleService._();
@@ -15,70 +52,219 @@ class BleScaleService {
   static final Guid weightMeasurement =
       Guid('00002a9d-0000-1000-8000-00805f9b34fb');
 
+  StreamSubscription<List<ScanResult>>? _scanSub;
+  final Map<String, BleScaleCandidate> _seen = {};
+  Completer<double>? _waitCompleter;
+
   Future<void> ensurePermissions() async {
-    if (kIsWeb || !Platform.isAndroid) return;
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    if (kIsWeb) return;
+    if (Platform.isAndroid) {
+      final statuses = await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+      ].request();
+      final denied = statuses.entries
+          .where((e) => !e.value.isGranted && !e.value.isLimited)
+          .map((e) => e.key.toString())
+          .toList();
+      if (denied.isNotEmpty) {
+        throw Exception(
+          'Permissões necessárias: Bluetooth e localização. '
+          'Ative nas configurações do celular.',
+        );
+      }
+    } else if (Platform.isIOS) {
+      await Permission.bluetooth.request();
+    }
   }
 
   Future<bool> isBluetoothOn() async {
     try {
       if (!await FlutterBluePlus.isSupported) return false;
-      return await FlutterBluePlus.adapterState.first ==
-          BluetoothAdapterState.on;
+      final state = await FlutterBluePlus.adapterState.first;
+      if (state == BluetoothAdapterState.on) return true;
+      // Tenta pedir para ligar (Android).
+      try {
+        await FlutterBluePlus.turnOn();
+        return await FlutterBluePlus.adapterState
+                .first
+                .timeout(const Duration(seconds: 8)) ==
+            BluetoothAdapterState.on;
+      } catch (_) {
+        return false;
+      }
     } catch (_) {
       return false;
     }
   }
 
-  Future<double?> readWeightKg({
-    Duration timeout = const Duration(seconds: 45),
+  Future<void> stopScan({bool cancelWait = true}) async {
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (_) {}
+    await _scanSub?.cancel();
+    _scanSub = null;
+    if (cancelWait) {
+      final waiting = _waitCompleter;
+      if (waiting != null && !waiting.isCompleted) {
+        waiting.completeError(Exception('Busca cancelada'));
+      }
+      _waitCompleter = null;
+    }
+  }
+
+  /// Scan contínuo; atualiza [onDevices] e [onSample] (peso OKOK ao vivo).
+  Future<void> startDiscovery({
+    required void Function(List<BleScaleCandidate> devices) onDevices,
+    void Function(ScaleWeightSample sample)? onSample,
     void Function(String status)? onStatus,
+    Duration timeout = const Duration(seconds: 60),
   }) async {
+    await stopScan(cancelWait: false);
+    _seen.clear();
     await ensurePermissions();
     if (!await isBluetoothOn()) {
-      throw Exception('Ative o Bluetooth do aparelho');
+      throw Exception('Ative o Bluetooth do aparelho e tente de novo');
     }
 
-    onStatus?.call('Procurando balança…');
-    BluetoothDevice? target = await _scanForScale();
-
-    if (target == null) {
-      throw Exception(
-        'Balança não encontrada. Use o registro manual ou uma balança com Bluetooth Weight Scale.',
-      );
-    }
-
-    onStatus?.call('Conectando em ${target.platformName}…');
-    await target.connect(
-      license: License.nonprofit,
-      timeout: const Duration(seconds: 15),
+    onStatus?.call(
+      'Procurando… Pise na balança para ela aparecer (OKOK/Ocoq não precisa parear).',
     );
-    try {
-      final services = await target.discoverServices();
-      BluetoothCharacteristic? char;
-      for (final s in services) {
-        if (s.serviceUuid == weightScaleService) {
-          for (final c in s.characteristics) {
-            if (c.characteristicUuid == weightMeasurement) {
-              char = c;
-              break;
-            }
-          }
+
+    _scanSub = FlutterBluePlus.onScanResults.listen((results) {
+      for (final r in results) {
+        final id = r.device.remoteId.str;
+        final name = _displayName(r);
+        final parsed = parseAdvertisementWeight(r.advertisementData);
+        final likely = _isLikelyScale(r, parsed != null);
+        final prev = _seen[id];
+        _seen[id] = BleScaleCandidate(
+          remoteId: id,
+          name: name,
+          rssi: r.rssi,
+          likelyScale: likely || (prev?.likelyScale ?? false),
+          liveWeightKg: parsed?.kg ?? prev?.liveWeightKg,
+          stable: parsed?.stable ?? prev?.stable ?? false,
+          hint: parsed != null
+              ? (parsed.stable ? 'Peso estável' : 'Medindo…')
+              : (likely ? 'Possível balança' : null),
+        );
+        if (parsed != null) {
+          onSample?.call(
+            ScaleWeightSample(
+              kg: parsed.kg,
+              stable: parsed.stable,
+              remoteId: id,
+              name: name,
+            ),
+          );
         }
       }
-      // Fallback: some stacks expose .uuid
-      char ??= _findWeightChar(services);
-      if (char == null) {
-        throw Exception(
-          'Esta balança não usa o perfil padrão. O peso manual continua disponível.',
+      final list = _seen.values.toList()
+        ..sort((a, b) {
+          final la = a.likelyScale ? 0 : 1;
+          final lb = b.likelyScale ? 0 : 1;
+          if (la != lb) return la.compareTo(lb);
+          return b.rssi.compareTo(a.rssi);
+        });
+      onDevices(list);
+    });
+
+    await FlutterBluePlus.startScan(
+      timeout: timeout,
+      androidUsesFineLocation: true,
+    );
+  }
+
+  /// Aguarda peso estável de qualquer balança OKOK no ar, ou GATT se [preferRemoteId].
+  Future<double> waitForStableWeight({
+    String? preferRemoteId,
+    Duration timeout = const Duration(seconds: 45),
+    void Function(String status)? onStatus,
+    void Function(List<BleScaleCandidate> devices)? onDevices,
+    void Function(ScaleWeightSample sample)? onLive,
+  }) async {
+    final completer = Completer<double>();
+    _waitCompleter = completer;
+    Timer? watchdog;
+
+    Future<void> finish(double kg) async {
+      if (!completer.isCompleted) completer.complete(kg);
+    }
+
+    await startDiscovery(
+      onStatus: onStatus,
+      onDevices: onDevices ?? (_) {},
+      onSample: (sample) {
+        onLive?.call(sample);
+        if (preferRemoteId != null && sample.remoteId != preferRemoteId) {
+          return;
+        }
+        onStatus?.call(
+          sample.stable
+              ? 'Peso estável: ${sample.kg.toStringAsFixed(1)} kg'
+              : 'Medindo: ${sample.kg.toStringAsFixed(1)} kg…',
+        );
+        if (sample.stable && sample.kg >= 20 && sample.kg <= 300) {
+          finish(sample.kg);
+        }
+      },
+    );
+
+    // Se o usuário escolheu um dispositivo com perfil Weight Scale, tenta GATT em paralelo.
+    if (preferRemoteId != null) {
+      unawaited(() async {
+        try {
+          final kg = await _readGattWeight(
+            preferRemoteId,
+            onStatus: onStatus,
+          );
+          if (kg != null) await finish(kg);
+        } catch (e) {
+          onStatus?.call(e.toString().replaceFirst('Exception: ', ''));
+        }
+      }());
+    }
+
+    watchdog = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          Exception(
+            'Tempo esgotado. Pise na balança com o Bluetooth ligado e '
+            'aguarde o peso estabilizar, ou registre o peso manualmente.',
+          ),
         );
       }
+    });
 
-      onStatus?.call('Suba na balança…');
+    try {
+      return await completer.future;
+    } finally {
+      watchdog?.cancel();
+      if (identical(_waitCompleter, completer)) {
+        _waitCompleter = null;
+      }
+      await stopScan(cancelWait: false);
+    }
+  }
+
+  Future<double?> _readGattWeight(
+    String remoteId, {
+    void Function(String status)? onStatus,
+  }) async {
+    final device = BluetoothDevice.fromId(remoteId);
+    onStatus?.call('Conectando em ${_safeName(device)}…');
+    await device.connect(
+      license: License.nonprofit,
+      timeout: const Duration(seconds: 12),
+    );
+    try {
+      final services = await device.discoverServices();
+      final char = _findWeightChar(services);
+      if (char == null) return null;
+
+      onStatus?.call('Suba na balança (perfil Weight Scale)…');
       final completer = Completer<double>();
       final sub = char.onValueReceived.listen((value) {
         final kg = parseWeightMeasurement(value);
@@ -87,56 +273,50 @@ class BleScaleService {
         }
       });
       await char.setNotifyValue(true);
-
       try {
-        return await completer.future.timeout(
-          timeout,
-          onTimeout: () =>
-              throw Exception('Tempo esgotado — suba na balança'),
-        );
+        return await completer.future.timeout(const Duration(seconds: 30));
       } finally {
         await sub.cancel();
       }
     } finally {
       try {
-        await target.disconnect();
+        await device.disconnect();
       } catch (_) {}
     }
   }
 
-  Future<BluetoothDevice?> _scanForScale() async {
-    BluetoothDevice? found;
-    final sub = FlutterBluePlus.onScanResults.listen((results) {
-      for (final r in results) {
-        final hasService = r.advertisementData.serviceUuids
-            .any((u) => u == weightScaleService);
-        final name = r.device.platformName.toLowerCase();
-        if (hasService ||
-            name.contains('scale') ||
-            name.contains('balan') ||
-            name.contains('weight') ||
-            name.contains('mi body') ||
-            name.contains('renpho')) {
-          found ??= r.device;
-        }
-      }
-    });
+  String _displayName(ScanResult r) {
+    final n = r.device.platformName.trim();
+    if (n.isNotEmpty) return n;
+    final adv = r.advertisementData.advName.trim();
+    if (adv.isNotEmpty) return adv;
+    final id = r.device.remoteId.str;
+    return 'Dispositivo ${id.length > 8 ? id.substring(id.length - 8) : id}';
+  }
 
-    try {
-      await FlutterBluePlus.startScan(
-        withServices: [weightScaleService],
-        timeout: const Duration(seconds: 10),
-      );
-      await FlutterBluePlus.isScanning.where((v) => v == false).first;
-      if (found != null) return found;
+  String _safeName(BluetoothDevice d) {
+    final n = d.platformName.trim();
+    return n.isEmpty ? d.remoteId.str : n;
+  }
 
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-      await FlutterBluePlus.isScanning.where((v) => v == false).first;
-      return found;
-    } finally {
-      await FlutterBluePlus.stopScan();
-      await sub.cancel();
+  bool _isLikelyScale(ScanResult r, bool hasWeightPayload) {
+    if (hasWeightPayload) return true;
+    final name =
+        '${r.device.platformName} ${r.advertisementData.advName}'.toLowerCase();
+    if (name.contains('scale') ||
+        name.contains('balan') ||
+        name.contains('weight') ||
+        name.contains('chipsea') ||
+        name.contains('okok') ||
+        name.contains('ocoq') ||
+        name.contains('mi body') ||
+        name.contains('renpho') ||
+        name.contains('yoda') ||
+        name.contains('cf3') ||
+        name.contains('qn-')) {
+      return true;
     }
+    return r.advertisementData.serviceUuids.any((u) => u == weightScaleService);
   }
 
   BluetoothCharacteristic? _findWeightChar(List<BluetoothService> services) {
@@ -144,11 +324,76 @@ class BleScaleService {
       for (final c in s.characteristics) {
         final su = s.uuid.toString().toLowerCase();
         final cu = c.uuid.toString().toLowerCase();
-        if (su.contains('181d') && cu.contains('2a9d')) {
+        if ((su.contains('181d') && cu.contains('2a9d')) ||
+            (c.characteristicUuid == weightMeasurement)) {
           return c;
         }
       }
     }
+    return null;
+  }
+
+  /// Extrai peso de anúncios OKOK/Chipsea (e variantes).
+  static ({double kg, bool stable})? parseAdvertisementWeight(
+    AdvertisementData adv,
+  ) {
+    for (final entry in adv.manufacturerData.entries) {
+      final parsed = parseOkokManufacturerBytes(entry.value);
+      if (parsed != null) return parsed;
+      final withId = <int>[
+        entry.key & 0xff,
+        (entry.key >> 8) & 0xff,
+        ...entry.value,
+      ];
+      final parsed2 = parseOkokManufacturerBytes(withId);
+      if (parsed2 != null) return parsed2;
+    }
+    for (final entry in adv.serviceData.entries) {
+      final parsed = parseOkokManufacturerBytes(entry.value);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  static ({double kg, bool stable})? parseOkokManufacturerBytes(List<int> raw) {
+    return _parseOkokBytes(raw);
+  }
+
+  static ({double kg, bool stable})? _parseOkokBytes(List<int> raw) {
+    if (raw.isEmpty) return null;
+    final bytes = raw.map((e) => e & 0xff).toList();
+
+    // Formato clássico CA … (issue openScale #496)
+    final ca = bytes.indexOf(0xca);
+    if (ca >= 0 && bytes.length >= ca + 12) {
+      final finalFlag = bytes[ca + 8];
+      final w = (bytes[ca + 10] << 8) | bytes[ca + 11];
+      // Tentativas: /10 e /100
+      for (final div in [10.0, 100.0]) {
+        final kg = w / div;
+        if (kg >= 20 && kg <= 300) {
+          return (kg: kg, stable: finalFlag == 0x01);
+        }
+      }
+    }
+
+    // Formato C0 (issue #950): c0 seq weightHi weightLo … status
+    // 81.50 kg → 1F D6 = 8150 → /100
+    for (var i = 0; i < bytes.length - 8; i++) {
+      if (bytes[i] != 0xc0) continue;
+      final w = (bytes[i + 2] << 8) | bytes[i + 3];
+      final status = bytes.length > i + 8 ? bytes[i + 8] : 0x24;
+      final kg = w / 100.0;
+      if (kg >= 20 && kg <= 300) {
+        final stable = status == 0x25 || status == 0x21 || (status & 0x01) == 1;
+        return (kg: kg, stable: stable);
+      }
+      final kg10 = w / 10.0;
+      if (kg10 >= 20 && kg10 <= 300) {
+        return (kg: kg10, stable: status == 0x25 || status == 0x01);
+      }
+    }
+
     return null;
   }
 
