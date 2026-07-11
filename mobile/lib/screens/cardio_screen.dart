@@ -266,7 +266,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _phaseRemaining = phaseRemaining;
     });
     if (phaseChanged) {
-      unawaited(CardioFeedback.playBeeps(phaseIndex.clamp(1, 5)));
+      // Corrida = 2 toques; caminhada = 1 toque (igual web).
       unawaited(CardioFeedback.playPhase(_intervals[phaseIndex].phase));
     }
   }
@@ -298,7 +298,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
 
       if (_intervals.isNotEmpty) {
-        await CardioFeedback.playBeeps(1);
         await CardioFeedback.playPhase(_intervals.first.phase);
       } else {
         await CardioFeedback.playBeeps(1);
@@ -327,9 +326,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _seq = 0;
         _lastPos = null;
       });
-      await CardioFeedback.playBeeps(1);
       if (_intervals.isNotEmpty) {
         await CardioFeedback.playPhase(_intervals.first.phase);
+      } else {
+        await CardioFeedback.playBeeps(1);
       }
       _startClocks();
       await _startGpsTracking();
