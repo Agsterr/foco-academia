@@ -3,6 +3,9 @@ UPDATE exercises SET media_type = 'NONE' WHERE media_type IS NULL;
 ALTER TABLE exercises ALTER COLUMN media_type SET DEFAULT 'NONE';
 ALTER TABLE exercises ALTER COLUMN media_type SET NOT NULL;
 
+-- Programas usam workout_day_id; workout_id fica só para fichas legadas.
+ALTER TABLE exercises ALTER COLUMN workout_id DROP NOT NULL;
+
 ALTER TABLE academies ADD COLUMN IF NOT EXISTS app_blocked boolean;
 UPDATE academies SET app_blocked = false WHERE app_blocked IS NULL;
 ALTER TABLE academies ALTER COLUMN app_blocked SET DEFAULT false;
