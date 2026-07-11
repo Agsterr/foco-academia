@@ -114,6 +114,11 @@ public class AppReleaseService {
             throw new ApiException("Falha ao validar APK", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
+        boolean previousForce = repository
+                .findFirstByActiveTrueOrderByVersionCodeDescCreatedAtDesc()
+                .map(AppRelease::isForceUpdate)
+                .orElse(false);
+
         AppRelease release = new AppRelease();
         release.setVersionName(versionName.trim());
         release.setVersionCode(versionCode);
@@ -121,10 +126,12 @@ public class AppReleaseService {
         release.setFileSizeBytes(size);
         release.setSha256(sha256);
         release.setReleaseNotes(truncateNotes(releaseNotes));
-        release.setForceUpdate(forceUpdate);
+        // Herda force da latest anterior: novo APK continua obrigatório se o antigo era.
+        release.setForceUpdate(forceUpdate || previousForce);
         release.setActive(true);
 
         AppRelease saved = repository.save(release);
+        clearForceUpdateOnOlderReleases(saved);
         pruneOldReleases();
         return toAdminResponse(saved);
     }
@@ -133,7 +140,21 @@ public class AppReleaseService {
     public AppReleaseDtos.AdminAppReleaseResponse updateForceUpdate(UUID id, boolean forceUpdate) {
         AppRelease release = getReleaseEntity(id);
         release.setForceUpdate(forceUpdate);
-        return toAdminResponse(repository.save(release));
+        AppRelease saved = repository.save(release);
+        if (forceUpdate) {
+            clearForceUpdateOnOlderReleases(saved);
+        }
+        return toAdminResponse(saved);
+    }
+
+    /** Só a latest deve carregar forceUpdate — evita confusão com releases retidas. */
+    private void clearForceUpdateOnOlderReleases(AppRelease latest) {
+        for (AppRelease other : repository.findByActiveTrueOrderByVersionCodeDescCreatedAtDesc()) {
+            if (!other.getId().equals(latest.getId()) && other.isForceUpdate()) {
+                other.setForceUpdate(false);
+                repository.save(other);
+            }
+        }
     }
 
     @Transactional(readOnly = true)

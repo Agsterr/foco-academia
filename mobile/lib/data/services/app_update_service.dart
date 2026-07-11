@@ -88,40 +88,100 @@ class AppUpdateService {
     return url.startsWith('/') ? '$base$url' : '$base/$url';
   }
 
-  Future<void> downloadAndInstall(
+  /// Baixa sempre a latest do servidor. Se uma versão mais nova publicar
+  /// no meio do download, descarta o APK antigo e baixa de novo (até 4x).
+  Future<AppUpdateInfo> downloadAndInstall(
     AppUpdateInfo update, {
     void Function(double progress)? onProgress,
+    void Function(AppUpdateInfo target)? onTargetResolved,
     bool forceDownload = false,
   }) async {
-    final filePath = await _apkPathFor(update.latestVersionCode);
-    final cached = !forceDownload && await isApkCached(update);
+    var target = update;
+    var mustRedownload = forceDownload;
 
-    if (!cached) {
-      await _dio.download(
-        update.downloadUrl,
-        filePath,
-        onReceiveProgress: (received, total) {
-          if (total <= 0 || onProgress == null) return;
-          onProgress(received / total);
-        },
-      );
-      final file = File(filePath);
-      if (!await _verifySha256(file, update.sha256)) {
-        await file.delete();
-        throw Exception('Arquivo corrompido (checksum inválido)');
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final latest = await checkForUpdate();
+      if (latest == null || !latest.hasUpdate) {
+        return target;
       }
-    } else if (onProgress != null) {
-      onProgress(1);
+      if (latest.latestVersionCode != target.latestVersionCode) {
+        mustRedownload = true;
+      }
+      target = latest;
+      onTargetResolved?.call(target);
+
+      final filePath = await _apkPathFor(target.latestVersionCode);
+      final cached = !mustRedownload && await isApkCached(target);
+
+      if (!cached) {
+        await _purgeStaleApkCaches(keepVersionCode: target.latestVersionCode);
+        await _dio.download(
+          target.downloadUrl,
+          filePath,
+          onReceiveProgress: (received, total) {
+            if (total <= 0 || onProgress == null) return;
+            onProgress(received / total);
+          },
+        );
+        final file = File(filePath);
+        if (!await _verifySha256(file, target.sha256)) {
+          await file.delete();
+          throw Exception('Arquivo corrompido (checksum inválido)');
+        }
+      } else if (onProgress != null) {
+        onProgress(1);
+      }
+
+      // Revalida: se publicaram outra versão enquanto baixávamos, tenta de novo.
+      final after = await checkForUpdate();
+      if (after != null &&
+          after.hasUpdate &&
+          after.latestVersionCode > target.latestVersionCode) {
+        mustRedownload = true;
+        continue;
+      }
+
+      await _openInstaller(filePath);
+      return target;
     }
 
-    await _openInstaller(filePath);
+    throw Exception('Não foi possível obter a versão mais recente do app');
   }
 
   Future<void> openCachedInstaller(AppUpdateInfo update) async {
+    // Antes de instalar, confirma que ainda é a latest.
+    final latest = await checkForUpdate();
+    if (latest != null &&
+        latest.hasUpdate &&
+        latest.latestVersionCode > update.latestVersionCode) {
+      await downloadAndInstall(latest, forceDownload: true);
+      return;
+    }
     if (!await isApkCached(update)) {
       throw Exception('Arquivo de atualização não encontrado');
     }
     await _openInstaller(await _apkPathFor(update.latestVersionCode));
+  }
+
+  Future<void> _purgeStaleApkCaches({required int keepVersionCode}) async {
+    try {
+      final directory = await getTemporaryDirectory();
+      await for (final entity in directory.list()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.isEmpty
+            ? entity.path
+            : entity.uri.pathSegments.last;
+        if (!name.startsWith('foco-academia-update-') || !name.endsWith('.apk')) {
+          continue;
+        }
+        final keepName = apkFileName(keepVersionCode);
+        if (name != keepName) {
+          await entity.delete();
+        }
+      }
+    } catch (_) {
+      // Melhor esforço — não bloqueia o update.
+    }
   }
 
   Future<bool> _verifySha256(File file, String? expectedSha256) async {

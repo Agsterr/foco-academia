@@ -80,6 +80,33 @@ class AppReleaseIntegrationTest {
     }
 
     @Test
+    void deployInheritsForceUpdateFromPreviousLatest() throws Exception {
+        byte[] apk = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x0A};
+        mockMvc.perform(multipart("/api/app/releases/deploy")
+                        .file(new MockMultipartFile("file", "app.apk", "application/octet-stream", apk))
+                        .part(new MockPart("versionName", "1.0.40".getBytes()))
+                        .part(new MockPart("versionCode", "40".getBytes()))
+                        .header("X-Deploy-Token", deployToken)
+                        .param("forceUpdate", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.forceUpdate").value(true));
+
+        mockMvc.perform(multipart("/api/app/releases/deploy")
+                        .file(new MockMultipartFile("file", "app.apk", "application/octet-stream", apk))
+                        .part(new MockPart("versionName", "1.0.41".getBytes()))
+                        .part(new MockPart("versionCode", "41".getBytes()))
+                        .header("X-Deploy-Token", deployToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.versionCode").value(41))
+                .andExpect(jsonPath("$.forceUpdate").value(true));
+
+        mockMvc.perform(get("/api/app/version"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.versionCode").value(41))
+                .andExpect(jsonPath("$.forceUpdate").value(true));
+    }
+
+    @Test
     void deployAndCheckVersion() throws Exception {
         byte[] apk = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x00};
         mockMvc.perform(multipart("/api/app/releases/deploy")

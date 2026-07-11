@@ -68,8 +68,18 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
       }
 
       if (update.forceUpdate) {
+        // Se a latest mudou (ex.: 8 → 9 enquanto baixava), descarta APK antigo.
+        final staleReady = _readyVersionCode != null &&
+            _readyVersionCode != update.latestVersionCode;
+        if (staleReady) {
+          _forceApkReady = false;
+          _forceAutoDownloadStarted = false;
+          _readyVersionCode = null;
+        }
+
         final cached = await _updateService.isApkCached(update);
-        final apkReady = cached || _readyVersionCode == update.latestVersionCode;
+        final apkReady =
+            cached || _readyVersionCode == update.latestVersionCode;
 
         setState(() {
           _forceUpdate = update;
@@ -80,10 +90,8 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
           }
         });
 
-        final shouldAutoDownload = !resumeOnly &&
-            !apkReady &&
-            !_forceDownloading &&
-            !_forceAutoDownloadStarted;
+        final shouldAutoDownload =
+            !apkReady && !_forceDownloading && !_forceAutoDownloadStarted;
         if (shouldAutoDownload) {
           _forceAutoDownloadStarted = true;
           pendingForceDownload = update;
@@ -126,12 +134,17 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
       _forceDownloading = true;
       _forceProgress = 0;
       _forceError = null;
+      _forceUpdate = update;
     });
 
     try {
-      await _updateService.downloadAndInstall(
+      final resolved = await _updateService.downloadAndInstall(
         update,
         forceDownload: forceDownload,
+        onTargetResolved: (target) {
+          if (!mounted) return;
+          setState(() => _forceUpdate = target);
+        },
         onProgress: (value) {
           if (!mounted) return;
           setState(() => _forceProgress = value);
@@ -139,13 +152,15 @@ class _AppUpdateListenerState extends State<AppUpdateListener>
       );
       if (!mounted) return;
       setState(() {
+        _forceUpdate = resolved;
         _forceApkReady = true;
-        _readyVersionCode = update.latestVersionCode;
+        _readyVersionCode = resolved.latestVersionCode;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _forceError = error.toString().replaceFirst('Exception: ', '');
+        _forceAutoDownloadStarted = false;
       });
     } finally {
       if (mounted) {

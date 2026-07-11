@@ -66,6 +66,7 @@ class AppUpdatePrompt {
         var progress = 0.0;
         var apkReady = false;
         String? error;
+        var currentUpdate = update;
 
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -76,15 +77,21 @@ class AppUpdatePrompt {
                 error = null;
               });
               try {
-                await service.downloadAndInstall(
-                  update,
+                final resolved = await service.downloadAndInstall(
+                  currentUpdate,
                   forceDownload: forceDownload,
+                  onTargetResolved: (target) {
+                    setDialogState(() => currentUpdate = target);
+                  },
                   onProgress: (value) {
                     setDialogState(() => progress = value);
                   },
                 );
                 if (!dialogContext.mounted) return;
-                setDialogState(() => apkReady = true);
+                setDialogState(() {
+                  currentUpdate = resolved;
+                  apkReady = true;
+                });
               } catch (e) {
                 if (!dialogContext.mounted) return;
                 setDialogState(() {
@@ -105,7 +112,7 @@ class AppUpdatePrompt {
                 if (!dialogContext.mounted || !apkReady) return;
               }
               try {
-                await service.openCachedInstaller(update);
+                await service.openCachedInstaller(currentUpdate);
               } catch (e) {
                 if (!dialogContext.mounted) return;
                 setDialogState(() {
@@ -123,13 +130,13 @@ class AppUpdatePrompt {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Servidor: ${update.latestVersionName}+${update.latestVersionCode}\n'
-                      'Seu app: ${update.currentVersionName}+${update.currentVersionCode}',
+                      'Servidor: ${currentUpdate.latestVersionName}+${currentUpdate.latestVersionCode}\n'
+                      'Seu app: ${currentUpdate.currentVersionName}+${currentUpdate.currentVersionCode}',
                     ),
-                    if (update.releaseNotes != null &&
-                        update.releaseNotes!.trim().isNotEmpty) ...[
+                    if (currentUpdate.releaseNotes != null &&
+                        currentUpdate.releaseNotes!.trim().isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Text(update.releaseNotes!.trim()),
+                      Text(currentUpdate.releaseNotes!.trim()),
                     ],
                     if (downloading) ...[
                       const SizedBox(height: 16),
