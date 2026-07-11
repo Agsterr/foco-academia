@@ -12,5 +12,7 @@ public interface AppReleaseRepository extends JpaRepository<AppRelease, UUID> {
 
     List<AppRelease> findByActiveTrueOrderByVersionCodeDescCreatedAtDesc();
 
+    List<AppRelease> findAllByOrderByVersionCodeDescCreatedAtDesc();
+
     boolean existsByVersionCode(int versionCode);
 }

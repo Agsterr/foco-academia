@@ -179,16 +179,17 @@ public class AppReleaseService {
         return Path.of(properties.storagePath()).resolve(fileName).normalize();
     }
 
+    /** Mantém só as N releases mais recentes no banco e no disco; apaga o resto. */
     private void pruneOldReleases() {
-        List<AppRelease> active = repository.findByActiveTrueOrderByVersionCodeDescCreatedAtDesc();
-        if (active.size() <= properties.maxRetained()) {
+        int keep = properties.maxRetained();
+        List<AppRelease> all = repository.findAllByOrderByVersionCodeDescCreatedAtDesc();
+        if (all.size() <= keep) {
             return;
         }
-        for (int i = properties.maxRetained(); i < active.size(); i++) {
-            AppRelease old = active.get(i);
-            old.setActive(false);
-            repository.save(old);
+        for (int i = keep; i < all.size(); i++) {
+            AppRelease old = all.get(i);
             deleteQuietly(resolveStoragePath(old.getFileName()));
+            repository.delete(old);
         }
     }
 

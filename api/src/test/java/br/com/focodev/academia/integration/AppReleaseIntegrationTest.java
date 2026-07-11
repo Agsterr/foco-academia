@@ -56,6 +56,30 @@ class AppReleaseIntegrationTest {
     }
 
     @Test
+    void deployKeepsOnlyMaxRetainedReleasesInDatabase() throws Exception {
+        byte[] apk = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x09};
+        for (int code = 30; code <= 32; code++) {
+            mockMvc.perform(multipart("/api/app/releases/deploy")
+                            .file(new MockMultipartFile("file", "app.apk", "application/octet-stream", apk))
+                            .part(new MockPart("versionName", ("1.0." + code).getBytes()))
+                            .part(new MockPart("versionCode", String.valueOf(code).getBytes()))
+                            .header("X-Deploy-Token", deployToken))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/api/admin/releases")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].versionCode").value(32))
+                .andExpect(jsonPath("$[1].versionCode").value(31));
+
+        mockMvc.perform(get("/api/app/version"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.versionCode").value(32));
+    }
+
+    @Test
     void deployAndCheckVersion() throws Exception {
         byte[] apk = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x00};
         mockMvc.perform(multipart("/api/app/releases/deploy")
