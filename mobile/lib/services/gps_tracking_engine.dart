@@ -145,15 +145,17 @@ class GpsTrackingEngine {
     this.bufferSize = 40,
     this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
-    this.pauseBelowKmh = 1.0,
-    this.resumeAboveKmh = 1.6,
-    this.resumeDisplacementMeters = 5,
-    this.autoPauseAfter = const Duration(seconds: 20),
+    this.pauseBelowKmh = 0.8,
+    this.resumeAboveKmh = 1.1,
+    this.resumeDisplacementMeters = 3,
+    this.autoPauseAfter = const Duration(seconds: 25),
     this.walkBelowKmh = 7.5,
     this.runEnterKmh = 8.5,
     this.runExitKmh = 6.5,
-    this.stationaryRadiusMeters = 4.0,
-    this.stationaryWindow = const Duration(seconds: 6),
+    /// Só “parado” se ficar bem quieto; raio largo trava caminhada lenta.
+    this.stationaryRadiusMeters = 2.2,
+    this.stationaryWindow = const Duration(seconds: 8),
+    this.breakStationaryMeters = 1.8,
   });
 
   final double maxAccuracyMeters;
@@ -174,6 +176,8 @@ class GpsTrackingEngine {
   /// Se nos últimos N segundos o GPS ficou dentro deste raio → parado (anti-drift).
   final double stationaryRadiusMeters;
   final Duration stationaryWindow;
+  /// Um passo maior que isto quebra o estado “parado” na hora.
+  final double breakStationaryMeters;
 
   double distanceMeters = 0;
   double estimatedGapMeters = 0;
@@ -401,11 +405,16 @@ class GpsTrackingEngine {
 
   void toggleManualPause() => setManualPaused(!manualPaused);
 
-  bool _computeStationary(DateTime now) {
+  bool _computeStationary(DateTime now, {double? stepFromLastRaw}) {
+    // Passo claro = já está andando (não espera a janela inteira “esquecer” o parado).
+    if (stepFromLastRaw != null && stepFromLastRaw >= breakStationaryMeters) {
+      return false;
+    }
     _recentRaw.removeWhere(
       (s) => now.difference(s.at) > stationaryWindow,
     );
-    if (_recentRaw.length < 3) return false;
+    // Precisa de quietude sustentada — 3 fixes em 1,5s era fácil demais.
+    if (_recentRaw.length < 5) return false;
     var minLat = _recentRaw.first.lat;
     var maxLat = minLat;
     var minLng = _recentRaw.first.lng;
@@ -434,15 +443,28 @@ class GpsTrackingEngine {
     if (i <= 0) return r;
     // Chip muito acima do deslocamento real → confia no deslocamento.
     if (r > i + 2.5) return i;
-    return (r * 0.4) + (i * 0.6);
+    return (r * 0.35) + (i * 0.65);
   }
 
   void _pushSmoothedSpeed(double sample) {
-    // EMA: mais peso no histórico para reduzir picos.
-    _smoothedSpeedKmh = _smoothedSpeedKmh <= 0
-        ? sample
-        : (_smoothedSpeedKmh * 0.65) + (sample * 0.35);
-    if (_smoothedSpeedKmh < 0.3) _smoothedSpeedKmh = 0;
+    if (sample <= 0) {
+      // Decai para zero (não trava em 0 na hora — facilita retomar caminhada).
+      _smoothedSpeedKmh *= 0.55;
+      if (_smoothedSpeedKmh < 0.25) _smoothedSpeedKmh = 0;
+      return;
+    }
+    if (_smoothedSpeedKmh <= 0) {
+      // Saindo do parado: sobe rápido para a UI/histerese reagirem.
+      _smoothedSpeedKmh = sample;
+      return;
+    }
+    // Sobe mais rápido que desce (retomar caminhada vs anti-pico).
+    if (sample > _smoothedSpeedKmh) {
+      _smoothedSpeedKmh = (_smoothedSpeedKmh * 0.35) + (sample * 0.65);
+    } else {
+      _smoothedSpeedKmh = (_smoothedSpeedKmh * 0.7) + (sample * 0.3);
+    }
+    if (_smoothedSpeedKmh < 0.25) _smoothedSpeedKmh = 0;
   }
 
   MotionActivity _classifyWithHysteresis(double speedKmh) {
@@ -468,8 +490,16 @@ class GpsTrackingEngine {
       _pendingActivity = target;
       _pendingActivityHits = 1;
     }
-    // Exige 3 leituras iguais antes de mudar (exceto parado imediato se bem parado).
-    final need = target == MotionActivity.stopped ? 2 : 3;
+    // Sair de parado → caminhada: 1 leitura basta. Entrar em parado: 3 (evita flicker).
+    final int need;
+    if (currentActivity == MotionActivity.stopped &&
+        target == MotionActivity.walk) {
+      need = 1;
+    } else if (target == MotionActivity.stopped) {
+      need = 3;
+    } else {
+      need = 2;
+    }
     if (_pendingActivityHits >= need) {
       currentActivity = target;
       _pendingActivityHits = 0;
@@ -538,8 +568,11 @@ class GpsTrackingEngine {
 
     if (autoPaused) {
       final moved = _displacementFromPauseAnchor(lat, lng);
-      if ((!stationary && smoothedSpeed >= resumeAboveKmh) ||
-          moved >= resumeDisplacementMeters) {
+      // Retoma fácil: deslocamento curto OU velocidade, mesmo se a janela
+      // ainda achar “estacionário” por pontos antigos.
+      if (moved >= resumeDisplacementMeters ||
+          smoothedSpeed >= resumeAboveKmh ||
+          (!stationary && smoothedSpeed >= pauseBelowKmh)) {
         _exitAutoPause(now);
       }
       return;
@@ -601,23 +634,47 @@ class GpsTrackingEngine {
     final reportedSpeed =
         pos.speed.isNaN || pos.speed < 0 ? null : pos.speed * 3.6;
     final altitude = pos.altitude.isNaN ? null : pos.altitude;
+    final stepFromLastRaw = (_lastRawLat != null && _lastRawLng != null)
+        ? Geolocator.distanceBetween(
+            _lastRawLat!,
+            _lastRawLng!,
+            pos.latitude,
+            pos.longitude,
+          )
+        : null;
     final implied = _impliedSpeedKmh(pos.latitude, pos.longitude, recordedAt);
 
     _recentRaw.add(
       _RawSample(pos.latitude, pos.longitude, recordedAt),
     );
-    final stationary = _computeStationary(recordedAt);
+    // Passo claro: limpa a janela antiga para não ficar preso em “parado”.
+    if (stepFromLastRaw != null && stepFromLastRaw >= breakStationaryMeters) {
+      _recentRaw
+        ..clear()
+        ..add(_RawSample(pos.latitude, pos.longitude, recordedAt));
+    }
+    final stationary = _computeStationary(
+      recordedAt,
+      stepFromLastRaw: stepFromLastRaw,
+    );
     final blended = _blendSpeed(
       reported: reportedSpeed,
       implied: implied,
       stationary: stationary,
     );
     if (stationary) {
-      // Drift parado: zera na hora (EMA sozinho demora e “mostra correndo”).
-      _smoothedSpeedKmh = 0;
-      currentActivity = MotionActivity.stopped;
-      _pendingActivity = MotionActivity.stopped;
-      _pendingActivityHits = 0;
+      final tinyStep = (stepFromLastRaw ?? 0) < 1.0;
+      final tinyImplied = (implied ?? 0) < 0.5;
+      if (tinyStep && tinyImplied) {
+        // Drift real parado: zera (evita “correndo” parado).
+        _smoothedSpeedKmh = 0;
+        currentActivity = MotionActivity.stopped;
+        _pendingActivity = MotionActivity.stopped;
+        _pendingActivityHits = 0;
+      } else {
+        // Quase parado mas já se mexendo: decai suave para facilitar retomar.
+        _pushSmoothedSpeed(0);
+      }
     } else {
       _pushSmoothedSpeed(blended);
     }
@@ -698,12 +755,27 @@ class GpsTrackingEngine {
     }
 
     // Parado de verdade: não alonga a rota com drift do GPS.
-    if (stationary) {
-      currentActivity = MotionActivity.stopped;
-      return GpsProcessResult.rejected(
-        GpsRejectReason.tooSoon,
-        activity: MotionActivity.stopped,
-      );
+    // Só rejeita se quase não andou desde o último ponto aceito.
+    if (stationary && _smoothedSpeedKmh < pauseBelowKmh) {
+      final driftFromAccepted = previous == null
+          ? 0.0
+          : Geolocator.distanceBetween(
+              previous.latitude,
+              previous.longitude,
+              pos.latitude,
+              pos.longitude,
+            );
+      if (driftFromAccepted < minDistanceMeters) {
+        currentActivity = MotionActivity.stopped;
+        return GpsProcessResult.rejected(
+          GpsRejectReason.tooSoon,
+          activity: MotionActivity.stopped,
+        );
+      }
+      // Andou o bastante desde o último aceito → aceita e sai do “preso”.
+      _recentRaw
+        ..clear()
+        ..add(_RawSample(pos.latitude, pos.longitude, recordedAt));
     }
 
     final activity = _classifyWithHysteresis(_smoothedSpeedKmh);

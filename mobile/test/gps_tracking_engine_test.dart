@@ -251,7 +251,7 @@ void main() {
     final engine = GpsTrackingEngine();
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
     // Mesmo local com speed falsa alta do chip (típico parado).
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 8; i++) {
       engine.process(
         _pos(
           lat: -23.55000 + (i * 0.000001), // drift ~0.1 m
@@ -265,5 +265,38 @@ void main() {
     expect(engine.displaySpeedKmh, lessThan(2.0));
     expect(engine.currentActivity, MotionActivity.stopped);
     expect(engine.distanceMeters, lessThan(5));
+  });
+
+  test('após parado retoma caminhada com poucos metros', () {
+    final engine = GpsTrackingEngine(
+      autoPauseAfter: const Duration(seconds: 2),
+      minDistanceMeters: 1,
+    );
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    // Fica parado → auto-pause.
+    for (var i = 0; i < 4; i++) {
+      engine.process(
+        _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+        now: t0.add(Duration(seconds: i)),
+      );
+    }
+    expect(engine.autoPaused, isTrue);
+    expect(engine.currentActivity, MotionActivity.stopped);
+
+    // Anda ~3,5 m em passos claros → deve retomar e marcar caminhada.
+    for (var i = 1; i <= 5; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000032), // ~3,5 m cada
+          lng: -46.63000,
+          speed: 1.4,
+          accuracy: 10,
+        ),
+        now: t0.add(Duration(seconds: 10 + i * 2)),
+      );
+    }
+    expect(engine.autoPaused, isFalse);
+    expect(engine.currentActivity, MotionActivity.walk);
+    expect(engine.distanceMeters, greaterThan(3));
   });
 }
