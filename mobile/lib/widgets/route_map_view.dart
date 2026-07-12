@@ -11,7 +11,7 @@ class RoutePointView {
   LatLng get latLng => LatLng(latitude, longitude);
 }
 
-/// Mapa real (OpenStreetMap) com traço da rota, no estilo Strava.
+/// Mapa real (OpenStreetMap) com traço da rota, no estilo Strava/Google.
 class RouteMapView extends StatefulWidget {
   const RouteMapView({
     super.key,
@@ -19,12 +19,17 @@ class RouteMapView extends StatefulWidget {
     this.height = 280,
     this.statusMessage,
     this.followUser = true,
+    this.liveLatitude,
+    this.liveLongitude,
   });
 
   final List<RoutePointView> points;
   final double height;
   final String? statusMessage;
   final bool followUser;
+  /// Ponto azul ao vivo (último fix), mesmo antes de entrar na rota.
+  final double? liveLatitude;
+  final double? liveLongitude;
 
   @override
   State<RouteMapView> createState() => _RouteMapViewState();
@@ -37,20 +42,31 @@ class _RouteMapViewState extends State<RouteMapView> {
   final _mapController = MapController();
   LatLng? _lastFollowed;
 
+  LatLng? get _livePoint {
+    final lat = widget.liveLatitude;
+    final lng = widget.liveLongitude;
+    if (lat == null || lng == null) return null;
+    return LatLng(lat, lng);
+  }
+
   @override
   void didUpdateWidget(covariant RouteMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.followUser || widget.points.isEmpty) return;
-    final next = widget.points.last.latLng;
+    if (!widget.followUser) return;
+    final next = _livePoint ??
+        (widget.points.isNotEmpty ? widget.points.last.latLng : null);
+    if (next == null) return;
     final prev = _lastFollowed;
     if (prev == null ||
-        prev.latitude != next.latitude ||
-        prev.longitude != next.longitude) {
+        (prev.latitude - next.latitude).abs() > 0.000001 ||
+        (prev.longitude - next.longitude).abs() > 0.000001) {
       _lastFollowed = next;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final zoom = widget.points.length == 1 ? 17.0 : _mapController.camera.zoom;
-        _mapController.move(next, zoom.clamp(15.0, 18.0));
+        final zoom = widget.points.length <= 1
+            ? 18.0
+            : _mapController.camera.zoom;
+        _mapController.move(next, zoom.clamp(16.0, 19.0));
       });
     }
   }
@@ -64,7 +80,8 @@ class _RouteMapViewState extends State<RouteMapView> {
   @override
   Widget build(BuildContext context) {
     final latLngs = widget.points.map((p) => p.latLng).toList();
-    final center = latLngs.isNotEmpty ? latLngs.last : _fallbackCenter;
+    final live = _livePoint;
+    final center = live ?? (latLngs.isNotEmpty ? latLngs.last : _fallbackCenter);
     final status = widget.statusMessage;
 
     return Container(
@@ -81,7 +98,7 @@ class _RouteMapViewState extends State<RouteMapView> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: center,
-              initialZoom: latLngs.isEmpty ? 13 : 17,
+              initialZoom: latLngs.isEmpty && live == null ? 13 : 18,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
@@ -104,22 +121,58 @@ class _RouteMapViewState extends State<RouteMapView> {
                     ),
                   ],
                 ),
-              if (latLngs.isNotEmpty)
-                MarkerLayer(
-                  markers: [
-                    if (latLngs.length >= 2)
-                      Marker(
-                        point: latLngs.first,
-                        width: 18,
-                        height: 18,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF22C55E),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
+              MarkerLayer(
+                markers: [
+                  if (latLngs.isNotEmpty && latLngs.length >= 2)
+                    Marker(
+                      point: latLngs.first,
+                      width: 18,
+                      height: 18,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
                         ),
                       ),
+                    ),
+                  // Ponto azul ao vivo (Google-style).
+                  if (live != null)
+                    Marker(
+                      point: live,
+                      width: 36,
+                      height: 36,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0x334285F4),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Container(
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4285F4),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x66000000),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (latLngs.isNotEmpty)
                     Marker(
                       point: latLngs.last,
                       width: 28,
@@ -129,18 +182,11 @@ class _RouteMapViewState extends State<RouteMapView> {
                           color: _trailColor,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x66000000),
-                              blurRadius: 6,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
           if (status != null && status.isNotEmpty)
@@ -161,7 +207,7 @@ class _RouteMapViewState extends State<RouteMapView> {
                 ),
               ),
             ),
-          if (latLngs.isNotEmpty)
+          if (live != null || latLngs.isNotEmpty)
             Positioned(
               top: 8,
               right: 8,
@@ -174,7 +220,8 @@ class _RouteMapViewState extends State<RouteMapView> {
                   padding: const EdgeInsets.all(8),
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    _mapController.move(latLngs.last, 17);
+                    final target = live ?? latLngs.last;
+                    _mapController.move(target, 18);
                   },
                   icon: const Icon(Icons.my_location, color: Colors.white),
                 ),

@@ -262,14 +262,13 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
             ? 'Pausado · $km km · ${_fmt(_engine.pausedSec)}'
             : 'Auto-pause · $km km')
         : 'Distância: $km km · Ritmo: $pace';
-    // Em pausa usa filtro menor para detectar retomada mais rápido.
-    final distanceFilter = _engine.isPaused ? 2 : 4;
 
+    // distanceFilter 0 = cada fix do chip, como Google Maps.
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: distanceFilter,
-        intervalDuration: const Duration(seconds: 1),
+        distanceFilter: 0,
+        intervalDuration: const Duration(milliseconds: 500),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: _engine.isPaused
@@ -288,15 +287,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         activityType: ActivityType.fitness,
-        distanceFilter: distanceFilter,
+        distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
       );
     }
-    return LocationSettings(
-      accuracy: LocationAccuracy.best,
-      distanceFilter: distanceFilter,
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 0,
     );
   }
 
@@ -351,7 +350,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           _gpsStatus = _engine.manualPaused
               ? 'Pausado — toque em Retomar'
               : _engine.autoPaused
-                  ? 'Auto-pause — ande ~10 m para continuar'
+                  ? 'Auto-pause — ande para continuar'
                   : lost
                       ? 'Aguardando fix GPS (sinal fraco ou tela apagada)...'
                       : 'GPS ok — ${_engine.acceptedPoints.length} pontos';
@@ -576,13 +575,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _gpsStatus = result.manualPaused
             ? 'Pausado — toque em Retomar'
             : result.autoPaused
-                ? 'Auto-pause — ande ~10 m para continuar'
+                ? 'Auto-pause — ande para continuar'
                 : 'Retomado — ${_activityLabel(result.activity)}';
       });
-      // Reinicia stream com distanceFilter adequado à pausa.
-      unawaited(_restartGpsStreamOnly());
     }
 
+    // Sempre atualiza UI ao vivo (mesmo fix rejeitado) — estilo Google Maps.
     if (!result.accepted) {
       if (mounted) {
         setState(() {
@@ -645,7 +643,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           : 'Retomado — continue o treino';
     });
     unawaited(_persistActiveRun(force: true));
-    unawaited(_restartGpsStreamOnly());
     unawaited(CardioFeedback.playBeeps(1));
   }
 
@@ -941,6 +938,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
+                            liveLatitude: _running ? _engine.liveLatitude : null,
+                            liveLongitude:
+                                _running ? _engine.liveLongitude : null,
                             points: mapPoints
                                 .map(
                                   (p) => RoutePointView(

@@ -137,18 +137,19 @@ class GpsProcessResult {
 /// Filtra pontos GPS, calcula distância, pace, splits, elevação e auto-pause.
 class GpsTrackingEngine {
   GpsTrackingEngine({
-    this.maxAccuracyMeters = 35,
-    this.relaxedAccuracyMeters = 60,
+    this.maxAccuracyMeters = 40,
+    this.relaxedAccuracyMeters = 70,
     this.maxSpeedKmh = 40,
     this.maxJumpMeters = 120,
-    this.minDistanceMeters = 4,
-    this.bufferSize = 20,
-    this.smoothWindow = 5,
+    /// Aceita passos pequenos — estilo Google Maps em tempo real.
+    this.minDistanceMeters = 1.0,
+    this.bufferSize = 40,
+    this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
-    this.pauseBelowKmh = 1.4,
-    this.resumeAboveKmh = 1.8,
-    this.resumeDisplacementMeters = 8,
-    this.autoPauseAfter = const Duration(seconds: 12),
+    this.pauseBelowKmh = 0.9,
+    this.resumeAboveKmh = 1.2,
+    this.resumeDisplacementMeters = 3,
+    this.autoPauseAfter = const Duration(seconds: 25),
     this.walkBelowKmh = 7.0,
   });
 
@@ -210,6 +211,10 @@ class GpsTrackingEngine {
   TrackedPoint? get lastAccepted => _lastAccepted;
   bool get isPaused => manualPaused || autoPaused;
   int get pausedMs => pausedSec * 1000;
+
+  /// Posição ao vivo (último fix recebido) — para o ponto azul no mapa.
+  double? get liveLatitude => _lastRawLat ?? _lastAccepted?.latitude;
+  double? get liveLongitude => _lastRawLng ?? _lastAccepted?.longitude;
 
   /// Há sinal se o stream ainda entrega fixes (mesmo com precisão ruim).
   bool get hasGpsSignal {
@@ -599,10 +604,13 @@ class GpsTrackingEngine {
       }
 
       if (delta < minDistanceMeters && !recovering) {
-        return GpsProcessResult.rejected(
-          GpsRejectReason.tooSoon,
-          activity: activity,
-        );
+        // Ruído estático: ignora. Passo real pequeno: aceita para tempo real.
+        if (dtSec < 0.6 || delta < 0.35) {
+          return GpsProcessResult.rejected(
+            GpsRejectReason.tooSoon,
+            activity: activity,
+          );
+        }
       }
 
       if (dtSec >= 20 &&
