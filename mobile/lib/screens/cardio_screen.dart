@@ -615,7 +615,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
     }
 
-    // Sempre atualiza UI ao vivo (mesmo fix rejeitado) — estilo Google Maps.
+    // Sempre espelha distância/velocidade na UI (mesmo fix rejeitado por densificação).
+    _distance = _engine.distanceMeters;
+    _estimatedGap = _engine.estimatedGapMeters;
+
     if (!result.accepted) {
       if (mounted) {
         setState(() {
@@ -623,13 +626,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           _gpsLost = false;
           _autoPaused = result.autoPaused;
           _manualPaused = result.manualPaused;
+          if (!_engine.isPaused && _engine.acceptedPoints.isNotEmpty) {
+            _gpsStatus =
+                '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
+                'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
+                '${_engine.acceptedPoints.length} pts';
+          }
         });
       }
       return;
     }
-
-    _distance = _engine.distanceMeters;
-    _estimatedGap = _engine.estimatedGapMeters;
 
     if (result.newSplit != null) {
       final s = result.newSplit!;
@@ -1035,6 +1041,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           const SizedBox(height: 8),
                           Row(
                             children: [
+                              Expanded(
+                                child: _Stat(
+                                  'Vel. agora',
+                                  '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h',
+                                ),
+                              ),
                               Expanded(
                                 child: _Stat(
                                   'Vel. média',

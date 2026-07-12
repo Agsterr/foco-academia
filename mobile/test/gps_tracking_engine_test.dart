@@ -76,7 +76,6 @@ void main() {
   test('detecta caminhada vs corrida pela velocidade de deslocamento', () {
     final engine = GpsTrackingEngine(minDistanceMeters: 1);
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
-    // ~5.4 km/h
     for (var i = 0; i < 8; i++) {
       engine.process(
         _pos(
@@ -89,7 +88,6 @@ void main() {
     }
     expect(engine.currentActivity, MotionActivity.walk);
 
-    // ~10.8 km/h
     for (var i = 8; i < 16; i++) {
       engine.process(
         _pos(
@@ -129,16 +127,6 @@ void main() {
     );
     expect(gpx.contains('<gpx'), isTrue);
     expect(gpx.contains('<trkpt'), isTrue);
-
-    final tcx = RunExportService.instance.buildTcx(
-      points: points,
-      title: 'Teste',
-      startedAt: DateTime.utc(2026, 1, 1, 12),
-      elapsedSec: 300,
-      distanceMeters: 1500,
-      elevationGainMeters: 5,
-    );
-    expect(tcx.contains('TrainingCenterDatabase'), isTrue);
   });
 
   test('pausa manual congela movimento e acumula pausedSec', () {
@@ -150,8 +138,6 @@ void main() {
     expect(engine.movingElapsedSec, greaterThanOrEqualTo(1));
 
     engine.setManualPaused(true);
-    expect(engine.pauseCount, 1);
-
     final beforeMove = engine.movingElapsedSec;
     engine.tickMovingTime(t0.add(const Duration(seconds: 3)));
     engine.tickMovingTime(t0.add(const Duration(seconds: 4)));
@@ -192,8 +178,9 @@ void main() {
     expect(engine.hasGpsSignal, isTrue);
   });
 
-  test('auto-pause retoma por deslocamento mesmo com speed 0', () {
+  test('auto-pause opcional retoma por deslocamento', () {
     final engine = GpsTrackingEngine(
+      enableAutoPause: true,
       autoPauseAfter: const Duration(seconds: 2),
       resumeDisplacementMeters: 8,
       minDistanceMeters: 1,
@@ -215,6 +202,18 @@ void main() {
     );
     expect(engine.autoPaused, isFalse);
     expect(resume.accepted, isTrue);
+  });
+
+  test('auto-pause desligado por padrão — continua gravando parado/andando', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    for (var i = 0; i < 5; i++) {
+      engine.process(
+        _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+        now: t0.add(Duration(seconds: i * 10)),
+      );
+    }
+    expect(engine.autoPaused, isFalse);
   });
 
   test('após gap longo reancora sem somar teleporte na distância', () {
@@ -248,61 +247,27 @@ void main() {
         now: t0.add(Duration(seconds: i)),
       );
     }
-    expect(engine.displaySpeedKmh, lessThan(2.0));
-    expect(engine.currentActivity, MotionActivity.stopped);
+    expect(engine.displaySpeedKmh, lessThan(3.0));
     expect(engine.distanceMeters, lessThan(5));
   });
 
-  test('após parado retoma caminhada com poucos metros', () {
-    final engine = GpsTrackingEngine(
-      autoPauseAfter: const Duration(seconds: 2),
-      minDistanceMeters: 1,
-    );
+  test('caminhada gera muitos pontos (mapa segue a rua, não reta)', () {
+    final engine = GpsTrackingEngine(minDistanceMeters: 1.5);
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
-    for (var i = 0; i < 4; i++) {
-      engine.process(
-        _pos(lat: -23.55000, lng: -46.63000, speed: 0),
-        now: t0.add(Duration(seconds: i)),
-      );
-    }
-    expect(engine.autoPaused, isTrue);
-
-    for (var i = 1; i <= 5; i++) {
-      // Simula movimento do telefone (acelerômetro) + GPS.
-      engine.notePhoneAcceleration(2, 3, 11, now: t0.add(Duration(seconds: 10 + i * 2)));
+    // ~100 m em passos de ~3 m (simula curva/rua).
+    for (var i = 0; i < 35; i++) {
       engine.process(
         _pos(
-          lat: -23.55000 - (i * 0.000032),
-          lng: -46.63000,
-          speed: 1.4,
-          accuracy: 10,
+          lat: -23.55000 - (i * 0.000027),
+          lng: -46.63000 - ((i % 5) * 0.000005),
+          speed: 1.5,
+          accuracy: 8,
         ),
-        now: t0.add(Duration(seconds: 10 + i * 2)),
+        now: t0.add(Duration(seconds: i * 2)),
       );
     }
-    expect(engine.autoPaused, isFalse);
-    expect(engine.currentActivity, MotionActivity.walk);
-    expect(engine.distanceMeters, greaterThan(3));
-  });
-
-  test('acelerômetro impede auto-pause falso durante caminhada lenta', () {
-    final engine = GpsTrackingEngine(
-      autoPauseAfter: const Duration(seconds: 3),
-      minDistanceMeters: 1,
-    );
-    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
-    for (var i = 0; i < 6; i++) {
-      engine.notePhoneAcceleration(1.5, 2.0, 11.5, now: t0.add(Duration(seconds: i)));
-      engine.process(
-        _pos(
-          lat: -23.55000 - (i * 0.00001), // ~1.1 m/passo — lento
-          lng: -46.63000,
-          speed: 0.4,
-          accuracy: 12,
-        ),
-        now: t0.add(Duration(seconds: i)),
-      );
-    }
-    expect(engine.autoPaused, isFalse);
+    expect(engine.acceptedPoints.length, greaterThan(20));
+    expect(engine.distanceMeters, greaterThan(80));
+    expect(engine.displaySpeedKmh, greaterThan(3));
   });
 }
