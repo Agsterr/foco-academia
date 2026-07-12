@@ -126,9 +126,11 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-500">Nenhuma corrida/caminhada registrada ainda.</p>
             )}
             {stats.recentDistances.map((r) => (
-              <div
+              <button
                 key={r.id}
-                className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 p-3 text-sm"
+                type="button"
+                onClick={() => router.push(`/outdoor/${r.id}`)}
+                className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900 p-3 text-left text-sm hover:border-slate-600"
               >
                 <div>
                   <p className="font-medium">{r.title}</p>
@@ -139,8 +141,9 @@ export default function DashboardPage() {
                   {r.caloriesKcal != null && (
                     <p className="text-xs text-orange-300/80">{r.caloriesKcal} kcal</p>
                   )}
+                  <p className="text-xs text-teal-400/80">Replay →</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
 

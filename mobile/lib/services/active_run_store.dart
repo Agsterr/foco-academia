@@ -44,7 +44,7 @@ class ActiveRunSnapshot {
   final List<TrackedPoint> points;
   final List<KmSplit> splits;
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toMetaJson() => {
         'clientSessionId': clientSessionId,
         'serverSessionId': serverSessionId,
         'workoutId': workoutId,
@@ -59,8 +59,12 @@ class ActiveRunSnapshot {
         'manualPaused': manualPaused,
         'pausedSec': pausedSec,
         'pauseCount': pauseCount,
-        'points': points.map((p) => p.toJson()).toList(),
         'splits': splits.map((s) => s.toJson()).toList(),
+      };
+
+  Map<String, dynamic> toJson() => {
+        ...toMetaJson(),
+        'points': points.map((p) => p.toJson()).toList(),
       };
 
   factory ActiveRunSnapshot.fromJson(Map<String, dynamic> json) {
@@ -101,6 +105,7 @@ class ActiveRunStore {
   static const activeFlagKey = 'active_run_v1';
 
   DateTime? _lastPersistAt;
+  int _lastPersistedSeq = -1;
 
   Future<Database> get db => AppDatabase.instance.db;
 
@@ -111,7 +116,25 @@ class ActiveRunStore {
     try {
       final payload =
           jsonDecode(rows.first['payload'] as String) as Map<String, dynamic>;
-      return ActiveRunSnapshot.fromJson(payload);
+
+      // Preferir pontos na tabela dedicada (v3+).
+      final pointRows = await database.query(
+        'active_run_points',
+        orderBy: 'sequence_num ASC',
+      );
+      if (pointRows.isNotEmpty) {
+        payload['points'] = pointRows
+            .map((r) => jsonDecode(r['payload'] as String))
+            .toList();
+      }
+
+      final snapshot = ActiveRunSnapshot.fromJson(payload);
+      if (snapshot.points.isNotEmpty) {
+        _lastPersistedSeq = snapshot.points.last.sequenceNum;
+      } else {
+        _lastPersistedSeq = -1;
+      }
+      return snapshot;
     } catch (_) {
       await clear();
       return null;
@@ -130,22 +153,44 @@ class ActiveRunStore {
     }
     _lastPersistAt = now;
     final database = await db;
-    await database.insert(
+
+        await database.insert(
       'active_run',
       {
         'id': 1,
-        'payload': jsonEncode(snapshot.toJson()),
+        'payload': jsonEncode(snapshot.toMetaJson()),
         'updated_at': now.toUtc().toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    // Append / upsert incremental dos pontos.
+    final batch = database.batch();
+    for (final p in snapshot.points) {
+      if (p.sequenceNum <= _lastPersistedSeq) continue;
+      batch.insert(
+        'active_run_points',
+        {
+          'sequence_num': p.sequenceNum,
+          'payload': jsonEncode(p.toJson()),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+    if (snapshot.points.isNotEmpty) {
+      _lastPersistedSeq = snapshot.points.last.sequenceNum;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(activeFlagKey, true);
   }
 
   Future<void> clear() async {
     _lastPersistAt = null;
+    _lastPersistedSeq = -1;
     final database = await db;
+    await database.delete('active_run_points');
     await database.delete('active_run');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(activeFlagKey, false);
@@ -154,5 +199,13 @@ class ActiveRunStore {
   Future<bool> hasActiveFlag() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(activeFlagKey) ?? false;
+  }
+
+  Future<int> pointCount() async {
+    final database = await db;
+    final result = await database.rawQuery(
+      'SELECT COUNT(*) AS c FROM active_run_points',
+    );
+    return (result.first['c'] as int?) ?? 0;
   }
 }

@@ -15,7 +15,27 @@ interface CardioSession {
   pausedMs?: number;
   pauseCount?: number;
   caloriesKcal?: number;
+  gpsQualityScore?: number;
+  gpsQualityLabel?: string;
   startedAt: string;
+}
+
+interface GpsAnalytics {
+  completedSessions: number;
+  avgGpsQualityScore: number | null;
+  qualityLabelCounts: Record<string, number>;
+  filterReasonCounts: Record<string, number>;
+  diagnosticEventCounts: Record<string, number>;
+  algorithmVersionCounts: Record<string, number>;
+}
+
+interface SessionAiInsights {
+  sessionId: string;
+  overallRiskScore: number;
+  summary: string;
+  findings: { code: string; severity: string; title: string; detail?: string }[];
+  segmentSuggestions: { action: string; reason: string }[];
+  suspiciousActivity: boolean;
 }
 
 interface CardioStats {
@@ -74,6 +94,7 @@ export default function CardioPage() {
   const router = useRouter();
   const [students, setStudents] = useState<User[]>([]);
   const [stats, setStats] = useState<CardioStats | null>(null);
+  const [gpsAnalytics, setGpsAnalytics] = useState<GpsAnalytics | null>(null);
   const [workouts, setWorkouts] = useState<CardioWorkout[]>([]);
   const [studentId, setStudentId] = useState("");
   const [title, setTitle] = useState("Caminhada intervalada");
@@ -84,6 +105,19 @@ export default function CardioPage() {
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [aiBySession, setAiBySession] = useState<Record<string, SessionAiInsights | "loading" | "error">>({});
+
+  async function loadAiInsights(sessionId: string) {
+    setAiBySession((prev) => ({ ...prev, [sessionId]: "loading" }));
+    try {
+      const r = await api<SessionAiInsights>(
+        `/api/instructor/cardio-sessions/${sessionId}/ai-insights`
+      );
+      setAiBySession((prev) => ({ ...prev, [sessionId]: r }));
+    } catch {
+      setAiBySession((prev) => ({ ...prev, [sessionId]: "error" }));
+    }
+  }
 
   async function refreshWorkouts() {
     const w = await api<CardioWorkout[]>("/api/instructor/cardio-workouts");
@@ -99,10 +133,12 @@ export default function CardioPage() {
       api<User[]>("/api/instructor/students"),
       api<CardioStats>("/api/instructor/cardio-stats"),
       api<CardioWorkout[]>("/api/instructor/cardio-workouts"),
-    ]).then(([s, st, w]) => {
+      api<GpsAnalytics>("/api/instructor/gps-analytics").catch(() => null),
+    ]).then(([s, st, w, ga]) => {
       setStudents(s);
       setStats(st);
       setWorkouts(w);
+      setGpsAnalytics(ga);
       if (s.length > 0) setStudentId(s[0].id);
     });
   }, [router]);
@@ -235,6 +271,33 @@ export default function CardioPage() {
         </div>
       )}
 
+      {gpsAnalytics && (
+        <div className="mt-4 rounded-xl border border-teal-900/40 bg-teal-950/20 p-4">
+          <h3 className="font-medium text-teal-200">Analytics GPS</h3>
+          <p className="mt-1 text-sm text-slate-400">
+            {gpsAnalytics.completedSessions} sessões · qualidade média{" "}
+            {gpsAnalytics.avgGpsQualityScore != null
+              ? `${gpsAnalytics.avgGpsQualityScore.toFixed(0)}%`
+              : "--"}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {Object.entries(gpsAnalytics.qualityLabelCounts).map(([k, v]) => (
+              <span key={k} className="rounded-full border border-slate-700 px-2 py-1">
+                {k}: {v}
+              </span>
+            ))}
+          </div>
+          {Object.keys(gpsAnalytics.diagnosticEventCounts).length > 0 && (
+            <p className="mt-2 text-xs text-slate-500">
+              Diagnósticos:{" "}
+              {Object.entries(gpsAnalytics.diagnosticEventCounts)
+                .map(([k, v]) => `${k} (${v})`)
+                .join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+
       <form onSubmit={saveWorkout} className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
         <div className="flex items-center justify-between gap-2">
           <h3 className="font-medium">
@@ -294,6 +357,9 @@ export default function CardioPage() {
             <p className="text-slate-400">
               {((s.distanceMeters ?? 0) / 1000).toFixed(2)} km · {(s.avgSpeedKmh ?? 0).toFixed(1)} km/h
               {s.caloriesKcal != null && <> · {s.caloriesKcal} kcal</>}
+              {s.gpsQualityLabel != null && (
+                <> · GPS {s.gpsQualityScore?.toFixed(0) ?? "--"}% {s.gpsQualityLabel}</>
+              )}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Em movimento {formatDuration(s.elapsedMs)}
@@ -304,6 +370,32 @@ export default function CardioPage() {
                 <> · {s.pauseCount} pausa{(s.pauseCount ?? 0) === 1 ? "" : "s"}</>
               )}
             </p>
+            <button
+              type="button"
+              className="mt-2 rounded-lg border border-slate-700 px-3 py-1 text-xs hover:bg-slate-800"
+              onClick={() => void loadAiInsights(s.id)}
+              disabled={aiBySession[s.id] === "loading"}
+            >
+              {aiBySession[s.id] === "loading" ? "Analisando…" : "Insights IA"}
+            </button>
+            {aiBySession[s.id] && aiBySession[s.id] !== "loading" && aiBySession[s.id] !== "error" && (
+              <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
+                <p>
+                  Risco {Math.round((aiBySession[s.id] as SessionAiInsights).overallRiskScore)}% ·{" "}
+                  {(aiBySession[s.id] as SessionAiInsights).summary}
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {(aiBySession[s.id] as SessionAiInsights).findings.slice(0, 3).map((f, i) => (
+                    <li key={`${f.code}-${i}`}>
+                      [{f.severity}] {f.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {aiBySession[s.id] === "error" && (
+              <p className="mt-1 text-xs text-red-400">Falha ao carregar insights</p>
+            )}
           </div>
         ))}
         {stats?.recentSessions.length === 0 && (

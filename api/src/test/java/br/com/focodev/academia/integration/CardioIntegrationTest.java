@@ -96,10 +96,27 @@ class CardioIntegrationTest {
                 "pausedMs", 180000,
                 "pauseCount", 2,
                 "points", List.of(
-                        Map.of("latitude", -23.5, "longitude", -46.6, "speedKmh", 8.0,
-                                "recordedAt", "2026-01-01T12:00:00Z", "sequenceNum", 0),
-                        Map.of("latitude", -23.51, "longitude", -46.61, "speedKmh", 9.0,
-                                "recordedAt", "2026-01-01T12:05:00Z", "sequenceNum", 1)
+                        Map.of(
+                                "latitude", -23.5,
+                                "longitude", -46.6,
+                                "speedKmh", 8.0,
+                                "recordedAt", "2026-01-01T12:00:00Z",
+                                "sequenceNum", 0,
+                                "accuracyMeters", 4.2,
+                                "heading", 180.0,
+                                "altitudeMeters", 760.0,
+                                "provider", "fused",
+                                "isFiltered", false
+                        ),
+                        Map.of(
+                                "latitude", -23.51,
+                                "longitude", -46.61,
+                                "speedKmh", 9.0,
+                                "recordedAt", "2026-01-01T12:05:00Z",
+                                "sequenceNum", 1,
+                                "accuracyMeters", 5.0,
+                                "provider", "gps"
+                        )
                 )
         );
 
@@ -111,7 +128,11 @@ class CardioIntegrationTest {
                 .andExpect(jsonPath("$.distanceMeters").value(2500.0))
                 .andExpect(jsonPath("$.elapsedMs").value(1200000))
                 .andExpect(jsonPath("$.pausedMs").value(180000))
-                .andExpect(jsonPath("$.pauseCount").value(2));
+                .andExpect(jsonPath("$.pauseCount").value(2))
+                .andExpect(jsonPath("$.routePoints[0].accuracyMeters").value(4.2))
+                .andExpect(jsonPath("$.routePoints[0].heading").value(180.0))
+                .andExpect(jsonPath("$.routePoints[0].provider").value("fused"))
+                .andExpect(jsonPath("$.routePoints[0].isFiltered").value(false));
 
         mockMvc.perform(get("/api/instructor/cardio-stats")
                         .header("Authorization", "Bearer " + fixture.instructorToken()))

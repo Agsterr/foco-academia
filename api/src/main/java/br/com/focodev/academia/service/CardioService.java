@@ -2,6 +2,7 @@ package br.com.focodev.academia.service;
 
 import br.com.focodev.academia.domain.*;
 import br.com.focodev.academia.dto.CardioDtos;
+import br.com.focodev.academia.dto.GpsAnalyticsDtos;
 import br.com.focodev.academia.dto.StudentProfileDtos;
 import br.com.focodev.academia.exception.ApiException;
 import br.com.focodev.academia.repository.*;
@@ -37,6 +38,7 @@ public class CardioService {
     private final ObjectMapper objectMapper;
     private final StudentProfileRepository profileRepository;
     private final CalorieEstimationService calorieEstimationService;
+    private final GpsDiagnosticRepository gpsDiagnosticRepository;
 
     @Transactional
     public CardioDtos.CardioWorkoutResponse createWorkout(AuthUser instructor, CardioDtos.CreateCardioWorkoutRequest request) {
@@ -157,14 +159,7 @@ public class CardioService {
     ) {
         CardioSession session = requireStudentSession(student, sessionId);
         for (CardioDtos.RoutePointRequest point : request.points()) {
-            RoutePoint rp = new RoutePoint();
-            rp.setSession(session);
-            rp.setLatitude(point.latitude());
-            rp.setLongitude(point.longitude());
-            rp.setSpeedKmh(point.speedKmh());
-            rp.setRecordedAt(parseInstant(point.recordedAt()));
-            rp.setSequenceNum(point.sequenceNum());
-            session.getRoutePoints().add(rp);
+            session.getRoutePoints().add(toRoutePoint(session, point));
         }
         return toSessionResponse(sessionRepository.save(session));
     }
@@ -184,17 +179,18 @@ public class CardioService {
         session.setPauseCount(request.pauseCount() != null ? request.pauseCount() : 0);
         session.setCaloriesKcal(resolveCardioCalories(student.getId(), request.distanceMeters(),
                 request.avgSpeedKmh(), request.elapsedMs(), request.pausedMs(), request.caloriesKcal()));
+        session.setGpsQualityScore(request.gpsQualityScore());
+        session.setGpsQualityLabel(request.gpsQualityLabel());
+        session.setGpsAlgorithmVersion(request.gpsAlgorithmVersion());
+        session.setFilterVersion(request.filterVersion());
+        session.setKalmanVersion(request.kalmanVersion());
+        session.setDistanceVersion(request.distanceVersion());
+        session.setCaloriesVersion(request.caloriesVersion());
+        session.setGpsConfigSnapshot(request.gpsConfigSnapshot());
         if (request.points() != null && !request.points().isEmpty()) {
             session.getRoutePoints().clear();
             for (CardioDtos.RoutePointRequest point : request.points()) {
-                RoutePoint rp = new RoutePoint();
-                rp.setSession(session);
-                rp.setLatitude(point.latitude());
-                rp.setLongitude(point.longitude());
-                rp.setSpeedKmh(point.speedKmh());
-                rp.setRecordedAt(parseInstant(point.recordedAt()));
-                rp.setSequenceNum(point.sequenceNum());
-                session.getRoutePoints().add(rp);
+                session.getRoutePoints().add(toRoutePoint(session, point));
             }
         }
         return toSessionResponse(sessionRepository.save(session));
@@ -291,6 +287,14 @@ public class CardioService {
                 session.setPauseCount(dto.pauseCount() != null ? dto.pauseCount() : 0);
                 session.setCaloriesKcal(resolveCardioCalories(user.getId(), dto.distanceMeters(),
                         dto.avgSpeedKmh(), dto.elapsedMs(), dto.pausedMs(), dto.caloriesKcal()));
+                session.setGpsQualityScore(dto.gpsQualityScore());
+                session.setGpsQualityLabel(dto.gpsQualityLabel());
+                session.setGpsAlgorithmVersion(dto.gpsAlgorithmVersion());
+                session.setFilterVersion(dto.filterVersion());
+                session.setKalmanVersion(dto.kalmanVersion());
+                session.setDistanceVersion(dto.distanceVersion());
+                session.setCaloriesVersion(dto.caloriesVersion());
+                session.setGpsConfigSnapshot(dto.gpsConfigSnapshot());
                 session.setSynced(true);
                 if (dto.workoutId() != null) {
                     workoutRepository.findById(dto.workoutId()).ifPresent(session::setWorkout);
@@ -298,14 +302,7 @@ public class CardioService {
                 session.getRoutePoints().clear();
                 if (dto.points() != null) {
                     for (CardioDtos.RoutePointRequest point : dto.points()) {
-                        RoutePoint rp = new RoutePoint();
-                        rp.setSession(session);
-                        rp.setLatitude(point.latitude());
-                        rp.setLongitude(point.longitude());
-                        rp.setSpeedKmh(point.speedKmh());
-                        rp.setRecordedAt(parseInstant(point.recordedAt()));
-                        rp.setSequenceNum(point.sequenceNum());
-                        session.getRoutePoints().add(rp);
+                        session.getRoutePoints().add(toRoutePoint(session, point));
                     }
                 }
                 sessionRepository.save(session);
@@ -313,7 +310,43 @@ public class CardioService {
             }
         }
 
+        if (request.diagnostics() != null) {
+            for (GpsAnalyticsDtos.GpsDiagnosticRequest ev : request.diagnostics()) {
+                saveDiagnostic(user, ev);
+            }
+        }
+
         return new CardioDtos.StudentSyncResponse(measurementsSynced, sessionsSynced);
+    }
+
+    @Transactional
+    public int addDiagnostics(AuthUser student, GpsAnalyticsDtos.AddGpsDiagnosticsRequest request) {
+        User user = requireStudent(student);
+        int n = 0;
+        if (request.events() != null) {
+            for (GpsAnalyticsDtos.GpsDiagnosticRequest ev : request.events()) {
+                saveDiagnostic(user, ev);
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private void saveDiagnostic(User user, GpsAnalyticsDtos.GpsDiagnosticRequest ev) {
+        GpsDiagnostic d = new GpsDiagnostic();
+        d.setStudent(user);
+        d.setEventType(ev.eventType() != null ? ev.eventType() : "UNKNOWN");
+        d.setRecordedAt(parseInstant(ev.timestamp()));
+        d.setMessage(ev.message());
+        d.setLatitude(ev.latitude());
+        d.setLongitude(ev.longitude());
+        d.setAccuracy(ev.accuracy());
+        if (ev.sessionId() != null) {
+            sessionRepository.findById(ev.sessionId()).ifPresent(d::setSession);
+        } else if (ev.clientSessionId() != null) {
+            sessionRepository.findByClientSessionId(ev.clientSessionId()).ifPresent(d::setSession);
+        }
+        gpsDiagnosticRepository.save(d);
     }
 
     private CardioSession requireStudentSession(AuthUser student, UUID sessionId) {
@@ -381,8 +414,22 @@ public class CardioService {
     private CardioDtos.CardioSessionResponse toSessionResponse(CardioSession s) {
         List<CardioDtos.RoutePointResponse> points = s.getRoutePoints().stream()
                 .map(p -> new CardioDtos.RoutePointResponse(
-                        p.getLatitude(), p.getLongitude(), p.getSpeedKmh(),
-                        ISO.format(p.getRecordedAt()), p.getSequenceNum()
+                        p.getLatitude(),
+                        p.getLongitude(),
+                        p.getSpeedKmh(),
+                        ISO.format(p.getRecordedAt()),
+                        p.getSequenceNum(),
+                        p.getAccuracyMeters(),
+                        p.getHeading(),
+                        p.getAltitudeMeters(),
+                        p.getProvider(),
+                        p.getFiltered(),
+                        p.getBatteryLevel(),
+                        p.getVerticalAccuracy(),
+                        p.getBearingAccuracy(),
+                        p.getSpeedAccuracy(),
+                        p.getFilterReason(),
+                        p.getConfidenceScore()
                 ))
                 .toList();
         return new CardioDtos.CardioSessionResponse(
@@ -399,6 +446,13 @@ public class CardioService {
                 s.getPausedMs() != null ? s.getPausedMs() : 0L,
                 s.getPauseCount() != null ? s.getPauseCount() : 0,
                 s.getCaloriesKcal(),
+                s.getGpsQualityScore(),
+                s.getGpsQualityLabel(),
+                s.getGpsAlgorithmVersion(),
+                s.getFilterVersion(),
+                s.getKalmanVersion(),
+                s.getDistanceVersion(),
+                s.getCaloriesVersion(),
                 points
         );
     }
@@ -427,5 +481,27 @@ public class CardioService {
                 elapsedMs,
                 pausedMs
         );
+    }
+
+    private RoutePoint toRoutePoint(CardioSession session, CardioDtos.RoutePointRequest point) {
+        RoutePoint rp = new RoutePoint();
+        rp.setSession(session);
+        rp.setLatitude(point.latitude());
+        rp.setLongitude(point.longitude());
+        rp.setSpeedKmh(point.speedKmh());
+        rp.setRecordedAt(parseInstant(point.recordedAt()));
+        rp.setSequenceNum(point.sequenceNum());
+        rp.setAccuracyMeters(point.accuracyMeters());
+        rp.setHeading(point.heading());
+        rp.setAltitudeMeters(point.altitudeMeters());
+        rp.setProvider(point.provider());
+        rp.setFiltered(point.filtered());
+        rp.setBatteryLevel(point.batteryLevel());
+        rp.setVerticalAccuracy(point.verticalAccuracy());
+        rp.setBearingAccuracy(point.bearingAccuracy());
+        rp.setSpeedAccuracy(point.speedAccuracy());
+        rp.setFilterReason(point.filterReason());
+        rp.setConfidenceScore(point.confidenceScore());
+        return rp;
     }
 }

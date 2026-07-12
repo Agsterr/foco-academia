@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -8,7 +9,9 @@ import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../services/sync_service.dart';
 import 'calorie_stats_screen.dart';
+import 'cardio_history_screen.dart';
 import 'cardio_screen.dart';
+import 'gps_debug_screen.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'weight_screen.dart';
@@ -244,6 +247,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 await _loadTodayStats();
               },
             ),
+            const SizedBox(height: 8),
+            _MenuCard(
+              icon: Icons.history,
+              title: 'Histórico e Replay',
+              subtitle: 'Reproduzir rotas e compartilhar atividades',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CardioHistoryScreen()),
+              ),
+            ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 8),
+              _MenuCard(
+                icon: Icons.bug_report_outlined,
+                title: 'Debug GPS',
+                subtitle: 'Telemetria para testes de campo (dev)',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const GpsDebugScreen()),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             _MenuCard(
               icon: Icons.sync,

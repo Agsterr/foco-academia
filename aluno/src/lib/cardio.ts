@@ -21,6 +21,17 @@ export interface RoutePoint {
   speedKmh?: number;
   recordedAt: string;
   sequenceNum: number;
+  accuracyMeters?: number;
+  heading?: number;
+  altitudeMeters?: number;
+  provider?: string;
+  isFiltered?: boolean;
+  filterReason?: string;
+  confidenceScore?: number;
+  batteryLevel?: number;
+  verticalAccuracy?: number;
+  bearingAccuracy?: number;
+  speedAccuracy?: number;
 }
 
 export interface CardioSession {
@@ -33,6 +44,8 @@ export interface CardioSession {
   avgSpeedKmh?: number;
   elapsedMs?: number;
   caloriesKcal?: number;
+  gpsQualityScore?: number;
+  gpsQualityLabel?: string;
   routePoints: RoutePoint[];
 }
 
@@ -98,6 +111,51 @@ function metForSpeed(speed: number): number {
 
 export function listCardioSessions() {
   return api<CardioSession[]>("/api/student/cardio-sessions");
+}
+
+export interface GpsAiFinding {
+  code: string;
+  severity: string;
+  title: string;
+  detail?: string;
+  sequenceFrom?: number;
+  sequenceTo?: number;
+}
+
+export interface GpsAiSegmentSuggestion {
+  sequenceFrom: number;
+  sequenceTo: number;
+  action: string;
+  reason: string;
+}
+
+export interface SessionAiInsights {
+  sessionId: string;
+  overallRiskScore: number;
+  summary: string;
+  findings: GpsAiFinding[];
+  segmentSuggestions: GpsAiSegmentSuggestion[];
+  suspiciousActivity: boolean;
+  performance?: {
+    avgPaceSecPerKm?: number;
+    avgSpeedKmh?: number;
+    trendLabel?: string;
+  };
+}
+
+export interface AthleteRecommendations {
+  evolutionSummary: string;
+  predictedNextKmPaceSecPerKm?: number;
+  recommendations: string[];
+  warnings: string[];
+}
+
+export function getSessionAiInsights(sessionId: string) {
+  return api<SessionAiInsights>(`/api/student/cardio-sessions/${sessionId}/ai-insights`);
+}
+
+export function getAthleteRecommendations() {
+  return api<AthleteRecommendations>("/api/student/ai/recommendations");
 }
 
 export function haversineMeters(

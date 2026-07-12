@@ -6,9 +6,12 @@ import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
 import br.com.focodev.academia.service.CalorieStatsService;
 import br.com.focodev.academia.service.CardioService;
+import br.com.focodev.academia.service.GpsAiAnalysisService;
+import br.com.focodev.academia.service.GpsAnalyticsService;
 import br.com.focodev.academia.service.StudentProfileService;
 import br.com.focodev.academia.service.TenantService;
 import br.com.focodev.academia.service.WorkoutProgramService;
+import br.com.focodev.academia.service.WorkoutReprocessingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,6 +37,9 @@ public class ApiControllers {
     private final StudentProfileService studentProfileService;
     private final CardioService cardioService;
     private final CalorieStatsService calorieStatsService;
+    private final GpsAnalyticsService gpsAnalyticsService;
+    private final WorkoutReprocessingService workoutReprocessingService;
+    private final GpsAiAnalysisService gpsAiAnalysisService;
 
     @GetMapping("/health")
     public Map<String, String> health() {
@@ -349,6 +355,51 @@ public class ApiControllers {
         return cardioService.listStudentSessions(user);
     }
 
+    @PostMapping("/student/gps-diagnostics")
+    public Map<String, Object> addGpsDiagnostics(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody GpsAnalyticsDtos.AddGpsDiagnosticsRequest request
+    ) {
+        int n = cardioService.addDiagnostics(user, request);
+        return Map.of("saved", n);
+    }
+
+    @GetMapping("/student/gps-config")
+    public GpsAnalyticsDtos.GpsConfigResponse gpsConfig() {
+        return GpsAnalyticsDtos.GpsConfigResponse.defaults();
+    }
+
+    @GetMapping("/student/cardio-sessions/{sessionId}/diagnostics")
+    public List<GpsAnalyticsDtos.GpsDiagnosticResponse> studentSessionDiagnostics(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return gpsAnalyticsService.sessionDiagnostics(user, sessionId);
+    }
+
+    @PostMapping("/student/cardio-sessions/{sessionId}/reprocess")
+    public CardioDtos.CardioSessionResponse reprocessOwnSession(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return workoutReprocessingService.reprocessAsOwner(user, sessionId);
+    }
+
+    @GetMapping("/student/cardio-sessions/{sessionId}/ai-insights")
+    public GpsAiDtos.SessionAiInsightsResponse sessionAiInsights(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return gpsAiAnalysisService.analyzeSession(user, sessionId);
+    }
+
+    @GetMapping("/student/ai/recommendations")
+    public GpsAiDtos.AthleteRecommendationsResponse athleteRecommendations(
+            @AuthenticationPrincipal AuthUser user
+    ) {
+        return gpsAiAnalysisService.recommendations(user);
+    }
+
     @PostMapping("/student/sync")
     public CardioDtos.StudentSyncResponse syncStudentData(
             @AuthenticationPrincipal AuthUser user,
@@ -437,5 +488,36 @@ public class ApiControllers {
     @GetMapping("/instructor/cardio-stats")
     public CardioDtos.InstructorCardioStatsResponse instructorCardioStats(@AuthenticationPrincipal AuthUser user) {
         return cardioService.instructorStats(user);
+    }
+
+    @GetMapping("/instructor/gps-analytics")
+    public GpsAnalyticsDtos.InstructorGpsAnalyticsResponse instructorGpsAnalytics(
+            @AuthenticationPrincipal AuthUser user
+    ) {
+        return gpsAnalyticsService.instructorAnalytics(user);
+    }
+
+    @PostMapping("/instructor/cardio-sessions/{sessionId}/reprocess")
+    public CardioDtos.CardioSessionResponse reprocessSession(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return workoutReprocessingService.reprocess(user, sessionId);
+    }
+
+    @GetMapping("/instructor/cardio-sessions/{sessionId}/ai-insights")
+    public GpsAiDtos.SessionAiInsightsResponse instructorSessionAiInsights(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return gpsAiAnalysisService.analyzeSession(user, sessionId);
+    }
+
+    @GetMapping("/instructor/cardio-sessions/{sessionId}/diagnostics")
+    public List<GpsAnalyticsDtos.GpsDiagnosticResponse> instructorSessionDiagnostics(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID sessionId
+    ) {
+        return gpsAnalyticsService.sessionDiagnostics(user, sessionId);
     }
 }

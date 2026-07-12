@@ -4,6 +4,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'auth_service.dart';
+import 'gps_diagnostic_store.dart';
 
 /// Banco local compartilhado (fila de sync + corrida ativa).
 class AppDatabase {
@@ -17,7 +18,7 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'foco_academia.db');
     _db = await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE pending_sync (
@@ -34,6 +35,20 @@ class AppDatabase {
             updated_at TEXT NOT NULL
           )
         ''');
+        await db.execute('''
+          CREATE TABLE active_run_points (
+            sequence_num INTEGER PRIMARY KEY,
+            payload TEXT NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE gps_diagnostics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -42,6 +57,53 @@ class AppDatabase {
               id INTEGER PRIMARY KEY CHECK (id = 1),
               payload TEXT NOT NULL,
               updated_at TEXT NOT NULL
+            )
+          ''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS active_run_points (
+              sequence_num INTEGER PRIMARY KEY,
+              payload TEXT NOT NULL
+            )
+          ''');
+          final rows =
+              await db.query('active_run', where: 'id = 1', limit: 1);
+          if (rows.isNotEmpty) {
+            try {
+              final payload = jsonDecode(rows.first['payload'] as String)
+                  as Map<String, dynamic>;
+              final points = payload['points'] as List<dynamic>? ?? const [];
+              final batch = db.batch();
+              for (final raw in points) {
+                final map = raw as Map<String, dynamic>;
+                final seq = (map['sequenceNum'] as num?)?.toInt() ?? 0;
+                batch.insert(
+                  'active_run_points',
+                  {
+                    'sequence_num': seq,
+                    'payload': jsonEncode(map),
+                  },
+                  conflictAlgorithm: ConflictAlgorithm.replace,
+                );
+              }
+              await batch.commit(noResult: true);
+              payload.remove('points');
+              await db.update(
+                'active_run',
+                {'payload': jsonEncode(payload)},
+                where: 'id = 1',
+              );
+            } catch (_) {}
+          }
+        }
+        if (oldVersion < 4) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS gps_diagnostics (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              payload TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              synced INTEGER NOT NULL DEFAULT 0
             )
           ''');
         }
@@ -69,7 +131,6 @@ class SyncService {
   Future<int> syncAll() async {
     final database = await db;
     final rows = await database.query('pending_sync', orderBy: 'id ASC');
-    if (rows.isEmpty) return 0;
 
     final measurements = <Map<String, dynamic>>[];
     final sessions = <Map<String, dynamic>>[];
@@ -84,12 +145,37 @@ class SyncService {
       }
     }
 
+    final diagRows = await GpsDiagnosticStore.instance.pendingPayloads();
+    final diagnostics = <Map<String, dynamic>>[];
+    final diagIds = <int>[];
+    for (final d in diagRows) {
+      final id = d.remove('_localId') as int?;
+      if (id != null) diagIds.add(id);
+      diagnostics.add(d);
+    }
+
+    if (measurements.isEmpty && sessions.isEmpty && diagnostics.isEmpty) {
+      return 0;
+    }
+
     await AuthService.instance.post('/api/student/sync', {
       'measurements': measurements,
       'cardioSessions': sessions,
+      'diagnostics': diagnostics,
     });
 
-    await database.delete('pending_sync');
-    return rows.length;
+    if (rows.isNotEmpty) {
+      await database.delete('pending_sync');
+    }
+    await GpsDiagnosticStore.instance.markSynced(diagIds);
+    return rows.length + diagnostics.length;
+  }
+
+  Future<int> pendingCount() async {
+    final database = await db;
+    final result = await database.rawQuery(
+      'SELECT COUNT(*) AS c FROM pending_sync',
+    );
+    return (result.first['c'] as int?) ?? 0;
   }
 }

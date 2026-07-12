@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -11,14 +10,23 @@ import 'package:uuid/uuid.dart';
 import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
 import '../services/calorie_estimator.dart';
+import '../services/calories_service.dart';
 import '../services/cardio_feedback.dart';
 import '../services/cardio_service.dart';
+import '../services/activity_share_service.dart';
+import '../services/gps_config.dart';
+import '../services/gps_diagnostic.dart';
+import '../services/gps_diagnostic_store.dart';
+import '../services/gps_quality_service.dart';
+import '../services/gps_service.dart';
 import '../services/gps_tracking_engine.dart';
+import '../services/health_sync_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
 import '../services/profile_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
+import '../services/workout_service.dart';
 import '../widgets/route_map_view.dart';
 
 class CardioScreen extends StatefulWidget {
@@ -56,6 +64,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _running = false;
   bool _loading = true;
   bool _finishing = false;
+  GpsConfig _gpsConfig = GpsConfig.defaults;
+  bool _wasGpsLost = false;
+  bool _autoPauseEnabled = false;
   bool _autoPaused = false;
   bool _manualPaused = false;
   String? _error;
@@ -196,13 +207,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _bgKeepalive?.cancel();
     _bgKeepalive = Timer.periodic(const Duration(seconds: 8), (_) async {
       if (!_running || _finishing || !_inBackground) return;
-      try {
-        final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.bestForNavigation,
-          timeLimit: const Duration(seconds: 6),
-        );
-        if (_running) _onPosition(pos);
-      } catch (_) {}
+      final pos = await GpsService.instance.getCurrentFix(
+        timeLimit: const Duration(seconds: 6),
+      );
+      if (pos != null && _running) _onPosition(pos);
     });
   }
 
@@ -214,13 +222,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   /// Após tela apagada o Android pode silenciar o stream — força fix + reinicia.
   Future<void> _reacquireGps() async {
     if (!_running || _finishing) return;
-    try {
-      final current = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.bestForNavigation,
-        forceAndroidLocationManager: false,
-        timeLimit: const Duration(seconds: 12),
-      );
-      if (!_running) return;
+    final current = await GpsService.instance.getCurrentFix(
+      timeLimit: const Duration(seconds: 12),
+    );
+    if (!_running) return;
+    if (current != null) {
       _onPosition(current);
       if (mounted) {
         setState(() {
@@ -232,20 +238,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
               : 'GPS retomado — ${_engine.acceptedPoints.length} pontos';
         });
       }
-    } catch (_) {
-      // Continua com o stream; watchdog atualiza o status.
     }
     if (!_running || _finishing) return;
-    await _gpsSub?.cancel();
-    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings)
-        .listen(
-      _onPosition,
-      onError: (Object err) {
-        if (mounted) {
-          setState(() => _gpsStatus = 'Erro no GPS: $err');
-        }
-      },
-    );
+    await _restartGpsStreamOnly();
   }
 
   Future<void> _loadWorkout() async {
@@ -258,6 +253,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       try {
         final profile = await ProfileService.instance.getProfile();
         _weightKg = CalorieEstimator.resolveWeight(profile.currentWeightKg);
+      } catch (_) {}
+      _gpsConfig = await GpsConfigStore.instance.load();
+      _autoPauseEnabled = _gpsConfig.autoPauseEnabled;
+      _engine.applyConfig(_gpsConfig);
+      // Remote defaults (best-effort).
+      try {
+        final remote = await AuthService.instance.get('/api/student/gps-config');
+        _gpsConfig = await GpsConfigStore.instance.applyRemote(remote);
+        _autoPauseEnabled = _gpsConfig.autoPauseEnabled;
+        _engine.applyConfig(_gpsConfig);
       } catch (_) {}
       if (!mounted) return;
       setState(() {
@@ -279,8 +284,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _emitDiagnostic(
+    GpsDiagnosticEvent type, {
+    String? message,
+  }) async {
+    await GpsDiagnosticStore.instance.add(
+      GpsDiagnosticEventRecord(
+        eventType: type,
+        timestamp: DateTime.now(),
+        message: message,
+        latitude: _engine.liveLatitude,
+        longitude: _engine.liveLongitude,
+        clientSessionId: _clientSessionId,
+      ),
+    );
+  }
+
   int get _liveCalories {
-    return CalorieEstimator.cardioKcal(
+    return CaloriesService.instance.cardioKcal(
       weightKg: _weightKg,
       avgSpeedKmh: _engine.averageSpeedKmh,
       elapsedMs: _elapsed * 1000,
@@ -390,47 +411,22 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   }
 
   LocationSettings get _locationSettings {
-    final km = (_distance / 1000).toStringAsFixed(1);
-    final pace = GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
-    final notifText = _engine.isPaused
-        ? (_manualPaused
-            ? 'Pausado · $km km · ${_fmt(_engine.pausedSec)}'
-            : 'Auto-pause · $km km')
-        : 'Distância: $km km · Ritmo: $pace';
+    final calories = _liveCalories;
+    final notifText = WorkoutService.instance.formatNotificationText(
+      paused: _engine.isPaused,
+      manualPaused: _manualPaused,
+      distanceMeters: _distance,
+      paceSecPerKm: _engine.currentPaceSecPerKm,
+      speedKmh: _engine.displaySpeedKmh,
+      calories: calories,
+      elapsedSec: _elapsed,
+    );
 
-    // distanceFilter 0 = cada fix do chip, como Google Maps.
-    if (!kIsWeb && Platform.isAndroid) {
-      return AndroidSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 0,
-        intervalDuration: const Duration(milliseconds: 200),
-        forceLocationManager: false,
-        foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationTitle: _engine.isPaused
-              ? 'Corrida pausada'
-              : 'Corrida em andamento',
-          notificationText: notifText,
-          notificationChannelName: 'Treino outdoor',
-          enableWakeLock: true,
-          setOngoing: true,
-          notificationIcon:
-              const AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
-        ),
-      );
-    }
-    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
-      return AppleSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        activityType: ActivityType.fitness,
-        distanceFilter: 0,
-        pauseLocationUpdatesAutomatically: false,
-        allowBackgroundLocationUpdates: true,
-        showBackgroundLocationIndicator: true,
-      );
-    }
-    return const LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 0,
+    return GpsService.instance.buildSettings(
+      notificationTitle: _engine.isPaused
+          ? 'Corrida pausada'
+          : 'Corrida em andamento',
+      notificationText: notifText,
     );
   }
 
@@ -439,29 +435,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _gpsStatus = 'Buscando sinal GPS...';
       _gpsLost = false;
     });
-    try {
-      final current = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.bestForNavigation,
-        forceAndroidLocationManager: false,
-        timeLimit: const Duration(seconds: 20),
-      );
+    final current = await GpsService.instance.getCurrentFix();
+    if (current != null) {
       _onPosition(current);
       if (mounted && !_gpsLost) {
         setState(() => _gpsStatus = 'GPS ok — pode apagar a tela');
       }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _gpsStatus =
-              'Sem fix ainda — mantenha o GPS ligado e vá para área aberta',
-        );
-      }
+    } else if (mounted) {
+      setState(
+        () => _gpsStatus =
+            'Sem fix ainda — mantenha o GPS ligado e vá para área aberta',
+      );
     }
 
     await _gpsSub?.cancel();
-    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings)
-        .listen(
-      _onPosition,
+    _gpsSub = GpsService.instance.listen(
+      settings: _locationSettings,
+      onPosition: _onPosition,
       onError: (Object err) {
         if (mounted) {
           setState(() => _gpsStatus = 'Erro no GPS: $err');
@@ -478,6 +468,18 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       final pausedChanged = _autoPaused != _engine.autoPaused ||
           _manualPaused != _engine.manualPaused;
       if ((lost != _gpsLost || pausedChanged) && mounted) {
+        if (lost && !_wasGpsLost) {
+          unawaited(_emitDiagnostic(
+            GpsDiagnosticEvent.gpsLost,
+            message: 'Sinal GPS fraco ou ausente',
+          ));
+        } else if (!lost && _wasGpsLost) {
+          unawaited(_emitDiagnostic(
+            GpsDiagnosticEvent.gpsRecovered,
+            message: 'Sinal GPS recuperado',
+          ));
+        }
+        _wasGpsLost = lost;
         setState(() {
           _gpsLost = lost && !_engine.isPaused;
           _autoPaused = _engine.autoPaused;
@@ -645,8 +647,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
     _clientSessionId = const Uuid().v4();
     _engine.reset();
+    _engine.applyConfig(_gpsConfig.copyWith(autoPauseEnabled: _autoPauseEnabled));
+    _engine.setAutoPauseEnabled(_autoPauseEnabled);
+    _wasGpsLost = false;
     _lastCloudSeq = 0;
     _lastCloudBackupAt = null;
+    await ActiveRunStore.instance.clear();
 
     try {
       final session = await CardioService.instance.startSession(
@@ -767,9 +773,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Future<void> _restartGpsStreamOnly() async {
     if (!_running || _finishing) return;
     await _gpsSub?.cancel();
-    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings)
-        .listen(
-      _onPosition,
+    _gpsSub = GpsService.instance.listen(
+      settings: _locationSettings,
+      onPosition: _onPosition,
       onError: (Object err) {
         if (mounted) {
           setState(() => _gpsStatus = 'Erro no GPS: $err');
@@ -878,11 +884,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final elapsedMs = _elapsed * 1000;
     final pausedMs = _engine.pausedMs;
     final pauseCount = _engine.pauseCount;
-    final caloriesKcal = CalorieEstimator.cardioKcal(
+    final caloriesKcal = CaloriesService.instance.cardioKcal(
       weightKg: _weightKg,
       avgSpeedKmh: avgSpeedKmh,
       elapsedMs: elapsedMs,
       distanceMeters: totalDistance,
+    );
+    final quality = GpsQualityService.instance.evaluate(
+      acceptedPoints: _engine.acceptedPoints,
+      rejectCounts: Map.of(_engine.rejectCounts),
+      gpsGapSec: _engine.gpsGapSec,
     );
     final points = _engine.pointsForSync();
 
@@ -893,7 +904,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         builder: (ctx) => AlertDialog(
           title: const Text('Treino finalizado'),
           content: Text(
-            'Estimativa: $caloriesKcal kcal\n\nDeseja exportar a rota (GPX/TCX)?',
+            'GPS: ${quality.display}\n'
+            'Estimativa: $caloriesKcal kcal\n\n'
+            'Deseja exportar a rota (GPX/TCX)?',
           ),
           actions: [
             TextButton(
@@ -926,6 +939,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           pausedMs: pausedMs,
           pauseCount: pauseCount,
           caloriesKcal: caloriesKcal,
+          gpsQualityScore: quality.score,
+          gpsQualityLabel: quality.label,
+          gpsAlgorithmVersion: _gpsConfig.gpsAlgorithmVersion,
+          filterVersion: _gpsConfig.filterVersion,
+          kalmanVersion: _gpsConfig.kalmanVersion,
+          distanceVersion: _gpsConfig.distanceVersion,
+          caloriesVersion: _gpsConfig.caloriesVersion,
+          gpsConfigSnapshot: jsonEncode(_gpsConfig.toJson()),
           points: points,
         );
       } else {
@@ -940,6 +961,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           'pausedMs': pausedMs,
           'pauseCount': pauseCount,
           'caloriesKcal': caloriesKcal,
+          'gpsQualityScore': quality.score,
+          'gpsQualityLabel': quality.label,
+          'gpsAlgorithmVersion': _gpsConfig.gpsAlgorithmVersion,
+          'filterVersion': _gpsConfig.filterVersion,
+          'kalmanVersion': _gpsConfig.kalmanVersion,
+          'distanceVersion': _gpsConfig.distanceVersion,
+          'caloriesVersion': _gpsConfig.caloriesVersion,
+          'gpsConfigSnapshot': jsonEncode(_gpsConfig.toJson()),
           'points': points,
           if (_estimatedGap > 0) 'estimatedGapMeters': _estimatedGap,
         };
@@ -960,6 +989,25 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         }
       }
       await ActiveRunStore.instance.clear();
+      // Health opt-in + compartilhar resumo (best-effort).
+      try {
+        await HealthSyncService.instance.load();
+        await HealthSyncService.instance.syncCompletedSession(
+          CardioSession(
+            id: _session?.id ?? _clientSessionId ?? '',
+            workoutTitle: _workout?.title ?? 'Treino outdoor',
+            startedAt: _startedAt,
+            completedAt: DateTime.now(),
+            distanceMeters: totalDistance,
+            avgSpeedKmh: avgSpeedKmh,
+            elapsedMs: elapsedMs,
+            caloriesKcal: caloriesKcal,
+            gpsQualityScore: quality.score,
+            gpsQualityLabel: quality.label,
+            routePoints: _engine.acceptedPoints,
+          ),
+        );
+      } catch (_) {}
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -967,6 +1015,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
             auto
                 ? 'Intervalos concluídos — treino sincronizado!'
                 : 'Treino sincronizado na nuvem!',
+          ),
+          action: SnackBarAction(
+            label: 'Compartilhar',
+            onPressed: () {
+              unawaited(
+                ActivityShareService.instance.shareSummary(
+                  title: _workout?.title ?? 'Treino outdoor',
+                  distanceMeters: totalDistance,
+                  elapsedMs: elapsedMs,
+                  avgSpeedKmh: avgSpeedKmh,
+                  caloriesKcal: caloriesKcal,
+                  gpsQualityScore: quality.score,
+                  gpsQualityLabel: quality.label,
+                  completedAt: DateTime.now(),
+                ),
+              );
+            },
           ),
         ),
       );
@@ -1300,6 +1365,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           const SizedBox(height: 16),
                         ],
                       ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text(
+                        'Auto-pause',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      subtitle: const Text(
+                        'Pausa se ficar parado (~30s)',
+                        style: TextStyle(fontSize: 11, color: Colors.white54),
+                      ),
+                      value: _autoPauseEnabled,
+                      onChanged: (v) {
+                        setState(() => _autoPauseEnabled = v);
+                        _engine.setAutoPauseEnabled(v);
+                      },
                     ),
                     Row(
                       children: [

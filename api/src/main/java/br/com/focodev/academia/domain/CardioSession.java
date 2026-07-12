@@ -49,6 +49,22 @@ public class CardioSession {
     /** Estimativa MET (kcal). */
     private Integer caloriesKcal;
 
+    /** Qualidade GPS 0–100 (calculada no app). */
+    private Double gpsQualityScore;
+
+    /** Rótulo: Excelente / Boa / Razoável / Baixa precisão */
+    private String gpsQualityLabel;
+
+    private String gpsAlgorithmVersion;
+    private String filterVersion;
+    private String kalmanVersion;
+    private String distanceVersion;
+    private String caloriesVersion;
+
+    /** Snapshot JSON das flags GpsConfig usadas na corrida. */
+    @Column(length = 2000)
+    private String gpsConfigSnapshot;
+
     private String clientSessionId;
 
     private boolean synced = true;
@@ -56,4 +72,8 @@ public class CardioSession {
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sequenceNum ASC")
     private List<RoutePoint> routePoints = new ArrayList<>();
+
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("recordedAt ASC")
+    private java.util.List<br.com.focodev.academia.domain.GpsDiagnostic> diagnostics = new ArrayList<>();
 }

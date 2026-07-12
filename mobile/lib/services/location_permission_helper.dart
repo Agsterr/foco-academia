@@ -11,9 +11,55 @@ class LocationPermissionHelper {
   LocationPermissionHelper._();
 
   static const _batteryPromptKey = 'battery_opt_prompted_v1';
+  static const _locationRationaleKey = 'location_rationale_shown_v1';
 
-  /// Solicita: notificação → while-in-use → always → GPS ligado.
+  /// Status atuais para a tela Debug GPS.
+  static Future<Map<String, String>> debugPermissionSnapshot() async {
+    final loc = await Geolocator.checkPermission();
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    var battery = 'n/a';
+    if (!kIsWeb && Platform.isAndroid) {
+      final s = await Permission.ignoreBatteryOptimizations.status;
+      battery = s.isGranted ? 'ignored' : 'optimized';
+    }
+    return {
+      'location': loc.name,
+      'serviceEnabled': enabled.toString(),
+      'battery': battery,
+    };
+  }
+
+  /// Solicita: rationale → notificação → while-in-use → always → GPS ligado.
   static Future<bool> ensureTrackingPermissions(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_locationRationaleKey) != true) {
+      if (!context.mounted) return false;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Localização para o treino'),
+          content: const Text(
+            'Precisamos da sua localização precisa para gravar a rota, '
+            'distância e ritmo durante a corrida ou caminhada.\n\n'
+            'Com a tela apagada, usamos localização em segundo plano '
+            'somente enquanto o treino estiver ativo.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Agora não'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Continuar'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return false;
+      await prefs.setBool(_locationRationaleKey, true);
+    }
+
     if (!kIsWeb && Platform.isAndroid) {
       final notif = await Permission.notification.request();
       if (!notif.isGranted && context.mounted) {

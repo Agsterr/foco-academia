@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/health_sync_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
 
@@ -20,6 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _goal;
   bool _loading = true;
   bool _saving = false;
+  bool _healthOptIn = false;
   String? _error;
 
   static const _goals = {
@@ -57,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _loading = true);
     try {
       final p = await ProfileService.instance.getProfile();
+      final health = await HealthSyncService.instance.load();
       if (!mounted) return;
       setState(() {
         _heightCtrl.text = p.heightCm?.toStringAsFixed(0) ?? '';
@@ -65,6 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _sex = p.sex;
         _activity = p.activityLevel;
         _goal = p.goal;
+        _healthOptIn = health;
         _loading = false;
       });
     } on SessionExpiredException {
@@ -127,6 +131,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Text(
                   'Usados na estimativa de calorias (MET). Sempre uma estimativa.',
                   style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Health Connect / Apple Health'),
+                  subtitle: const Text(
+                    'Opt-in para espelhar treinos outdoor no app de saúde do aparelho',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: _healthOptIn,
+                  onChanged: (v) async {
+                    await HealthSyncService.instance.setOptIn(v);
+                    setState(() => _healthOptIn = v);
+                  },
                 ),
                 const SizedBox(height: 16),
                 TextField(

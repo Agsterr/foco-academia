@@ -2,7 +2,12 @@ import 'dart:math' as math;
 
 import 'package:geolocator/geolocator.dart';
 
-/// Ponto aceito após filtros de qualidade GPS.
+import 'filter_reason.dart';
+import 'gps_config.dart';
+import 'gps_filter_service.dart';
+import 'kalman_filter_service.dart';
+
+/// Ponto GPS persistido/sincronizado (Fase 1: bruto rico / Fase 2: quality).
 class TrackedPoint {
   const TrackedPoint({
     required this.latitude,
@@ -12,6 +17,15 @@ class TrackedPoint {
     this.speedKmh,
     this.accuracyMeters,
     this.altitudeMeters,
+    this.heading,
+    this.provider,
+    this.isFiltered = false,
+    this.filterReason = FilterReason.none,
+    this.confidenceScore,
+    this.batteryLevel,
+    this.verticalAccuracy,
+    this.bearingAccuracy,
+    this.speedAccuracy,
     this.activity,
   });
 
@@ -22,6 +36,15 @@ class TrackedPoint {
   final double? speedKmh;
   final double? accuracyMeters;
   final double? altitudeMeters;
+  final double? heading;
+  final String? provider;
+  final bool isFiltered;
+  final FilterReason filterReason;
+  final double? confidenceScore;
+  final double? batteryLevel;
+  final double? verticalAccuracy;
+  final double? bearingAccuracy;
+  final double? speedAccuracy;
   final MotionActivity? activity;
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +55,15 @@ class TrackedPoint {
         'sequenceNum': sequenceNum,
         if (accuracyMeters != null) 'accuracyMeters': accuracyMeters,
         if (altitudeMeters != null) 'altitudeMeters': altitudeMeters,
+        if (heading != null) 'heading': heading,
+        if (provider != null) 'provider': provider,
+        'isFiltered': isFiltered,
+        'filterReason': filterReason.apiName,
+        if (confidenceScore != null) 'confidenceScore': confidenceScore,
+        if (batteryLevel != null) 'batteryLevel': batteryLevel,
+        if (verticalAccuracy != null) 'verticalAccuracy': verticalAccuracy,
+        if (bearingAccuracy != null) 'bearingAccuracy': bearingAccuracy,
+        if (speedAccuracy != null) 'speedAccuracy': speedAccuracy,
         if (activity != null) 'activity': activity!.name,
       };
 
@@ -52,8 +84,64 @@ class TrackedPoint {
       speedKmh: (json['speedKmh'] as num?)?.toDouble(),
       accuracyMeters: (json['accuracyMeters'] as num?)?.toDouble(),
       altitudeMeters: (json['altitudeMeters'] as num?)?.toDouble(),
-      recordedAt: DateTime.parse(json['recordedAt'] as String),
+      heading: (json['heading'] as num?)?.toDouble(),
+      provider: json['provider'] as String?,
+      isFiltered: json['isFiltered'] as bool? ?? false,
+      filterReason: FilterReasonApi.fromApi(json['filterReason'] as String?),
+      confidenceScore: (json['confidenceScore'] as num?)?.toDouble(),
+      batteryLevel: (json['batteryLevel'] as num?)?.toDouble(),
+      verticalAccuracy: (json['verticalAccuracy'] as num?)?.toDouble(),
+      bearingAccuracy: (json['bearingAccuracy'] as num?)?.toDouble(),
+      speedAccuracy: (json['speedAccuracy'] as num?)?.toDouble(),
+      recordedAt: DateTime.parse(
+        (json['recordedAt'] ?? json['timestamp']) as String,
+      ),
       sequenceNum: (json['sequenceNum'] as num?)?.toInt() ?? 0,
+      activity: activity,
+    );
+  }
+
+  /// Extrai metadados ricos do [Position] do geolocator.
+  static TrackedPoint fromPosition(
+    Position pos, {
+    required DateTime recordedAt,
+    required int sequenceNum,
+    double? speedKmh,
+    MotionActivity? activity,
+    bool isFiltered = false,
+    FilterReason filterReason = FilterReason.none,
+    double? confidenceScore,
+    double? batteryLevel,
+    String provider = 'fused',
+    double? latitudeOverride,
+    double? longitudeOverride,
+  }) {
+    double? finiteOrNull(double v) =>
+        v.isNaN || v.isInfinite ? null : v;
+
+    final heading = finiteOrNull(pos.heading);
+    final altAcc = finiteOrNull(pos.altitudeAccuracy);
+    final headAcc = finiteOrNull(pos.headingAccuracy);
+    final spdAcc = finiteOrNull(pos.speedAccuracy);
+
+    return TrackedPoint(
+      latitude: latitudeOverride ?? pos.latitude,
+      longitude: longitudeOverride ?? pos.longitude,
+      speedKmh: speedKmh,
+      accuracyMeters: pos.accuracy.isNaN ? null : pos.accuracy,
+      altitudeMeters: pos.altitude.isNaN ? null : pos.altitude,
+      heading: heading != null && heading >= 0 ? heading : null,
+      provider: provider,
+      isFiltered: isFiltered,
+      filterReason: filterReason,
+      confidenceScore: confidenceScore,
+      batteryLevel: batteryLevel,
+      verticalAccuracy: altAcc != null && altAcc >= 0 ? altAcc : null,
+      bearingAccuracy: headAcc != null && headAcc >= 0 ? headAcc : null,
+      speedAccuracy:
+          spdAcc != null && spdAcc >= 0 ? spdAcc * 3.6 : null,
+      recordedAt: recordedAt,
+      sequenceNum: sequenceNum,
       activity: activity,
     );
   }
@@ -103,6 +191,7 @@ class KmSplit {
       );
 }
 
+
 class GpsProcessResult {
   const GpsProcessResult.accepted({
     required this.point,
@@ -137,10 +226,10 @@ class GpsProcessResult {
 }
 
 /// Tracking GPS pragmático (funciona no telefone real):
-/// - Rota = pontos brutos (só rejeita lixo óbvio)
+/// - Rota = pontos filtrados (GpsFilterService)
+/// - Suavização opcional (KalmanFilterService) na posição aceita
 /// - Velocidade = deslocamento real + chip
 /// - Auto-pause OFF por padrão (como Strava recomenda em caminhada)
-/// - Sem Kalman na rota (atrasava e travava distância/mapa)
 class GpsTrackingEngine {
   GpsTrackingEngine({
     this.maxAccuracyMeters = 45,
@@ -160,9 +249,17 @@ class GpsTrackingEngine {
     this.autoPauseAfter = const Duration(seconds: 30),
     this.enableAutoPause = false,
     this.enableEstimatedGap = false,
+    this.enableKalman = true,
     this.runEnterKmh = 8.0,
     this.runExitKmh = 6.0,
-  });
+  })  : filter = GpsFilterService(
+          maxAccuracyMeters: maxAccuracyMeters,
+          relaxedAccuracyMeters: relaxedAccuracyMeters,
+          maxSpeedKmh: maxSpeedKmh,
+          maxJumpMeters: maxJumpMeters,
+          minDistanceMeters: minDistanceMeters,
+        ),
+        kalman = KalmanFilterService(enabled: enableKalman);
 
   final double maxAccuracyMeters;
   final double relaxedAccuracyMeters;
@@ -181,8 +278,12 @@ class GpsTrackingEngine {
   final bool enableAutoPause;
   /// Gap estimado inventava km após tela apagada — off por padrão.
   final bool enableEstimatedGap;
+  final bool enableKalman;
   final double runEnterKmh;
   final double runExitKmh;
+
+  final GpsFilterService filter;
+  final KalmanFilterService kalman;
 
   double distanceMeters = 0;
   double estimatedGapMeters = 0;
@@ -191,12 +292,19 @@ class GpsTrackingEngine {
   int movingElapsedSec = 0;
   int pausedSec = 0;
   int pauseCount = 0;
+  int gpsGapSec = 0;
   DateTime? lastFixAt;
   DateTime? lastRawFixAt;
   double? lastValidSpeedKmh;
   bool autoPaused = false;
   bool manualPaused = false;
   MotionActivity currentActivity = MotionActivity.stopped;
+  FilterReason lastFilterReason = FilterReason.none;
+
+  final Map<FilterReason, int> rejectCounts = {
+    for (final r in FilterReason.values)
+      if (r != FilterReason.none) r: 0,
+  };
 
   TrackedPoint? _lastAccepted;
   DateTime? _stillSince;
@@ -214,6 +322,8 @@ class GpsTrackingEngine {
   double? _pauseAnchorLng;
   int _recoveryFixesLeft = 0;
   double _smoothedSpeedKmh = 0;
+  double _confidenceWeightedSpeedSum = 0;
+  double _confidenceWeightSum = 0;
   DateTime? _lastPhoneMotionAt;
   bool _phoneMoving = false;
   /// Início da sessão (relógio de parede) — Tempo nunca trava por Timer atrasado.
@@ -275,8 +385,13 @@ class GpsTrackingEngine {
     return DateTime.now().difference(last);
   }
 
+  /// Pace médio ponderado por confidence (quando disponível).
   double? get averagePaceSecPerKm {
     if (distanceMeters < 30 || movingElapsedSec < 10) return null;
+    if (_confidenceWeightSum > 0.5 && _confidenceWeightedSpeedSum > 0) {
+      final avgSpeed = _confidenceWeightedSpeedSum / _confidenceWeightSum;
+      if (avgSpeed >= 1.0) return 3600.0 / avgSpeed;
+    }
     return movingElapsedSec / (distanceMeters / 1000.0);
   }
 
@@ -284,6 +399,23 @@ class GpsTrackingEngine {
     if (_smoothedSpeedKmh < 1.0) return null;
     return 3600.0 / _smoothedSpeedKmh;
   }
+
+  void setAutoPauseEnabled(bool enabled) {
+    _autoPauseOverride = enabled;
+  }
+
+  void applyConfig(GpsConfig config) {
+    _autoPauseOverride = config.autoPauseEnabled;
+    kalman.enabled = config.kalmanEnabled;
+    filter.jumpDetectionEnabled = config.jumpDetectionEnabled;
+    filter.confidenceEnabled = config.confidenceEnabled;
+    filter.maxAccuracyMeters = config.minAccuracy;
+    filter.maxSpeedKmh = config.maxSpeed;
+    filter.minDistanceMeters = config.minDistance;
+  }
+
+  bool? _autoPauseOverride;
+  bool get _autoPauseOn => _autoPauseOverride ?? enableAutoPause;
 
   static String formatPace(double? secPerKm) {
     if (secPerKm == null || secPerKm.isNaN || secPerKm.isInfinite) {
@@ -344,7 +476,7 @@ class GpsTrackingEngine {
     this.movingElapsedSec = movingElapsedSec;
     this.pausedSec = pausedSec;
     this.pauseCount = pauseCount;
-    this.autoPaused = enableAutoPause && autoPaused;
+    this.autoPaused = _autoPauseOn && autoPaused;
     this.manualPaused = manualPaused;
     _closedPausedSec = pausedSec;
     _runStartedAt = runStartedAt;
@@ -382,12 +514,17 @@ class GpsTrackingEngine {
     movingElapsedSec = 0;
     pausedSec = 0;
     pauseCount = 0;
+    gpsGapSec = 0;
     lastFixAt = null;
     lastRawFixAt = null;
     lastValidSpeedKmh = null;
     autoPaused = false;
     manualPaused = false;
     currentActivity = MotionActivity.stopped;
+    lastFilterReason = FilterReason.none;
+    for (final k in rejectCounts.keys) {
+      rejectCounts[k] = 0;
+    }
     _lastAccepted = null;
     _stillSince = null;
     _lastMovingTickAt = null;
@@ -403,11 +540,14 @@ class GpsTrackingEngine {
     _pauseAnchorLng = null;
     _recoveryFixesLeft = 0;
     _smoothedSpeedKmh = 0;
+    _confidenceWeightedSpeedSum = 0;
+    _confidenceWeightSum = 0;
     _lastPhoneMotionAt = null;
     _phoneMoving = false;
     _runStartedAt = null;
     _pauseStartedAt = null;
     _closedPausedSec = 0;
+    kalman.reset();
     _accepted.clear();
     _buffer.clear();
     _splits.clear();
@@ -500,7 +640,7 @@ class GpsTrackingEngine {
   }
 
   void _enterAutoPause(double? lat, double? lng) {
-    if (!enableAutoPause || autoPaused) return;
+    if (!_autoPauseOn || autoPaused) return;
     autoPaused = true;
     pauseCount++;
     currentActivity = MotionActivity.stopped;
@@ -532,7 +672,7 @@ class GpsTrackingEngine {
     required double lng,
     required DateTime now,
   }) {
-    if (!enableAutoPause || manualPaused) return;
+    if (!_autoPauseOn || manualPaused) return;
 
     if (autoPaused) {
       final moved = _displacementFromPauseAnchor(lat, lng);
@@ -609,17 +749,6 @@ class GpsTrackingEngine {
     _lastMovingTickAt = now;
   }
 
-  double _accuracyLimit(DateTime recordedAt) {
-    final previous = _lastAccepted;
-    final longGap = previous == null ||
-        recordedAt.difference(previous.recordedAt) >=
-            const Duration(seconds: 20);
-    if (autoPaused || _recoveryFixesLeft > 0 || longGap) {
-      return relaxedAccuracyMeters;
-    }
-    return maxAccuracyMeters;
-  }
-
   GpsProcessResult process(Position pos, {DateTime? now}) {
     final recordedAt = now ?? DateTime.now();
     lastRawFixAt = recordedAt;
@@ -680,41 +809,53 @@ class GpsTrackingEngine {
       );
     }
 
-    final accuracyLimit = _accuracyLimit(recordedAt);
-    if (accuracy > accuracyLimit) {
+    final previous = _lastAccepted;
+    final longGap = previous == null ||
+        recordedAt.difference(previous.recordedAt) >=
+            const Duration(seconds: 20);
+    final relaxed = autoPaused || _recoveryFixesLeft > 0 || longGap;
+
+    // Sync filter params with engine (activity-aware max speed).
+    filter.maxAccuracyMeters = maxAccuracyMeters;
+    filter.relaxedAccuracyMeters = relaxedAccuracyMeters;
+    filter.maxJumpMeters = maxJumpMeters;
+    filter.minDistanceMeters = minDistanceMeters;
+    filter.maxSpeedKmh = math.min(
+      maxSpeedKmh,
+      GpsFilterService.maxSpeedForActivity(
+        currentActivity == MotionActivity.stopped
+            ? MotionActivity.walk
+            : currentActivity,
+      ),
+    );
+
+    final decision = filter.evaluate(
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      accuracyMeters: accuracy,
+      recordedAt: recordedAt,
+      previous: previous,
+      relaxedAccuracy: relaxed,
+    );
+
+    // Long gap tracking for quality score.
+    if (previous != null) {
+      final gap = recordedAt.difference(previous.recordedAt).inSeconds;
+      if (gap >= 20) {
+        gpsGapSec += gap;
+      }
+    }
+
+    if (!decision.accepted) {
+      lastFilterReason = decision.reason;
+      rejectCounts[decision.reason] =
+          (rejectCounts[decision.reason] ?? 0) + 1;
       return GpsProcessResult.rejected(
-        GpsRejectReason.accuracy,
+        _toLegacyReject(decision.reason),
         activity: currentActivity,
         autoPaused: autoPaused,
         manualPaused: manualPaused,
       );
-    }
-
-    final previous = _lastAccepted;
-    if (previous != null) {
-      final jumpDelta = Geolocator.distanceBetween(
-        previous.latitude,
-        previous.longitude,
-        pos.latitude,
-        pos.longitude,
-      );
-      final jumpDt =
-          recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
-      if (jumpDt < 12 && jumpDelta > maxJumpMeters) {
-        return GpsProcessResult.rejected(
-          GpsRejectReason.jump,
-          activity: currentActivity,
-        );
-      }
-      if (jumpDt > 0.4 && jumpDt < 12) {
-        final implied = (jumpDelta / jumpDt) * 3.6;
-        if (implied > maxSpeedKmh) {
-          return GpsProcessResult.rejected(
-            GpsRejectReason.speed,
-            activity: currentActivity,
-          );
-        }
-      }
     }
 
     lastFixAt = recordedAt;
@@ -740,6 +881,30 @@ class GpsTrackingEngine {
     }
 
     final activity = _classify(_smoothedSpeedKmh);
+    // Re-check speed cap for classified activity.
+    if (previous != null) {
+      final jumpDelta = Geolocator.distanceBetween(
+        previous.latitude,
+        previous.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+      final jumpDt =
+          recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
+      if (jumpDt > 0.4 && jumpDt < 12) {
+        final implied = (jumpDelta / jumpDt) * 3.6;
+        final cap = GpsFilterService.maxSpeedForActivity(activity);
+        if (implied > cap) {
+          lastFilterReason = FilterReason.impossibleSpeed;
+          rejectCounts[FilterReason.impossibleSpeed] =
+              (rejectCounts[FilterReason.impossibleSpeed] ?? 0) + 1;
+          return GpsProcessResult.rejected(
+            GpsRejectReason.speed,
+            activity: activity,
+          );
+        }
+      }
+    }
 
     if (previous != null) {
       final delta = Geolocator.distanceBetween(
@@ -751,14 +916,6 @@ class GpsTrackingEngine {
       final dtSec =
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
       final recovering = dtSec >= 20;
-
-      // Aceita no mapa se andou o mínimo; km só se o passo > erro do GPS.
-      if (!recovering && delta < minDistanceMeters) {
-        return GpsProcessResult.rejected(
-          GpsRejectReason.tooSoon,
-          activity: activity,
-        );
-      }
 
       // Gap estimado desligado: inventava km e quebrava média/ritmo.
       if (enableEstimatedGap &&
@@ -772,9 +929,12 @@ class GpsTrackingEngine {
       }
 
       // Conta km só com deslocamento maior que o ruído típico do chip.
+      // Peso leve pela confidence (não reduz demais a distância).
+      final conf = decision.confidenceScore;
       final kmThreshold = math.max(minDistanceForKm, accuracy * 0.45);
       if (!recovering && delta >= kmThreshold && delta <= maxJumpMeters) {
-        distanceMeters += delta;
+        final weight = 0.85 + 0.15 * conf; // 0.85–1.0
+        distanceMeters += delta * weight;
       }
 
       if (altitude != null && _lastAltitude != null) {
@@ -787,18 +947,30 @@ class GpsTrackingEngine {
 
     if (_smoothedSpeedKmh >= 1.0) {
       lastValidSpeedKmh = _smoothedSpeedKmh;
+      final conf = decision.confidenceScore;
+      _confidenceWeightedSpeedSum += _smoothedSpeedKmh * conf;
+      _confidenceWeightSum += conf;
     }
 
-    final point = TrackedPoint(
+    final smoothed = kalman.smooth(
       latitude: pos.latitude,
       longitude: pos.longitude,
-      speedKmh: _smoothedSpeedKmh,
       accuracyMeters: accuracy,
-      altitudeMeters: altitude,
+    );
+
+    final point = TrackedPoint.fromPosition(
+      pos,
       recordedAt: recordedAt,
       sequenceNum: sequenceNum++,
+      speedKmh: _smoothedSpeedKmh,
       activity: activity,
+      provider: 'fused',
+      confidenceScore: decision.confidenceScore,
+      filterReason: FilterReason.none,
+      latitudeOverride: smoothed.lat,
+      longitudeOverride: smoothed.lng,
     );
+    lastFilterReason = FilterReason.none;
 
     _lastAccepted = point;
     if (altitude != null) _lastAltitude = altitude;
@@ -847,4 +1019,20 @@ class GpsTrackingEngine {
 
   List<Map<String, dynamic>> pointsForSync() =>
       _accepted.map((p) => p.toJson()).toList();
+
+  GpsRejectReason _toLegacyReject(FilterReason reason) {
+    switch (reason) {
+      case FilterReason.lowAccuracy:
+        return GpsRejectReason.accuracy;
+      case FilterReason.gpsJump:
+        return GpsRejectReason.jump;
+      case FilterReason.impossibleSpeed:
+        return GpsRejectReason.speed;
+      case FilterReason.duplicate:
+      case FilterReason.lowConfidence:
+        return GpsRejectReason.tooSoon;
+      case FilterReason.none:
+        return GpsRejectReason.tooSoon;
+    }
+  }
 }

@@ -2,7 +2,13 @@
 
 import { RoutePoint } from "@/lib/cardio";
 
-export default function RouteMap({ points }: { points: RoutePoint[] }) {
+export default function RouteMap({
+  points,
+  cursorIndex,
+}: {
+  points: RoutePoint[];
+  cursorIndex?: number;
+}) {
   if (points.length < 2) {
     return (
       <div className="flex h-48 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-sm text-slate-500">
@@ -26,6 +32,11 @@ export default function RouteMap({ points }: { points: RoutePoint[] }) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.longitude)} ${toY(p.latitude)}`)
     .join(" ");
 
+  const cursor =
+    cursorIndex != null && cursorIndex >= 0 && cursorIndex < points.length
+      ? points[cursorIndex]
+      : null;
+
   return (
     <svg viewBox="0 0 100 100" className="h-48 w-full rounded-xl border border-slate-700 bg-slate-900">
       <path d={path} fill="none" stroke="#3b82f6" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
@@ -36,6 +47,16 @@ export default function RouteMap({ points }: { points: RoutePoint[] }) {
         r="2"
         fill="#ef4444"
       />
+      {cursor && (
+        <circle
+          cx={toX(cursor.longitude)}
+          cy={toY(cursor.latitude)}
+          r="2.5"
+          fill="#f97316"
+          stroke="#fff"
+          strokeWidth="0.4"
+        />
+      )}
     </svg>
   );
 }

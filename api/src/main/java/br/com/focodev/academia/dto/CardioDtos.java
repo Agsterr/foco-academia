@@ -51,7 +51,18 @@ public final class CardioDtos {
             double longitude,
             Double speedKmh,
             String recordedAt,
-            int sequenceNum
+            int sequenceNum,
+            Double accuracyMeters,
+            Double heading,
+            Double altitudeMeters,
+            String provider,
+            @com.fasterxml.jackson.annotation.JsonProperty("isFiltered") Boolean filtered,
+            Double batteryLevel,
+            Double verticalAccuracy,
+            Double bearingAccuracy,
+            Double speedAccuracy,
+            String filterReason,
+            Double confidenceScore
     ) {}
 
     public record AddRoutePointsRequest(
@@ -65,6 +76,14 @@ public final class CardioDtos {
             Long pausedMs,
             Integer pauseCount,
             Integer caloriesKcal,
+            Double gpsQualityScore,
+            String gpsQualityLabel,
+            String gpsAlgorithmVersion,
+            String filterVersion,
+            String kalmanVersion,
+            String distanceVersion,
+            String caloriesVersion,
+            String gpsConfigSnapshot,
             @Valid List<RoutePointRequest> points
     ) {}
 
@@ -82,6 +101,13 @@ public final class CardioDtos {
             Long pausedMs,
             Integer pauseCount,
             Integer caloriesKcal,
+            Double gpsQualityScore,
+            String gpsQualityLabel,
+            String gpsAlgorithmVersion,
+            String filterVersion,
+            String kalmanVersion,
+            String distanceVersion,
+            String caloriesVersion,
             List<RoutePointResponse> routePoints
     ) {}
 
@@ -90,7 +116,18 @@ public final class CardioDtos {
             double longitude,
             Double speedKmh,
             String recordedAt,
-            int sequenceNum
+            int sequenceNum,
+            Double accuracyMeters,
+            Double heading,
+            Double altitudeMeters,
+            String provider,
+            @com.fasterxml.jackson.annotation.JsonProperty("isFiltered") Boolean filtered,
+            Double batteryLevel,
+            Double verticalAccuracy,
+            Double bearingAccuracy,
+            Double speedAccuracy,
+            String filterReason,
+            Double confidenceScore
     ) {}
 
     public record InstructorCardioStatsResponse(
@@ -99,11 +136,6 @@ public final class CardioDtos {
             double avgSpeedKmh,
             List<CardioSessionResponse> recentSessions,
             List<StudentProfileDtos.WeightCheckScheduleResponse> overdueWeightChecks
-    ) {}
-
-    public record StudentSyncRequest(
-            List<SyncMeasurementDto> measurements,
-            List<SyncCardioSessionDto> cardioSessions
     ) {}
 
     public record SyncMeasurementDto(
@@ -124,7 +156,21 @@ public final class CardioDtos {
             Long pausedMs,
             Integer pauseCount,
             Integer caloriesKcal,
+            Double gpsQualityScore,
+            String gpsQualityLabel,
+            String gpsAlgorithmVersion,
+            String filterVersion,
+            String kalmanVersion,
+            String distanceVersion,
+            String caloriesVersion,
+            String gpsConfigSnapshot,
             List<RoutePointRequest> points
+    ) {}
+
+    public record StudentSyncRequest(
+            List<SyncMeasurementDto> measurements,
+            List<SyncCardioSessionDto> cardioSessions,
+            List<br.com.focodev.academia.dto.GpsAnalyticsDtos.GpsDiagnosticRequest> diagnostics
     ) {}
 
     public record StudentSyncResponse(
