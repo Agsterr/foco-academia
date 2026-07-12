@@ -70,13 +70,41 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _running) {
+      _inBackground = false;
+      _stopBackgroundKeepalive();
       _engine.markForegroundRecovery();
       _syncFromWallClock();
       _persistActiveRun(force: true);
       unawaited(_reacquireGps());
-    } else if (state == AppLifecycleState.paused && _running) {
+    } else if ((state == AppLifecycleState.paused ||
+            state == AppLifecycleState.inactive) &&
+        _running) {
+      _inBackground = true;
       _persistActiveRun(force: true);
+      _startBackgroundKeepalive();
     }
+  }
+
+  bool _inBackground = false;
+  Timer? _bgKeepalive;
+
+  void _startBackgroundKeepalive() {
+    _bgKeepalive?.cancel();
+    _bgKeepalive = Timer.periodic(const Duration(seconds: 8), (_) async {
+      if (!_running || _finishing || !_inBackground) return;
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.bestForNavigation,
+          timeLimit: const Duration(seconds: 6),
+        );
+        if (_running) _onPosition(pos);
+      } catch (_) {}
+    });
+  }
+
+  void _stopBackgroundKeepalive() {
+    _bgKeepalive?.cancel();
+    _bgKeepalive = null;
   }
 
   /// Após tela apagada o Android pode silenciar o stream — força fix + reinicia.
@@ -564,6 +592,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   void _onPosition(Position pos) {
     if (!_running) return;
+    // GPS stream continua com tela apagada — avança o cronômetro mesmo se
+    // o Timer.periodic do Flutter for throttled pelo Android.
+    _engine.tickMovingTime(DateTime.now());
     final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
@@ -584,6 +615,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (!result.accepted) {
       if (mounted) {
         setState(() {
+          _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
           _gpsLost = false;
           _autoPaused = result.autoPaused;
           _manualPaused = result.manualPaused;
@@ -604,6 +636,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
     if (mounted) {
       setState(() {
+        _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
         _gpsLost = false;
         _autoPaused = false;
         _manualPaused = false;
@@ -858,6 +891,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (_running) {
       unawaited(_persistActiveRun(force: true));
     }
+    _stopBackgroundKeepalive();
     _gpsSub?.cancel();
     _clockTimer?.cancel();
     _gpsWatchdog?.cancel();

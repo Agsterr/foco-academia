@@ -40,6 +40,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Mantém GPS com tela apagada (serviço do geolocator). -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <receiver
             android:name=".BootReceiver"
             android:exported="true"

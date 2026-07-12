@@ -74,20 +74,36 @@ void main() {
   });
 
   test('detecta caminhada vs corrida pela velocidade', () {
-    final engine = GpsTrackingEngine(minDistanceMeters: 1);
+    final engine = GpsTrackingEngine(
+      minDistanceMeters: 1,
+      stationaryRadiusMeters: 0.5,
+    );
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
-    engine.process(_pos(lat: -23.55, lng: -46.63, speed: 1.5), now: t0);
-    final walk = engine.process(
-      _pos(lat: -23.55005, lng: -46.63, speed: 1.5),
-      now: t0.add(const Duration(seconds: 3)),
-    );
-    expect(walk.activity, MotionActivity.walk);
+    // ~5.4 km/h ≈ 3 m a cada 2 s (~0.000027° lat).
+    for (var i = 0; i < 6; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55 - (i * 0.000027),
+          lng: -46.63,
+          speed: 1.5,
+        ),
+        now: t0.add(Duration(seconds: i * 2)),
+      );
+    }
+    expect(engine.currentActivity, MotionActivity.walk);
 
-    final run = engine.process(
-      _pos(lat: -23.55015, lng: -46.63, speed: 3.0),
-      now: t0.add(const Duration(seconds: 6)),
-    );
-    expect(run.activity, MotionActivity.run);
+    // ~10.8 km/h ≈ 6 m a cada 2 s; precisa de 3 leituras na histerese.
+    for (var i = 6; i < 14; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55 - (6 * 0.000027) - ((i - 6) * 0.000054),
+          lng: -46.63,
+          speed: 3.0,
+        ),
+        now: t0.add(Duration(seconds: i * 2)),
+      );
+    }
+    expect(engine.currentActivity, MotionActivity.run);
   });
 
   test('exporta GPX com pontos', () {
@@ -162,6 +178,18 @@ void main() {
     expect(engine.movingElapsedSec, greaterThan(beforeMove));
   });
 
+  test('cronômetro recupera gap longo (tela apagada / timer atrasado)', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.tickMovingTime(t0);
+    engine.tickMovingTime(t0.add(const Duration(seconds: 1)));
+    expect(engine.movingElapsedSec, 1);
+
+    // Simula Android throttling: próximo tick só 25s depois.
+    engine.tickMovingTime(t0.add(const Duration(seconds: 26)));
+    expect(engine.movingElapsedSec, 26);
+  });
+
   test('fixixa ruim ainda marca sinal GPS (lastRawFixAt)', () {
     final engine = GpsTrackingEngine();
     final t0 = DateTime.now();
@@ -203,19 +231,39 @@ void main() {
   });
 
   test('após gap longo reancora sem somar teleporte na distância', () {
-    final engine = GpsTrackingEngine(minDistanceMeters: 1);
+    final engine = GpsTrackingEngine(minDistanceMeters: 1, stationaryRadiusMeters: 1);
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
     engine.process(
       _pos(lat: -23.55000, lng: -46.63000, speed: 2),
       now: t0,
     );
     final before = engine.distanceMeters;
-    engine.process(
-      _pos(lat: -23.55100, lng: -46.63000, speed: 2),
+    final second = engine.process(
+      _pos(lat: -23.55100, lng: -46.63000, speed: 2, accuracy: 10),
       now: t0.add(const Duration(seconds: 40)),
     );
-    // ~111 m de salto após gap: ancora, mas não soma na distância.
+    expect(second.accepted, isTrue);
     expect(engine.acceptedPoints.length, 2);
     expect(engine.distanceMeters, before);
+  });
+
+  test('parado com drift do GPS não alonga a rota nem marca correndo', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    // Mesmo local com speed falsa alta do chip (típico parado).
+    for (var i = 0; i < 6; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 + (i * 0.000001), // drift ~0.1 m
+          lng: -46.63000,
+          speed: 4.0, // ~14 km/h mentiroso
+          accuracy: 12,
+        ),
+        now: t0.add(Duration(seconds: i)),
+      );
+    }
+    expect(engine.displaySpeedKmh, lessThan(2.0));
+    expect(engine.currentActivity, MotionActivity.stopped);
+    expect(engine.distanceMeters, lessThan(5));
   });
 }
