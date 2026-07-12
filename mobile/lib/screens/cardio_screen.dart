@@ -26,7 +26,7 @@ import '../services/map_matching_service.dart';
 import '../services/profile_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
-import '../services/workout_service.dart';
+import '../services/outdoor_workout_service.dart';
 import '../widgets/route_map_view.dart';
 
 class CardioScreen extends StatefulWidget {
@@ -412,7 +412,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   LocationSettings get _locationSettings {
     final calories = _liveCalories;
-    final notifText = WorkoutService.instance.formatNotificationText(
+    final notifText = OutdoorWorkoutService.instance.formatNotificationText(
       paused: _engine.isPaused,
       manualPaused: _manualPaused,
       distanceMeters: _distance,
