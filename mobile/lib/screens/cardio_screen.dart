@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
 
 import '../services/active_run_store.dart';
@@ -30,6 +31,7 @@ class CardioScreen extends StatefulWidget {
 
 class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver {
   StreamSubscription<Position>? _gpsSub;
+  StreamSubscription<AccelerometerEvent>? _accelSub;
   Timer? _clockTimer;
   Timer? _gpsWatchdog;
 
@@ -279,6 +281,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _clockTimer =
         Timer.periodic(const Duration(seconds: 1), (_) => _syncFromWallClock());
     _startGpsWatchdog();
+    _startMotionSensor();
     await _startGpsTracking();
   }
 
@@ -396,6 +399,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _clockTimer =
         Timer.periodic(const Duration(seconds: 1), (_) => _syncFromWallClock());
     _startGpsWatchdog();
+    _startMotionSensor();
   }
 
   void _syncFromWallClock() {
@@ -607,7 +611,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
             ? 'Pausado — toque em Retomar'
             : result.autoPaused
                 ? 'Auto-pause — ande para continuar'
-                : 'Retomado — ${_activityLabel(result.activity)}';
+                : 'Retomado — ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)}';
       });
     }
 
@@ -642,9 +646,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _manualPaused = false;
         _gpsStatus = _engine.acceptedPoints.length < 2
             ? 'GPS ok — pode apagar a tela'
-            : '${_activityLabel(result.activity)} · '
-                '${_engine.acceptedPoints.length} pts · '
-                'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)}';
+            : '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
+                'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
+                '${_engine.acceptedPoints.length} pts';
       });
     }
     unawaited(_persistActiveRun());
@@ -679,15 +683,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     unawaited(CardioFeedback.playBeeps(1));
   }
 
-  String _activityLabel(MotionActivity a) {
-    switch (a) {
-      case MotionActivity.run:
-        return 'Correndo';
-      case MotionActivity.walk:
-        return 'Caminhando';
-      case MotionActivity.stopped:
-        return 'Parado';
+  void _startMotionSensor() {
+    _accelSub?.cancel();
+    try {
+      _accelSub = accelerometerEventStream(
+        samplingPeriod: const Duration(milliseconds: 200),
+      ).listen((e) {
+        if (!_running || _finishing) return;
+        _engine.notePhoneAcceleration(e.x, e.y, e.z);
+      });
+    } catch (_) {
+      // Emulador / plataforma sem acelerômetro — GPS sozinho.
     }
+  }
+
+  void _stopMotionSensor() {
+    _accelSub?.cancel();
+    _accelSub = null;
   }
 
   Future<void> _export(String format) async {
@@ -730,6 +742,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Future<void> _finish({bool auto = false}) async {
     if (_finishing) return;
     _finishing = true;
+    _stopMotionSensor();
+    _stopBackgroundKeepalive();
     await _gpsSub?.cancel();
     _gpsSub = null;
     _clockTimer?.cancel();
@@ -891,6 +905,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (_running) {
       unawaited(_persistActiveRun(force: true));
     }
+    _stopMotionSensor();
     _stopBackgroundKeepalive();
     _gpsSub?.cancel();
     _clockTimer?.cancel();

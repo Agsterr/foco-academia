@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:geolocator/geolocator.dart';
 
 /// Ponto aceito após filtros de qualidade GPS.
@@ -134,28 +136,27 @@ class GpsProcessResult {
   bool get isPaused => autoPaused || manualPaused;
 }
 
-/// Filtra pontos GPS, calcula distância, pace, splits, elevação e auto-pause.
+/// Tracking estilo apps de corrida (Strava/Garmin):
+/// - Kalman 2D suaviza jitter do GPS
+/// - Velocidade = deslocamento filtrado / tempo (chip só como apoio)
+/// - Auto-pause clássico + acelerômetro (movimento do telefone)
+/// - Sem “janela estacionária” que prende em parado
 class GpsTrackingEngine {
   GpsTrackingEngine({
-    this.maxAccuracyMeters = 35,
-    this.relaxedAccuracyMeters = 55,
-    this.maxSpeedKmh = 35,
-    this.maxJumpMeters = 80,
-    this.minDistanceMeters = 2.0,
+    this.maxAccuracyMeters = 40,
+    this.relaxedAccuracyMeters = 60,
+    this.maxSpeedKmh = 36,
+    this.maxJumpMeters = 70,
+    this.minDistanceMeters = 2.5,
     this.bufferSize = 40,
     this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
-    this.pauseBelowKmh = 0.8,
-    this.resumeAboveKmh = 1.1,
-    this.resumeDisplacementMeters = 3,
-    this.autoPauseAfter = const Duration(seconds: 25),
-    this.walkBelowKmh = 7.5,
-    this.runEnterKmh = 8.5,
-    this.runExitKmh = 6.5,
-    /// Só “parado” se ficar bem quieto; raio largo trava caminhada lenta.
-    this.stationaryRadiusMeters = 2.2,
-    this.stationaryWindow = const Duration(seconds: 8),
-    this.breakStationaryMeters = 1.8,
+    this.pauseBelowKmh = 1.2,
+    this.resumeAboveKmh = 1.8,
+    this.resumeDisplacementMeters = 4,
+    this.autoPauseAfter = const Duration(seconds: 12),
+    this.runEnterKmh = 8.0,
+    this.runExitKmh = 6.0,
   });
 
   final double maxAccuracyMeters;
@@ -170,14 +171,8 @@ class GpsTrackingEngine {
   final double resumeAboveKmh;
   final double resumeDisplacementMeters;
   final Duration autoPauseAfter;
-  final double walkBelowKmh;
   final double runEnterKmh;
   final double runExitKmh;
-  /// Se nos últimos N segundos o GPS ficou dentro deste raio → parado (anti-drift).
-  final double stationaryRadiusMeters;
-  final Duration stationaryWindow;
-  /// Um passo maior que isto quebra o estado “parado” na hora.
-  final double breakStationaryMeters;
 
   double distanceMeters = 0;
   double estimatedGapMeters = 0;
@@ -186,9 +181,7 @@ class GpsTrackingEngine {
   int movingElapsedSec = 0;
   int pausedSec = 0;
   int pauseCount = 0;
-  /// Último fix com qualidade suficiente para a rota.
   DateTime? lastFixAt;
-  /// Qualquer callback do GPS (mesmo rejeitado) — usado no "sem sinal".
   DateTime? lastRawFixAt;
   double? lastValidSpeedKmh;
   bool autoPaused = false;
@@ -211,14 +204,13 @@ class GpsTrackingEngine {
   double? _pauseAnchorLng;
   int _recoveryFixesLeft = 0;
   double _smoothedSpeedKmh = 0;
-  MotionActivity _pendingActivity = MotionActivity.stopped;
-  int _pendingActivityHits = 0;
-  final List<_RawSample> _recentRaw = [];
+  DateTime? _lastPhoneMotionAt;
+  bool _phoneMoving = false;
 
+  final _KalmanLatLng _kalman = _KalmanLatLng();
   final List<TrackedPoint> _accepted = [];
   final List<TrackedPoint> _buffer = [];
   final List<KmSplit> _splits = [];
-  final List<double> _recentSpeeds = [];
 
   List<TrackedPoint> get acceptedPoints => List.unmodifiable(_accepted);
   List<KmSplit> get splits => List.unmodifiable(_splits);
@@ -226,16 +218,16 @@ class GpsTrackingEngine {
   bool get isPaused => manualPaused || autoPaused;
   int get pausedMs => pausedSec * 1000;
 
-  /// Posição ao vivo (último fix recebido) — para o ponto azul no mapa.
-  double? get liveLatitude => _lastRawLat ?? _lastAccepted?.latitude;
-  double? get liveLongitude => _lastRawLng ?? _lastAccepted?.longitude;
+  double? get liveLatitude =>
+      _kalman.hasEstimate ? _kalman.lat : (_lastRawLat ?? _lastAccepted?.latitude);
+  double? get liveLongitude =>
+      _kalman.hasEstimate ? _kalman.lng : (_lastRawLng ?? _lastAccepted?.longitude);
 
-  /// Velocidade filtrada para UI (não usa picos falsos do GPS parado).
   double get displaySpeedKmh => _smoothedSpeedKmh;
 
-  bool get isStationary => _computeStationary(DateTime.now());
+  /// Mantido por compatibilidade — não usa mais bbox estacionária.
+  bool get isStationary => _smoothedSpeedKmh < pauseBelowKmh && !_phoneMoving;
 
-  /// Há sinal se o stream ainda entrega fixes (mesmo com precisão ruim).
   bool get hasGpsSignal {
     final last = lastRawFixAt ?? lastFixAt;
     if (last == null) return false;
@@ -248,15 +240,13 @@ class GpsTrackingEngine {
     return DateTime.now().difference(last);
   }
 
-  /// Ritmo médio (segundos por km) com base no tempo em movimento.
   double? get averagePaceSecPerKm {
     if (distanceMeters < 20 || movingElapsedSec <= 0) return null;
     return movingElapsedSec / (distanceMeters / 1000.0);
   }
 
-  /// Ritmo atual a partir das velocidades filtradas (segundos por km).
   double? get currentPaceSecPerKm {
-    if (_smoothedSpeedKmh < 0.8) return null;
+    if (_smoothedSpeedKmh < 1.0) return null;
     return 3600.0 / _smoothedSpeedKmh;
   }
 
@@ -271,6 +261,20 @@ class GpsTrackingEngine {
     return "$m'${s.toString().padLeft(2, '0')}\"";
   }
 
+  /// Acelerômetro do telefone (estilo Strava): |a| longe de ~9.8 = movimento.
+  void notePhoneAcceleration(double ax, double ay, double az, {DateTime? now}) {
+    final mag = math.sqrt(ax * ax + ay * ay + az * az);
+    final jerk = (mag - 9.81).abs();
+    final at = now ?? DateTime.now();
+    if (jerk >= 1.15 || mag >= 11.0) {
+      _lastPhoneMotionAt = at;
+      _phoneMoving = true;
+    } else if (_lastPhoneMotionAt != null &&
+        at.difference(_lastPhoneMotionAt!) > const Duration(seconds: 2)) {
+      _phoneMoving = false;
+    }
+  }
+
   void restore({
     required List<TrackedPoint> points,
     required double distanceMeters,
@@ -283,17 +287,14 @@ class GpsTrackingEngine {
     bool autoPaused = false,
     bool manualPaused = false,
   }) {
-    _accepted
-      ..clear()
-      ..addAll(points);
-    _buffer
-      ..clear()
-      ..addAll(points.length > bufferSize
+    reset();
+    _accepted.addAll(points);
+    _buffer.addAll(
+      points.length > bufferSize
           ? points.sublist(points.length - bufferSize)
-          : points);
-    _splits
-      ..clear()
-      ..addAll(splits);
+          : points,
+    );
+    _splits.addAll(splits);
     this.distanceMeters = distanceMeters;
     this.estimatedGapMeters = estimatedGapMeters;
     this.elevationGainMeters = elevationGainMeters;
@@ -305,34 +306,25 @@ class GpsTrackingEngine {
     _distanceAtLastSplit = (distanceMeters / 1000).floor() * 1000.0;
     _movingSecAtLastSplit = movingElapsedSec;
     _elevAtLastSplit = elevationGainMeters;
-    _stillSince = null;
-    _lastMovingTickAt = null;
     _pauseTickAt = isPaused ? DateTime.now() : null;
-    _recentSpeeds.clear();
-    _lastRawLat = null;
-    _lastRawLng = null;
-    _lastRawAt = null;
-    _pauseAnchorLat = null;
-    _pauseAnchorLng = null;
     _recoveryFixesLeft = 3;
-    _smoothedSpeedKmh = 0;
-    _pendingActivity = MotionActivity.stopped;
-    _pendingActivityHits = 0;
-    _recentRaw.clear();
     if (points.isNotEmpty) {
-      _lastAccepted = points.last;
-      lastFixAt = points.last.recordedAt;
-      lastRawFixAt = points.last.recordedAt;
-      sequenceNum = points.last.sequenceNum + 1;
-      lastValidSpeedKmh = points.last.speedKmh;
-      _lastAltitude = points.last.altitudeMeters;
-      currentActivity = points.last.activity ?? MotionActivity.stopped;
-      _lastRawLat = points.last.latitude;
-      _lastRawLng = points.last.longitude;
-      _lastRawAt = points.last.recordedAt;
+      final last = points.last;
+      _lastAccepted = last;
+      lastFixAt = last.recordedAt;
+      lastRawFixAt = last.recordedAt;
+      sequenceNum = last.sequenceNum + 1;
+      lastValidSpeedKmh = last.speedKmh;
+      _lastAltitude = last.altitudeMeters;
+      currentActivity = last.activity ?? MotionActivity.stopped;
+      _smoothedSpeedKmh = last.speedKmh ?? 0;
+      _lastRawLat = last.latitude;
+      _lastRawLng = last.longitude;
+      _lastRawAt = last.recordedAt;
+      _kalman.reset(last.latitude, last.longitude);
       if (autoPaused || manualPaused) {
-        _pauseAnchorLat = points.last.latitude;
-        _pauseAnchorLng = points.last.longitude;
+        _pauseAnchorLat = last.latitude;
+        _pauseAnchorLng = last.longitude;
       }
     }
   }
@@ -366,21 +358,18 @@ class GpsTrackingEngine {
     _pauseAnchorLng = null;
     _recoveryFixesLeft = 0;
     _smoothedSpeedKmh = 0;
-    _pendingActivity = MotionActivity.stopped;
-    _pendingActivityHits = 0;
-    _recentRaw.clear();
+    _lastPhoneMotionAt = null;
+    _phoneMoving = false;
+    _kalman.clear();
     _accepted.clear();
     _buffer.clear();
     _splits.clear();
-    _recentSpeeds.clear();
   }
 
-  /// Chamado ao voltar do background / tela apagada.
   void markForegroundRecovery() {
     _recoveryFixesLeft = 5;
   }
 
-  /// Pausa ou retoma manualmente (botão do aluno).
   void setManualPaused(bool paused) {
     if (paused == manualPaused) return;
     if (paused) {
@@ -405,123 +394,42 @@ class GpsTrackingEngine {
 
   void toggleManualPause() => setManualPaused(!manualPaused);
 
-  bool _computeStationary(DateTime now, {double? stepFromLastRaw}) {
-    // Passo claro = já está andando (não espera a janela inteira “esquecer” o parado).
-    if (stepFromLastRaw != null && stepFromLastRaw >= breakStationaryMeters) {
-      return false;
-    }
-    _recentRaw.removeWhere(
-      (s) => now.difference(s.at) > stationaryWindow,
-    );
-    // Precisa de quietude sustentada — 3 fixes em 1,5s era fácil demais.
-    if (_recentRaw.length < 5) return false;
-    var minLat = _recentRaw.first.lat;
-    var maxLat = minLat;
-    var minLng = _recentRaw.first.lng;
-    var maxLng = minLng;
-    for (final s in _recentRaw) {
-      if (s.lat < minLat) minLat = s.lat;
-      if (s.lat > maxLat) maxLat = s.lat;
-      if (s.lng < minLng) minLng = s.lng;
-      if (s.lng > maxLng) maxLng = s.lng;
-    }
-    final span = Geolocator.distanceBetween(minLat, minLng, maxLat, maxLng);
-    return span <= stationaryRadiusMeters;
-  }
-
-  /// Velocidade conservadora: GPS reportado mente parado; prioriza deslocamento.
-  double _blendSpeed({
-    required double? reported,
-    required double? implied,
-    required bool stationary,
-  }) {
-    if (stationary) return 0;
-    final r = reported ?? 0;
-    final i = implied ?? 0;
-    if (r <= 0 && i <= 0) return 0;
-    if (r <= 0) return i;
-    if (i <= 0) return r;
-    // Chip muito acima do deslocamento real → confia no deslocamento.
-    if (r > i + 2.5) return i;
-    return (r * 0.35) + (i * 0.65);
-  }
-
-  void _pushSmoothedSpeed(double sample) {
-    if (sample <= 0) {
-      // Decai para zero (não trava em 0 na hora — facilita retomar caminhada).
-      _smoothedSpeedKmh *= 0.55;
-      if (_smoothedSpeedKmh < 0.25) _smoothedSpeedKmh = 0;
-      return;
-    }
+  void _pushSpeed(double sampleKmh) {
+    sampleKmh = sampleKmh.clamp(0, maxSpeedKmh);
     if (_smoothedSpeedKmh <= 0) {
-      // Saindo do parado: sobe rápido para a UI/histerese reagirem.
-      _smoothedSpeedKmh = sample;
-      return;
-    }
-    // Sobe mais rápido que desce (retomar caminhada vs anti-pico).
-    if (sample > _smoothedSpeedKmh) {
-      _smoothedSpeedKmh = (_smoothedSpeedKmh * 0.35) + (sample * 0.65);
+      _smoothedSpeedKmh = sampleKmh;
+    } else if (sampleKmh > _smoothedSpeedKmh) {
+      // Sobe rápido (retomar caminhada/corrida).
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.4 + sampleKmh * 0.6;
     } else {
-      _smoothedSpeedKmh = (_smoothedSpeedKmh * 0.7) + (sample * 0.3);
+      // Desce mais lento (anti-flicker).
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.75 + sampleKmh * 0.25;
     }
-    if (_smoothedSpeedKmh < 0.25) _smoothedSpeedKmh = 0;
+    if (_smoothedSpeedKmh < 0.35) _smoothedSpeedKmh = 0;
   }
 
-  MotionActivity _classifyWithHysteresis(double speedKmh) {
-    MotionActivity target;
-    if (speedKmh < pauseBelowKmh) {
-      target = MotionActivity.stopped;
-    } else if (currentActivity == MotionActivity.run) {
-      target = speedKmh < runExitKmh ? MotionActivity.walk : MotionActivity.run;
-    } else if (speedKmh >= runEnterKmh) {
-      target = MotionActivity.run;
+  MotionActivity _classify(double speedKmh) {
+    // Bandas largas + histerese (padrão apps de corrida).
+    if (currentActivity == MotionActivity.run) {
+      if (speedKmh < pauseBelowKmh) {
+        currentActivity = MotionActivity.stopped;
+      } else if (speedKmh < runExitKmh) {
+        currentActivity = MotionActivity.walk;
+      }
+    } else if (currentActivity == MotionActivity.walk) {
+      if (speedKmh < pauseBelowKmh) {
+        currentActivity = MotionActivity.stopped;
+      } else if (speedKmh >= runEnterKmh) {
+        currentActivity = MotionActivity.run;
+      }
     } else {
-      target = MotionActivity.walk;
-    }
-
-    if (target == currentActivity) {
-      _pendingActivity = target;
-      _pendingActivityHits = 0;
-      return currentActivity;
-    }
-    if (target == _pendingActivity) {
-      _pendingActivityHits++;
-    } else {
-      _pendingActivity = target;
-      _pendingActivityHits = 1;
-    }
-    // Sair de parado → caminhada: 1 leitura basta. Entrar em parado: 3 (evita flicker).
-    final int need;
-    if (currentActivity == MotionActivity.stopped &&
-        target == MotionActivity.walk) {
-      need = 1;
-    } else if (target == MotionActivity.stopped) {
-      need = 3;
-    } else {
-      need = 2;
-    }
-    if (_pendingActivityHits >= need) {
-      currentActivity = target;
-      _pendingActivityHits = 0;
+      if (speedKmh >= runEnterKmh) {
+        currentActivity = MotionActivity.run;
+      } else if (speedKmh >= pauseBelowKmh) {
+        currentActivity = MotionActivity.walk;
+      }
     }
     return currentActivity;
-  }
-
-  double? _impliedSpeedKmh(double lat, double lng, DateTime now) {
-    if (_lastRawLat == null || _lastRawLng == null || _lastRawAt == null) {
-      return null;
-    }
-    final dtSec = now.difference(_lastRawAt!).inMilliseconds / 1000.0;
-    if (dtSec < 0.5 || dtSec > 30) return null;
-    final delta = Geolocator.distanceBetween(
-      _lastRawLat!,
-      _lastRawLng!,
-      lat,
-      lng,
-    );
-    // Deslocamentos minúsculos = drift, não velocidade.
-    if (delta < 1.0) return 0;
-    return (delta / dtSec) * 3.6;
   }
 
   double _displacementFromPauseAnchor(double lat, double lng) {
@@ -539,7 +447,6 @@ class GpsTrackingEngine {
     autoPaused = true;
     pauseCount++;
     currentActivity = MotionActivity.stopped;
-    _smoothedSpeedKmh = 0;
     _lastMovingTickAt = null;
     _pauseTickAt ??= DateTime.now();
     _pauseAnchorLat = lat ?? _lastRawLat ?? _lastAccepted?.latitude;
@@ -556,10 +463,7 @@ class GpsTrackingEngine {
     _recoveryFixesLeft = 3;
   }
 
-  /// Auto-pause só com velocidade filtrada + janela estacionária (não speed bruto).
   void _updateAutoPause({
-    required double smoothedSpeed,
-    required bool stationary,
     required double lat,
     required double lng,
     required DateTime now,
@@ -568,17 +472,21 @@ class GpsTrackingEngine {
 
     if (autoPaused) {
       final moved = _displacementFromPauseAnchor(lat, lng);
-      // Retoma fácil: deslocamento curto OU velocidade, mesmo se a janela
-      // ainda achar “estacionário” por pontos antigos.
+      final recentMotion = _lastPhoneMotionAt != null &&
+          now.difference(_lastPhoneMotionAt!) <= const Duration(seconds: 3);
       if (moved >= resumeDisplacementMeters ||
-          smoothedSpeed >= resumeAboveKmh ||
-          (!stationary && smoothedSpeed >= pauseBelowKmh)) {
+          _smoothedSpeedKmh >= resumeAboveKmh ||
+          (recentMotion && _smoothedSpeedKmh >= pauseBelowKmh) ||
+          (recentMotion && moved >= 2.0)) {
         _exitAutoPause(now);
       }
       return;
     }
 
-    if (stationary || smoothedSpeed < pauseBelowKmh) {
+    // Strava-like: só pausa se GPS lento E telefone sem movimento.
+    final stillGps = _smoothedSpeedKmh < pauseBelowKmh;
+    final stillPhone = !_phoneMoving;
+    if (stillGps && stillPhone) {
       _stillSince ??= now;
       if (now.difference(_stillSince!) >= autoPauseAfter) {
         _enterAutoPause(lat, lng);
@@ -592,7 +500,6 @@ class GpsTrackingEngine {
     if (isPaused) {
       if (_pauseTickAt != null) {
         final d = now.difference(_pauseTickAt!).inSeconds;
-        // Tela apagada: Timer.periodic atrasa — recupera o gap (até 10 min).
         if (d > 0) {
           pausedSec += d > 600 ? 600 : d;
         }
@@ -608,7 +515,6 @@ class GpsTrackingEngine {
         movingElapsedSec += d > 600 ? 600 : d;
       }
     } else {
-      // Primeiro tick após retomar / restaurar: ancora sem pular.
       _lastMovingTickAt = now;
       return;
     }
@@ -630,71 +536,57 @@ class GpsTrackingEngine {
     final recordedAt = now ?? DateTime.now();
     lastRawFixAt = recordedAt;
 
-    final accuracy = pos.accuracy;
-    final reportedSpeed =
-        pos.speed.isNaN || pos.speed < 0 ? null : pos.speed * 3.6;
+    final accuracy = pos.accuracy.isNaN ? 25.0 : pos.accuracy;
     final altitude = pos.altitude.isNaN ? null : pos.altitude;
-    final stepFromLastRaw = (_lastRawLat != null && _lastRawLng != null)
-        ? Geolocator.distanceBetween(
-            _lastRawLat!,
-            _lastRawLng!,
-            pos.latitude,
-            pos.longitude,
-          )
-        : null;
-    final implied = _impliedSpeedKmh(pos.latitude, pos.longitude, recordedAt);
-
-    _recentRaw.add(
-      _RawSample(pos.latitude, pos.longitude, recordedAt),
-    );
-    // Passo claro: limpa a janela antiga para não ficar preso em “parado”.
-    if (stepFromLastRaw != null && stepFromLastRaw >= breakStationaryMeters) {
-      _recentRaw
-        ..clear()
-        ..add(_RawSample(pos.latitude, pos.longitude, recordedAt));
-    }
-    final stationary = _computeStationary(
-      recordedAt,
-      stepFromLastRaw: stepFromLastRaw,
-    );
-    final blended = _blendSpeed(
-      reported: reportedSpeed,
-      implied: implied,
-      stationary: stationary,
-    );
-    if (stationary) {
-      final tinyStep = (stepFromLastRaw ?? 0) < 1.0;
-      final tinyImplied = (implied ?? 0) < 0.5;
-      if (tinyStep && tinyImplied) {
-        // Drift real parado: zera (evita “correndo” parado).
-        _smoothedSpeedKmh = 0;
-        currentActivity = MotionActivity.stopped;
-        _pendingActivity = MotionActivity.stopped;
-        _pendingActivityHits = 0;
-      } else {
-        // Quase parado mas já se mexendo: decai suave para facilitar retomar.
-        _pushSmoothedSpeed(0);
-      }
-    } else {
-      _pushSmoothedSpeed(blended);
-    }
-
-    if (!manualPaused) {
-      _updateAutoPause(
-        smoothedSpeed: _smoothedSpeedKmh,
-        stationary: stationary,
-        lat: pos.latitude,
-        lng: pos.longitude,
-        now: recordedAt,
-      );
-    }
+    final chipSpeedKmh =
+        pos.speed.isNaN || pos.speed < 0 ? null : pos.speed * 3.6;
 
     _lastRawLat = pos.latitude;
     _lastRawLng = pos.longitude;
     _lastRawAt = recordedAt;
 
+    // 1) Kalman suaviza posição (ruído ∝ accuracy²).
+    final filtered = _kalman.update(
+      lat: pos.latitude,
+      lng: pos.longitude,
+      accuracyMeters: accuracy,
+      at: recordedAt,
+    );
+
+    // 2) Velocidade pelo deslocamento filtrado (nunca confia no chip parado).
+    final step = filtered.stepMeters;
+    final dt = filtered.dtSec;
+    double sampleSpeed = 0;
+    if (dt >= 0.4 && dt <= 20) {
+      if (step < math.max(0.8, accuracy * 0.15)) {
+        // Drift / jitter: velocidade 0 (chip mentiroso ignorado).
+        sampleSpeed = 0;
+      } else {
+        sampleSpeed = (step / dt) * 3.6;
+        // Chip só entra se concordar aproximadamente com o deslocamento.
+        if (chipSpeedKmh != null &&
+            chipSpeedKmh > 0 &&
+            (chipSpeedKmh - sampleSpeed).abs() < 4.0) {
+          sampleSpeed = sampleSpeed * 0.7 + chipSpeedKmh * 0.3;
+        }
+      }
+    }
+    _pushSpeed(sampleSpeed);
+
+    if (!manualPaused) {
+      // Após gap longo limpa “parado” velho — evita auto-pause fantasma.
+      if (filtered.dtSec >= 20) {
+        _stillSince = null;
+      }
+      _updateAutoPause(
+        lat: filtered.lat,
+        lng: filtered.lng,
+        now: recordedAt,
+      );
+    }
+
     final accuracyLimit = _accuracyLimit(recordedAt);
-    if (!accuracy.isNaN && accuracy > accuracyLimit) {
+    if (accuracy > accuracyLimit) {
       return GpsProcessResult.rejected(
         GpsRejectReason.accuracy,
         activity: currentActivity,
@@ -703,32 +595,31 @@ class GpsTrackingEngine {
       );
     }
 
-    // Salto/teleporte antes do gate de velocidade (senão vira "speed").
     final previous = _lastAccepted;
     if (previous != null) {
       final jumpDelta = Geolocator.distanceBetween(
         previous.latitude,
         previous.longitude,
-        pos.latitude,
-        pos.longitude,
+        filtered.lat,
+        filtered.lng,
       );
-      final jumpDtSec =
+      final jumpDt =
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
-      if (jumpDtSec < 20 && jumpDelta > maxJumpMeters) {
+      if (jumpDt < 15 && jumpDelta > maxJumpMeters) {
         return GpsProcessResult.rejected(
           GpsRejectReason.jump,
           activity: currentActivity,
         );
       }
-    }
-
-    if (_smoothedSpeedKmh > maxSpeedKmh) {
-      return GpsProcessResult.rejected(
-        GpsRejectReason.speed,
-        activity: currentActivity,
-        autoPaused: autoPaused,
-        manualPaused: manualPaused,
-      );
+      if (jumpDt > 0.3 && jumpDt < 15) {
+        final implied = (jumpDelta / jumpDt) * 3.6;
+        if (implied > maxSpeedKmh) {
+          return GpsProcessResult.rejected(
+            GpsRejectReason.speed,
+            activity: currentActivity,
+          );
+        }
+      }
     }
 
     lastFixAt = recordedAt;
@@ -736,7 +627,6 @@ class GpsTrackingEngine {
 
     if (manualPaused) {
       currentActivity = MotionActivity.stopped;
-      _smoothedSpeedKmh = 0;
       return GpsProcessResult.rejected(
         GpsRejectReason.manualPaused,
         activity: MotionActivity.stopped,
@@ -754,75 +644,38 @@ class GpsTrackingEngine {
       );
     }
 
-    // Parado de verdade: não alonga a rota com drift do GPS.
-    // Só rejeita se quase não andou desde o último ponto aceito.
-    if (stationary && _smoothedSpeedKmh < pauseBelowKmh) {
-      final driftFromAccepted = previous == null
-          ? 0.0
-          : Geolocator.distanceBetween(
-              previous.latitude,
-              previous.longitude,
-              pos.latitude,
-              pos.longitude,
-            );
-      if (driftFromAccepted < minDistanceMeters) {
-        currentActivity = MotionActivity.stopped;
-        return GpsProcessResult.rejected(
-          GpsRejectReason.tooSoon,
-          activity: MotionActivity.stopped,
-        );
-      }
-      // Andou o bastante desde o último aceito → aceita e sai do “preso”.
-      _recentRaw
-        ..clear()
-        ..add(_RawSample(pos.latitude, pos.longitude, recordedAt));
-    }
-
-    final activity = _classifyWithHysteresis(_smoothedSpeedKmh);
+    final activity = _classify(_smoothedSpeedKmh);
 
     if (previous != null) {
       final delta = Geolocator.distanceBetween(
         previous.latitude,
         previous.longitude,
-        pos.latitude,
-        pos.longitude,
+        filtered.lat,
+        filtered.lng,
       );
       final dtSec =
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
-
       final recovering = dtSec >= 20;
 
-      if (dtSec > 0.3 && !recovering) {
-        final impliedKmh = (delta / dtSec) * 3.6;
-        if (impliedKmh > maxSpeedKmh) {
-          return GpsProcessResult.rejected(
-            GpsRejectReason.speed,
-            activity: activity,
-          );
-        }
+      // Anti-drift: só soma se andou de verdade (acima do min + fração da accuracy).
+      final minStep = math.max(minDistanceMeters, accuracy * 0.25);
+      if (!recovering && delta < minStep) {
+        return GpsProcessResult.rejected(
+          GpsRejectReason.tooSoon,
+          activity: activity,
+        );
       }
 
-      if (delta < minDistanceMeters && !recovering) {
-        if (dtSec < 0.8 || delta < 0.8) {
-          return GpsProcessResult.rejected(
-            GpsRejectReason.tooSoon,
-            activity: activity,
-          );
-        }
-      }
-
-      // Não estima gap após tela apagada se estava lento/parado (evita km fantasmas).
       if (dtSec >= 20 &&
           lastValidSpeedKmh != null &&
-          lastValidSpeedKmh! >= 2.0 &&
-          lastValidSpeedKmh! <= maxSpeedKmh &&
-          !stationary) {
+          lastValidSpeedKmh! >= 2.5 &&
+          lastValidSpeedKmh! <= maxSpeedKmh) {
         final estimate = (lastValidSpeedKmh! / 3.6) * dtSec;
-        final surplus = (estimate - delta).clamp(0.0, estimate * 0.5);
+        final surplus = (estimate - delta).clamp(0.0, estimate * 0.4);
         estimatedGapMeters += surplus;
       }
 
-      if (!recovering && delta >= 0.8) {
+      if (!recovering && delta >= minStep) {
         distanceMeters += delta;
       }
 
@@ -834,17 +687,15 @@ class GpsTrackingEngine {
       }
     }
 
-    if (_smoothedSpeedKmh >= 0.8) {
+    if (_smoothedSpeedKmh >= 1.0) {
       lastValidSpeedKmh = _smoothedSpeedKmh;
-      _recentSpeeds.add(_smoothedSpeedKmh);
-      if (_recentSpeeds.length > 8) _recentSpeeds.removeAt(0);
     }
 
     final point = TrackedPoint(
-      latitude: pos.latitude,
-      longitude: pos.longitude,
+      latitude: filtered.lat,
+      longitude: filtered.lng,
       speedKmh: _smoothedSpeedKmh,
-      accuracyMeters: accuracy.isNaN ? null : accuracy,
+      accuracyMeters: accuracy,
       altitudeMeters: altitude,
       recordedAt: recordedAt,
       sequenceNum: sequenceNum++,
@@ -885,8 +736,8 @@ class GpsTrackingEngine {
           : Geolocator.distanceBetween(
               previous.latitude,
               previous.longitude,
-              pos.latitude,
-              pos.longitude,
+              filtered.lat,
+              filtered.lng,
             ),
       activity: activity,
       newSplit: newSplit,
@@ -931,9 +782,109 @@ class GpsTrackingEngine {
       _accepted.map((p) => p.toJson()).toList();
 }
 
-class _RawSample {
-  const _RawSample(this.lat, this.lng, this.at);
+class _KalmanUpdate {
+  const _KalmanUpdate({
+    required this.lat,
+    required this.lng,
+    required this.stepMeters,
+    required this.dtSec,
+  });
   final double lat;
   final double lng;
-  final DateTime at;
+  final double stepMeters;
+  final double dtSec;
+}
+
+/// Filtro de Kalman 2D (posição constante + ruído de processo).
+/// Measurement noise R = accuracy² — padrão usado em trackers GPS.
+class _KalmanLatLng {
+  double? _lat;
+  double? _lng;
+  double _pLat = 1;
+  double _pLng = 1;
+  DateTime? _at;
+  bool get hasEstimate => _lat != null && _lng != null;
+  double get lat => _lat!;
+  double get lng => _lng!;
+
+  void clear() {
+    _lat = null;
+    _lng = null;
+    _pLat = 1;
+    _pLng = 1;
+    _at = null;
+  }
+
+  void reset(double lat, double lng) {
+    _lat = lat;
+    _lng = lng;
+    _pLat = 1;
+    _pLng = 1;
+    _at = null;
+  }
+
+  _KalmanUpdate update({
+    required double lat,
+    required double lng,
+    required double accuracyMeters,
+    required DateTime at,
+  }) {
+    final r = math.max(1.0, accuracyMeters * accuracyMeters);
+    // Process noise ~ aceleração humana tipica (caminhada/corrida).
+    const qBase = 3.0; // m²/s (escala em graus via conversão abaixo)
+
+    if (_lat == null || _lng == null || _at == null) {
+      _lat = lat;
+      _lng = lng;
+      _pLat = r;
+      _pLng = r;
+      _at = at;
+      return _KalmanUpdate(lat: lat, lng: lng, stepMeters: 0, dtSec: 0);
+    }
+
+    final dt = at.difference(_at!).inMilliseconds / 1000.0;
+
+    // Gap longo (tela apagada): reancora sem interpolar teleporte.
+    if (dt >= 20) {
+      _lat = lat;
+      _lng = lng;
+      _pLat = r;
+      _pLng = r;
+      _at = at;
+      return _KalmanUpdate(lat: lat, lng: lng, stepMeters: 0, dtSec: dt);
+    }
+
+    final dtClamped = dt.clamp(0.05, 30.0);
+    final q = qBase * dtClamped;
+
+    // Converte metros² → graus² aproximados na latitude atual.
+    final metersPerDegLat = 110540.0;
+    final metersPerDegLng = 111320.0 * math.cos(_lat! * math.pi / 180);
+    final qLat = q / (metersPerDegLat * metersPerDegLat);
+    final qLng = q / (metersPerDegLng * metersPerDegLng);
+    final rLat = r / (metersPerDegLat * metersPerDegLat);
+    final rLng = r / (metersPerDegLng * metersPerDegLng);
+
+    _pLat += qLat;
+    _pLng += qLng;
+
+    final kLat = _pLat / (_pLat + rLat);
+    final kLng = _pLng / (_pLng + rLng);
+
+    final prevLat = _lat!;
+    final prevLng = _lng!;
+    _lat = _lat! + kLat * (lat - _lat!);
+    _lng = _lng! + kLng * (lng - _lng!);
+    _pLat = (1 - kLat) * _pLat;
+    _pLng = (1 - kLng) * _pLng;
+    _at = at;
+
+    final step = Geolocator.distanceBetween(prevLat, prevLng, _lat!, _lng!);
+    return _KalmanUpdate(
+      lat: _lat!,
+      lng: _lng!,
+      stepMeters: step,
+      dtSec: dt,
+    );
+  }
 }
