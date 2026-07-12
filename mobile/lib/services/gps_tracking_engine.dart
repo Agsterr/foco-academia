@@ -209,6 +209,10 @@ class GpsTrackingEngine {
   double _smoothedSpeedKmh = 0;
   DateTime? _lastPhoneMotionAt;
   bool _phoneMoving = false;
+  /// Início da sessão (relógio de parede) — Tempo nunca trava por Timer atrasado.
+  DateTime? _runStartedAt;
+  DateTime? _pauseStartedAt;
+  int _closedPausedSec = 0;
 
   final List<TrackedPoint> _accepted = [];
   final List<TrackedPoint> _buffer = [];
@@ -273,6 +277,14 @@ class GpsTrackingEngine {
     }
   }
 
+  void markRunStarted(DateTime at) {
+    _runStartedAt = at;
+    _closedPausedSec = pausedSec;
+    if (isPaused) {
+      _pauseStartedAt = at;
+    }
+  }
+
   void restore({
     required List<TrackedPoint> points,
     required double distanceMeters,
@@ -284,6 +296,7 @@ class GpsTrackingEngine {
     List<KmSplit> splits = const [],
     bool autoPaused = false,
     bool manualPaused = false,
+    DateTime? runStartedAt,
   }) {
     reset();
     _accepted.addAll(points);
@@ -301,10 +314,13 @@ class GpsTrackingEngine {
     this.pauseCount = pauseCount;
     this.autoPaused = enableAutoPause && autoPaused;
     this.manualPaused = manualPaused;
+    _closedPausedSec = pausedSec;
+    _runStartedAt = runStartedAt;
     _distanceAtLastSplit = (distanceMeters / 1000).floor() * 1000.0;
     _movingSecAtLastSplit = movingElapsedSec;
     _elevAtLastSplit = elevationGainMeters;
     _pauseTickAt = isPaused ? DateTime.now() : null;
+    _pauseStartedAt = isPaused ? DateTime.now() : null;
     _recoveryFixesLeft = 3;
     if (points.isNotEmpty) {
       final last = points.last;
@@ -357,6 +373,9 @@ class GpsTrackingEngine {
     _smoothedSpeedKmh = 0;
     _lastPhoneMotionAt = null;
     _phoneMoving = false;
+    _runStartedAt = null;
+    _pauseStartedAt = null;
+    _closedPausedSec = 0;
     _accepted.clear();
     _buffer.clear();
     _splits.clear();
@@ -368,23 +387,30 @@ class GpsTrackingEngine {
 
   void setManualPaused(bool paused) {
     if (paused == manualPaused) return;
+    final now = DateTime.now();
     if (paused) {
       manualPaused = true;
       pauseCount++;
       currentActivity = MotionActivity.stopped;
       _lastMovingTickAt = null;
-      _pauseTickAt = DateTime.now();
+      _pauseTickAt = now;
+      _pauseStartedAt = now;
       _pauseAnchorLat = _lastRawLat ?? _lastAccepted?.latitude;
       _pauseAnchorLng = _lastRawLng ?? _lastAccepted?.longitude;
     } else {
+      if (_pauseStartedAt != null) {
+        _closedPausedSec += now.difference(_pauseStartedAt!).inSeconds;
+        _pauseStartedAt = null;
+      }
       manualPaused = false;
       autoPaused = false;
       _stillSince = null;
       _pauseTickAt = null;
       _pauseAnchorLat = null;
       _pauseAnchorLng = null;
-      _lastMovingTickAt = DateTime.now();
+      _lastMovingTickAt = now;
       _recoveryFixesLeft = 3;
+      pausedSec = _closedPausedSec;
     }
   }
 
@@ -392,14 +418,20 @@ class GpsTrackingEngine {
 
   void _pushSpeed(double sampleKmh) {
     sampleKmh = sampleKmh.clamp(0, maxSpeedKmh);
-    if (_smoothedSpeedKmh <= 0) {
+    if (sampleKmh <= 0) {
+      // Decai lento — entre fixes de 0,5s não zera a UI.
+      _smoothedSpeedKmh *= 0.92;
+      if (_smoothedSpeedKmh < 0.4) _smoothedSpeedKmh = 0;
+      return;
+    }
+    // Sobe quase na hora (usuário reclama que demora a marcar).
+    if (_smoothedSpeedKmh < 1.5) {
       _smoothedSpeedKmh = sampleKmh;
     } else if (sampleKmh > _smoothedSpeedKmh) {
-      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.35 + sampleKmh * 0.65;
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.2 + sampleKmh * 0.8;
     } else {
-      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.7 + sampleKmh * 0.3;
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.55 + sampleKmh * 0.45;
     }
-    if (_smoothedSpeedKmh < 0.3) _smoothedSpeedKmh = 0;
   }
 
   MotionActivity _classify(double speedKmh) {
@@ -441,12 +473,18 @@ class GpsTrackingEngine {
     pauseCount++;
     currentActivity = MotionActivity.stopped;
     _lastMovingTickAt = null;
-    _pauseTickAt ??= DateTime.now();
+    final now = DateTime.now();
+    _pauseTickAt ??= now;
+    _pauseStartedAt ??= now;
     _pauseAnchorLat = lat ?? _lastRawLat ?? _lastAccepted?.latitude;
     _pauseAnchorLng = lng ?? _lastRawLng ?? _lastAccepted?.longitude;
   }
 
   void _exitAutoPause(DateTime now) {
+    if (_pauseStartedAt != null) {
+      _closedPausedSec += now.difference(_pauseStartedAt!).inSeconds;
+      _pauseStartedAt = null;
+    }
     autoPaused = false;
     _stillSince = null;
     _pauseTickAt = null;
@@ -454,6 +492,7 @@ class GpsTrackingEngine {
     _pauseAnchorLng = null;
     _lastMovingTickAt = now;
     _recoveryFixesLeft = 3;
+    pausedSec = _closedPausedSec;
   }
 
   void _updateAutoPause({
@@ -487,7 +526,33 @@ class GpsTrackingEngine {
     }
   }
 
+  /// Tempo em movimento pelo relógio de parede (não depende de Timer.periodic).
+  int elapsedMovingSecAt(DateTime now) {
+    if (_runStartedAt == null) return movingElapsedSec;
+    final total = now.difference(_runStartedAt!).inSeconds;
+    var paused = _closedPausedSec;
+    if (isPaused && _pauseStartedAt != null) {
+      paused += now.difference(_pauseStartedAt!).inSeconds;
+    }
+    final moving = total - paused;
+    return moving < 0 ? 0 : (moving > 86400 * 7 ? 86400 * 7 : moving);
+  }
+
   void tickMovingTime(DateTime now) {
+    if (_runStartedAt != null) {
+      movingElapsedSec = elapsedMovingSecAt(now);
+      if (isPaused && _pauseStartedAt != null) {
+        pausedSec =
+            _closedPausedSec + now.difference(_pauseStartedAt!).inSeconds;
+      } else {
+        pausedSec = _closedPausedSec;
+      }
+      _lastMovingTickAt = isPaused ? null : now;
+      _pauseTickAt = isPaused ? now : null;
+      return;
+    }
+
+    // Fallback legado (testes sem markRunStarted).
     if (isPaused) {
       if (_pauseTickAt != null) {
         final d = now.difference(_pauseTickAt!).inSeconds;
@@ -540,31 +605,34 @@ class GpsTrackingEngine {
     _lastRawLng = pos.longitude;
     _lastRawAt = recordedAt;
 
-    // Velocidade pelo deslocamento bruto (não Kalman — Kalman travava tudo).
+    // Velocidade: chip do GPS responde rápido; deslocamento confirma.
     double sampleSpeed = 0;
+    double step = 0;
+    double dt = 0;
     if (prevLat != null && prevLng != null && prevAt != null) {
-      final dt = recordedAt.difference(prevAt).inMilliseconds / 1000.0;
-      if (dt >= 0.3 && dt <= 25) {
-        final step = Geolocator.distanceBetween(
+      dt = recordedAt.difference(prevAt).inMilliseconds / 1000.0;
+      if (dt >= 0.2 && dt <= 25) {
+        step = Geolocator.distanceBetween(
           prevLat,
           prevLng,
           pos.latitude,
           pos.longitude,
         );
-        if (step < 0.6) {
-          sampleSpeed = 0;
-        } else {
+        if (step >= 0.25) {
           sampleSpeed = (step / dt) * 3.6;
-          if (chipSpeedKmh != null && chipSpeedKmh > 0.5) {
-            // Média com o chip quando ambos existem.
-            sampleSpeed = sampleSpeed * 0.55 + chipSpeedKmh * 0.45;
-          }
         }
-      } else if (chipSpeedKmh != null && chipSpeedKmh > 0.5) {
-        sampleSpeed = chipSpeedKmh;
       }
-    } else if (chipSpeedKmh != null && chipSpeedKmh > 0.5) {
-      sampleSpeed = chipSpeedKmh;
+    }
+    final chip = chipSpeedKmh ?? 0;
+    if (sampleSpeed <= 0 && chip >= 0.8) {
+      // Chip mentiroso parado: só aceita se houve passo mínimo ou acel. do telefone.
+      if (step >= 0.15 || _phoneMoving) {
+        sampleSpeed = chip;
+      }
+    } else if (sampleSpeed > 0 && chip >= 0.8) {
+      sampleSpeed = sampleSpeed * 0.45 + chip * 0.55;
+    } else if (sampleSpeed <= 0 && _phoneMoving && _smoothedSpeedKmh > 0) {
+      sampleSpeed = _smoothedSpeedKmh;
     }
     _pushSpeed(sampleSpeed);
 

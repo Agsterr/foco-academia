@@ -252,6 +252,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       splits: snapshot.splits,
       autoPaused: snapshot.autoPaused,
       manualPaused: snapshot.manualPaused,
+      runStartedAt: snapshot.startedAt,
     );
 
     setState(() {
@@ -278,8 +279,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     });
 
     _clockTimer?.cancel();
-    _clockTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _syncFromWallClock());
+    _clockTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _syncFromWallClock(),
+    );
     _startGpsWatchdog();
     _startMotionSensor();
     await _startGpsTracking();
@@ -395,9 +398,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _elapsed = 0;
     _phaseIndex = 0;
     _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
+    _engine.markRunStarted(_startedAt!);
     _clockTimer?.cancel();
-    _clockTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _syncFromWallClock());
+    _clockTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _syncFromWallClock(),
+    );
     _startGpsWatchdog();
     _startMotionSensor();
   }

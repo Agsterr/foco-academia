@@ -156,14 +156,37 @@ void main() {
     expect(engine.movingElapsedSec, greaterThan(beforeMove));
   });
 
-  test('cronômetro recupera gap longo (tela apagada / timer atrasado)', () {
+  test('cronômetro por relógio de parede não trava', () {
     final engine = GpsTrackingEngine();
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.markRunStarted(t0);
     engine.tickMovingTime(t0);
-    engine.tickMovingTime(t0.add(const Duration(seconds: 1)));
-    expect(engine.movingElapsedSec, 1);
-    engine.tickMovingTime(t0.add(const Duration(seconds: 26)));
-    expect(engine.movingElapsedSec, 26);
+    expect(engine.movingElapsedSec, 0);
+    engine.tickMovingTime(t0.add(const Duration(seconds: 5)));
+    expect(engine.movingElapsedSec, 5);
+    // Gap longo (Timer atrasado) — recupera tudo.
+    engine.tickMovingTime(t0.add(const Duration(seconds: 40)));
+    expect(engine.movingElapsedSec, 40);
+  });
+
+  test('velocidade sobe rápido com chip mesmo com passo GPS pequeno', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+      now: t0,
+    );
+    // Passo ~0,3 m em 0,5 s + chip 1,5 m/s (~5,4 km/h).
+    engine.process(
+      _pos(
+        lat: -23.5500027,
+        lng: -46.63000,
+        speed: 1.5,
+        accuracy: 8,
+      ),
+      now: t0.add(const Duration(milliseconds: 500)),
+    );
+    expect(engine.displaySpeedKmh, greaterThan(3.0));
   });
 
   test('fixixa ruim ainda marca sinal GPS (lastRawFixAt)', () {
