@@ -280,12 +280,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   }
 
   int get _liveCalories {
-    final dist = _distance + _estimatedGap;
-    final speed = _elapsed > 0 ? (dist / 1000) / (_elapsed / 3600) : 0.0;
     return CalorieEstimator.cardioKcal(
       weightKg: _weightKg,
-      avgSpeedKmh: speed,
+      avgSpeedKmh: _engine.averageSpeedKmh,
       elapsedMs: _elapsed * 1000,
+      distanceMeters: _engine.distanceMeters,
     );
   }
 
@@ -873,8 +872,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
 
     final totalDistance = _distance; // km oficial (sem gap inventado)
-    final avgSpeedKmh =
-        _elapsed > 0 ? (totalDistance / 1000) / (_elapsed / 3600) : 0.0;
+    final avgSpeedKmh = _engine.averageSpeedKmh > 0
+        ? _engine.averageSpeedKmh
+        : (_elapsed > 0 ? (totalDistance / 1000) / (_elapsed / 3600) : 0.0);
     final elapsedMs = _elapsed * 1000;
     final pausedMs = _engine.pausedMs;
     final pauseCount = _engine.pauseCount;
@@ -882,6 +882,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       weightKg: _weightKg,
       avgSpeedKmh: avgSpeedKmh,
       elapsedMs: elapsedMs,
+      distanceMeters: totalDistance,
     );
     final points = _engine.pointsForSync();
 
