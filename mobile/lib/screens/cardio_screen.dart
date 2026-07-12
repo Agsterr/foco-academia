@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,6 +15,7 @@ import '../services/cardio_feedback.dart';
 import '../services/cardio_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/location_permission_helper.dart';
+import '../services/map_matching_service.dart';
 import '../services/profile_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
@@ -42,6 +44,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int _phaseRemaining = 0;
 
   final _engine = GpsTrackingEngine();
+  final _mapMatching = MapMatchingService();
+  List<LatLng> _matchedRoute = [];
+  LatLng? _snappedLive;
+  bool _mapMatchBusy = false;
+  int _lastMatchedPointCount = 0;
+  DateTime? _lastMatchAt;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -63,40 +71,97 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int? _lastPersistElapsedSec;
   int? _lastCloudElapsedSec;
 
-  /// Rota + ponta ao vivo para o mapa acompanhar em tempo real.
-  List<TrackedPoint> get _displayPoints {
-    final base = _engine.acceptedPoints;
+  /// Mapa: rota encaixada nas ruas + ponta ao vivo (snap).
+  List<RoutePointView> get _mapRoutePoints {
+    final matched = _matchedRoute;
+    if (matched.length >= 2) {
+      final out = matched
+          .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
+          .toList();
+      final tip = _snappedLive ??
+          (_engine.liveLatitude != null && _engine.liveLongitude != null
+              ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
+              : null);
+      if (tip != null) {
+        final last = matched.last;
+        final d = Geolocator.distanceBetween(
+          last.latitude,
+          last.longitude,
+          tip.latitude,
+          tip.longitude,
+        );
+        if (d >= 0.5) {
+          out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+        }
+      }
+      return out;
+    }
+
+    // Fallback: GPS bruto até o primeiro match.
+    final raw = _engine.acceptedPoints;
     final lat = _engine.liveLatitude;
     final lng = _engine.liveLongitude;
-    if (!_running || lat == null || lng == null) return base;
-    if (base.isEmpty) {
-      return [
-        TrackedPoint(
-          latitude: lat,
-          longitude: lng,
-          recordedAt: DateTime.now(),
-          sequenceNum: -1,
-        ),
-      ];
+    final points = raw
+        .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
+        .toList();
+    if (_running && lat != null && lng != null) {
+      if (points.isEmpty ||
+          Geolocator.distanceBetween(
+                points.last.latitude,
+                points.last.longitude,
+                lat,
+                lng,
+              ) >=
+              0.4) {
+        points.add(RoutePointView(latitude: lat, longitude: lng));
+      }
     }
-    final last = base.last;
-    final tip = Geolocator.distanceBetween(
-      last.latitude,
-      last.longitude,
-      lat,
-      lng,
-    );
-    if (tip < 0.4) return base;
-    return [
-      ...base,
-      TrackedPoint(
-        latitude: lat,
-        longitude: lng,
-        recordedAt: DateTime.now(),
-        sequenceNum: -1,
-        speedKmh: _engine.displaySpeedKmh,
-      ),
-    ];
+    return points;
+  }
+
+  Future<void> _refreshMapMatching({bool force = false}) async {
+    if (!_running || _finishing || _mapMatchBusy) return;
+    final accepted = _engine.acceptedPoints;
+    if (accepted.length < 3) return;
+
+    final now = DateTime.now();
+    final grew = accepted.length - _lastMatchedPointCount >= 4;
+    final due = _lastMatchAt == null ||
+        now.difference(_lastMatchAt!) >= const Duration(seconds: 4);
+    if (!force && !grew && !due) return;
+
+    _mapMatchBusy = true;
+    try {
+      final pts = accepted
+          .map((p) => LatLng(p.latitude, p.longitude))
+          .toList();
+      final accuracies = accepted
+          .map((p) => p.accuracyMeters ?? 25.0)
+          .toList();
+      final matched = await _mapMatching.matchToRoads(
+        pts,
+        accuraciesMeters: accuracies,
+      );
+
+      LatLng? snapped;
+      if (_engine.liveLatitude != null && _engine.liveLongitude != null) {
+        snapped = await _mapMatching.snapPoint(
+          LatLng(_engine.liveLatitude!, _engine.liveLongitude!),
+        );
+      }
+
+      if (!mounted || !_running) return;
+      setState(() {
+        if (matched != null && matched.length >= 2) {
+          _matchedRoute = matched;
+          _lastMatchedPointCount = accepted.length;
+          _lastMatchAt = now;
+        }
+        if (snapped != null) _snappedLive = snapped;
+      });
+    } finally {
+      _mapMatchBusy = false;
+    }
   }
 
   @override
@@ -435,6 +500,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _elapsed = 0;
     _phaseIndex = 0;
     _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
+    _matchedRoute = [];
+    _snappedLive = null;
+    _lastMatchedPointCount = 0;
+    _lastMatchAt = null;
     _engine.markRunStarted(_startedAt!);
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(
@@ -693,6 +762,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _lastPersistAt = now;
       unawaited(_persistActiveRun());
     }
+    unawaited(_refreshMapMatching());
   }
 
   Future<void> _restartGpsStreamOnly() async {
@@ -802,7 +872,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _engine.tickMovingTime(DateTime.now());
     _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
 
-    final totalDistance = _distance + _estimatedGap;
+    final totalDistance = _distance; // km oficial (sem gap inventado)
     final avgSpeedKmh =
         _elapsed > 0 ? (totalDistance / 1000) / (_elapsed / 3600) : 0.0;
     final elapsedMs = _elapsed * 1000;
@@ -937,10 +1007,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ? _intervals[_phaseIndex]
           : null;
 
-  double get _avgSpeedKmh {
-    final live = _engine.liveDistanceMeters;
-    return _elapsed > 0 ? (live / 1000) / (_elapsed / 3600) : 0;
-  }
+  double get _avgSpeedKmh => _engine.averageSpeedKmh;
 
   @override
   void dispose() {
@@ -953,6 +1020,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _gpsSub?.cancel();
     _clockTimer?.cancel();
     _gpsWatchdog?.cancel();
+    _mapMatching.dispose();
     super.dispose();
   }
 
@@ -960,7 +1028,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final phase = _currentPhase;
     final title = _workout?.title ?? 'Corrida/caminhada livre';
-    final mapPoints = _displayPoints;
+    final mapPoints = _mapRoutePoints;
     final currentPace =
         GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
     final avgPace = GpsTrackingEngine.formatPace(_engine.averagePaceSecPerKm);
@@ -1030,17 +1098,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running ? _engine.liveLatitude : null,
-                            liveLongitude:
-                                _running ? _engine.liveLongitude : null,
-                            points: mapPoints
-                                .map(
-                                  (p) => RoutePointView(
-                                    latitude: p.latitude,
-                                    longitude: p.longitude,
-                                  ),
-                                )
-                                .toList(),
+                            liveLatitude: _running
+                                ? (_snappedLive?.latitude ??
+                                    _engine.liveLatitude)
+                                : null,
+                            liveLongitude: _running
+                                ? (_snappedLive?.longitude ??
+                                    _engine.liveLongitude)
+                                : null,
+                            points: mapPoints,
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -1055,7 +1121,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               Expanded(
                                 child: _Stat(
                                   'Distância',
-                                  '${(_engine.liveDistanceMeters / 1000).toStringAsFixed(3)} km',
+                                  '${(_engine.distanceMeters / 1000).toStringAsFixed(2)} km',
                                 ),
                               ),
                             ],

@@ -147,7 +147,10 @@ class GpsTrackingEngine {
     this.relaxedAccuracyMeters = 70,
     this.maxSpeedKmh = 40,
     this.maxJumpMeters = 90,
-    this.minDistanceMeters = 1.0,
+    /// Ponto no mapa: a partir deste deslocamento.
+    this.minDistanceMeters = 2.5,
+    /// Só conta km se o passo for maior que o erro típico do GPS.
+    this.minDistanceForKm = 3.5,
     this.bufferSize = 40,
     this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
@@ -156,6 +159,7 @@ class GpsTrackingEngine {
     this.resumeDisplacementMeters = 4,
     this.autoPauseAfter = const Duration(seconds: 30),
     this.enableAutoPause = false,
+    this.enableEstimatedGap = false,
     this.runEnterKmh = 8.0,
     this.runExitKmh = 6.0,
   });
@@ -165,6 +169,7 @@ class GpsTrackingEngine {
   final double maxSpeedKmh;
   final double maxJumpMeters;
   final double minDistanceMeters;
+  final double minDistanceForKm;
   final int bufferSize;
   final int smoothWindow;
   final Duration gpsLossTimeout;
@@ -174,6 +179,8 @@ class GpsTrackingEngine {
   final Duration autoPauseAfter;
   /// Desligado por padrão: auto-pause no celular trava corrida/caminhada.
   final bool enableAutoPause;
+  /// Gap estimado inventava km após tela apagada — off por padrão.
+  final bool enableEstimatedGap;
   final double runEnterKmh;
   final double runExitKmh;
 
@@ -229,9 +236,9 @@ class GpsTrackingEngine {
 
   double get displaySpeedKmh => _smoothedSpeedKmh;
 
-  /// Distância ao vivo: aceita + trecho até o fix atual (estilo Google Maps).
+  /// Distância oficial (só segmentos confiáveis) + ponta curta ao vivo.
   double get liveDistanceMeters {
-    var d = distanceMeters + estimatedGapMeters;
+    var d = distanceMeters;
     if (isPaused) return d;
     final last = _lastAccepted;
     if (last == null || _lastRawLat == null || _lastRawLng == null) return d;
@@ -241,11 +248,17 @@ class GpsTrackingEngine {
       _lastRawLat!,
       _lastRawLng!,
     );
-    // Só soma o tip se for deslocamento real (não jitter).
-    if (tip >= 0.5 && tip < maxJumpMeters) {
+    // Ponta só para UI fluida — limitada para não inflar o km.
+    if (tip >= 1.0 && tip <= 20) {
       d += tip;
     }
     return d;
+  }
+
+  /// Velocidade média oficial: km sólido / tempo em movimento.
+  double get averageSpeedKmh {
+    if (movingElapsedSec < 5 || distanceMeters < 15) return 0;
+    return (distanceMeters / 1000.0) / (movingElapsedSec / 3600.0);
   }
 
   bool get isStationary => _smoothedSpeedKmh < pauseBelowKmh && !_phoneMoving;
@@ -263,7 +276,7 @@ class GpsTrackingEngine {
   }
 
   double? get averagePaceSecPerKm {
-    if (distanceMeters < 20 || movingElapsedSec <= 0) return null;
+    if (distanceMeters < 30 || movingElapsedSec < 10) return null;
     return movingElapsedSec / (distanceMeters / 1000.0);
   }
 
@@ -739,7 +752,7 @@ class GpsTrackingEngine {
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
       final recovering = dtSec >= 20;
 
-      // Aceita pontos densos (~1,5 m) para o mapa seguir a rua, não virar reta.
+      // Aceita no mapa se andou o mínimo; km só se o passo > erro do GPS.
       if (!recovering && delta < minDistanceMeters) {
         return GpsProcessResult.rejected(
           GpsRejectReason.tooSoon,
@@ -747,16 +760,20 @@ class GpsTrackingEngine {
         );
       }
 
-      if (dtSec >= 20 &&
+      // Gap estimado desligado: inventava km e quebrava média/ritmo.
+      if (enableEstimatedGap &&
+          dtSec >= 20 &&
           lastValidSpeedKmh != null &&
           lastValidSpeedKmh! >= 2.5 &&
           lastValidSpeedKmh! <= maxSpeedKmh) {
         final estimate = (lastValidSpeedKmh! / 3.6) * dtSec;
-        final surplus = (estimate - delta).clamp(0.0, estimate * 0.35);
+        final surplus = (estimate - delta).clamp(0.0, estimate * 0.25);
         estimatedGapMeters += surplus;
       }
 
-      if (!recovering && delta >= minDistanceMeters) {
+      // Conta km só com deslocamento maior que o ruído típico do chip.
+      final kmThreshold = math.max(minDistanceForKm, accuracy * 0.45);
+      if (!recovering && delta >= kmThreshold && delta <= maxJumpMeters) {
         distanceMeters += delta;
       }
 

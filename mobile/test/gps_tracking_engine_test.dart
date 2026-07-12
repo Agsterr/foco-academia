@@ -275,22 +275,63 @@ void main() {
   });
 
   test('caminhada gera muitos pontos (mapa segue a rua, não reta)', () {
-    final engine = GpsTrackingEngine(minDistanceMeters: 1.5);
+    final engine = GpsTrackingEngine(
+      minDistanceMeters: 1.5,
+      minDistanceForKm: 2.0,
+    );
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
-    // ~100 m em passos de ~3 m (simula curva/rua).
-    for (var i = 0; i < 35; i++) {
+    // ~5 m por passo (acima do limiar de km).
+    for (var i = 0; i < 25; i++) {
       engine.process(
         _pos(
-          lat: -23.55000 - (i * 0.000027),
+          lat: -23.55000 - (i * 0.000045),
           lng: -46.63000 - ((i % 5) * 0.000005),
+          speed: 1.5,
+          accuracy: 6,
+        ),
+        now: t0.add(Duration(seconds: i * 3)),
+      );
+    }
+    expect(engine.acceptedPoints.length, greaterThan(15));
+    expect(engine.distanceMeters, greaterThan(80));
+    expect(engine.displaySpeedKmh, greaterThan(3));
+  });
+
+  test('km não infla com jitter e média usa distância sólida', () {
+    final engine = GpsTrackingEngine();
+    engine.markRunStarted(DateTime(2026, 1, 1, 12, 0, 0));
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    // Zigzag de ~1,2 m (ruído típico) — não deve somar km.
+    for (var i = 0; i < 20; i++) {
+      final side = i.isEven ? 0.00001 : -0.00001;
+      engine.process(
+        _pos(
+          lat: -23.55000 + (i * 0.000002),
+          lng: -46.63000 + side,
+          speed: 1.0,
+          accuracy: 15,
+        ),
+        now: t0.add(Duration(seconds: i)),
+      );
+    }
+    expect(engine.distanceMeters, lessThan(25));
+
+    // 100 m em linha reta com boa precisão.
+    for (var i = 0; i < 20; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000045), // ~5 m
+          lng: -46.63000,
           speed: 1.5,
           accuracy: 8,
         ),
-        now: t0.add(Duration(seconds: i * 2)),
+        now: t0.add(Duration(seconds: 30 + i * 3)),
       );
     }
-    expect(engine.acceptedPoints.length, greaterThan(20));
-    expect(engine.distanceMeters, greaterThan(80));
-    expect(engine.displaySpeedKmh, greaterThan(3));
+    expect(engine.distanceMeters, greaterThan(70));
+    expect(engine.distanceMeters, lessThan(120));
+    engine.tickMovingTime(t0.add(const Duration(seconds: 100)));
+    expect(engine.averageSpeedKmh, greaterThan(2));
+    expect(engine.averageSpeedKmh, lessThan(15));
   });
 }
