@@ -161,4 +161,61 @@ void main() {
     engine.tickMovingTime(t0.add(const Duration(seconds: 7)));
     expect(engine.movingElapsedSec, greaterThan(beforeMove));
   });
+
+  test('fixixa ruim ainda marca sinal GPS (lastRawFixAt)', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime.now();
+    engine.process(_pos(lat: -23.55, lng: -46.63), now: t0);
+    final bad = engine.process(
+      _pos(lat: -23.5501, lng: -46.6301, accuracy: 80, speed: 0),
+      now: t0.add(const Duration(seconds: 3)),
+    );
+    expect(bad.accepted, isFalse);
+    expect(engine.lastRawFixAt, isNotNull);
+    expect(engine.hasGpsSignal, isTrue);
+  });
+
+  test('auto-pause retoma por deslocamento mesmo com speed 0', () {
+    final engine = GpsTrackingEngine(
+      autoPauseAfter: const Duration(seconds: 2),
+      resumeDisplacementMeters: 8,
+      minDistanceMeters: 1,
+    );
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+      now: t0,
+    );
+    // Fica parado o suficiente para auto-pause.
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+      now: t0.add(const Duration(seconds: 3)),
+    );
+    expect(engine.autoPaused, isTrue);
+
+    // Speed 0 mas andou ~11 m → deve retomar.
+    final resume = engine.process(
+      _pos(lat: -23.55010, lng: -46.63000, speed: 0, accuracy: 12),
+      now: t0.add(const Duration(seconds: 8)),
+    );
+    expect(engine.autoPaused, isFalse);
+    expect(resume.accepted, isTrue);
+  });
+
+  test('após gap longo reancora sem somar teleporte na distância', () {
+    final engine = GpsTrackingEngine(minDistanceMeters: 1);
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 2),
+      now: t0,
+    );
+    final before = engine.distanceMeters;
+    engine.process(
+      _pos(lat: -23.55100, lng: -46.63000, speed: 2),
+      now: t0.add(const Duration(seconds: 40)),
+    );
+    // ~111 m de salto após gap: ancora, mas não soma na distância.
+    expect(engine.acceptedPoints.length, 2);
+    expect(engine.distanceMeters, before);
+  });
 }

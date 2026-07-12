@@ -70,11 +70,50 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _running) {
+      _engine.markForegroundRecovery();
       _syncFromWallClock();
       _persistActiveRun(force: true);
+      unawaited(_reacquireGps());
     } else if (state == AppLifecycleState.paused && _running) {
       _persistActiveRun(force: true);
     }
+  }
+
+  /// Após tela apagada o Android pode silenciar o stream — força fix + reinicia.
+  Future<void> _reacquireGps() async {
+    if (!_running || _finishing) return;
+    try {
+      final current = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
+        forceAndroidLocationManager: false,
+        timeLimit: const Duration(seconds: 12),
+      );
+      if (!_running) return;
+      _onPosition(current);
+      if (mounted) {
+        setState(() {
+          _gpsLost = false;
+          _gpsStatus = _engine.isPaused
+              ? (_manualPaused
+                  ? 'Pausado — toque em Retomar'
+                  : 'Auto-pause — ande para continuar')
+              : 'GPS retomado — ${_engine.acceptedPoints.length} pontos';
+        });
+      }
+    } catch (_) {
+      // Continua com o stream; watchdog atualiza o status.
+    }
+    if (!_running || _finishing) return;
+    await _gpsSub?.cancel();
+    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings)
+        .listen(
+      _onPosition,
+      onError: (Object err) {
+        if (mounted) {
+          setState(() => _gpsStatus = 'Erro no GPS: $err');
+        }
+      },
+    );
   }
 
   Future<void> _loadWorkout() async {
@@ -223,12 +262,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
             ? 'Pausado · $km km · ${_fmt(_engine.pausedSec)}'
             : 'Auto-pause · $km km')
         : 'Distância: $km km · Ritmo: $pace';
+    // Em pausa usa filtro menor para detectar retomada mais rápido.
+    final distanceFilter = _engine.isPaused ? 2 : 4;
 
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 5,
-        intervalDuration: const Duration(seconds: 2),
+        distanceFilter: distanceFilter,
+        intervalDuration: const Duration(seconds: 1),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: _engine.isPaused
@@ -247,15 +288,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         activityType: ActivityType.fitness,
-        distanceFilter: 5,
+        distanceFilter: distanceFilter,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
       );
     }
-    return const LocationSettings(
+    return LocationSettings(
       accuracy: LocationAccuracy.best,
-      distanceFilter: 5,
+      distanceFilter: distanceFilter,
     );
   }
 
@@ -297,10 +338,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   void _startGpsWatchdog() {
     _gpsWatchdog?.cancel();
-    _gpsWatchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+    _gpsWatchdog = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!_running || _finishing) return;
-      final since = _engine.timeSinceLastFix;
-      final lost = since == null || since > _engine.gpsLossTimeout;
+      final lost = !_engine.hasGpsSignal;
       final pausedChanged = _autoPaused != _engine.autoPaused ||
           _manualPaused != _engine.manualPaused;
       if ((lost != _gpsLost || pausedChanged) && mounted) {
@@ -311,9 +351,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           _gpsStatus = _engine.manualPaused
               ? 'Pausado — toque em Retomar'
               : _engine.autoPaused
-                  ? 'Auto-pause — parado. Ande para continuar.'
+                  ? 'Auto-pause — ande ~10 m para continuar'
                   : lost
-                      ? 'Sinal de GPS perdido. Tentando reconectar...'
+                      ? 'Aguardando fix GPS (sinal fraco ou tela apagada)...'
                       : 'GPS ok — ${_engine.acceptedPoints.length} pontos';
         });
       }
@@ -532,17 +572,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       setState(() {
         _autoPaused = result.autoPaused;
         _manualPaused = result.manualPaused;
+        _gpsLost = false;
         _gpsStatus = result.manualPaused
             ? 'Pausado — toque em Retomar'
             : result.autoPaused
-                ? 'Auto-pause — parado. Ande para continuar.'
+                ? 'Auto-pause — ande ~10 m para continuar'
                 : 'Retomado — ${_activityLabel(result.activity)}';
       });
+      // Reinicia stream com distanceFilter adequado à pausa.
+      unawaited(_restartGpsStreamOnly());
     }
 
     if (!result.accepted) {
-      if (result.isPaused && mounted) {
+      if (mounted) {
         setState(() {
+          _gpsLost = false;
           _autoPaused = result.autoPaused;
           _manualPaused = result.manualPaused;
         });
@@ -575,17 +619,33 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     unawaited(_persistActiveRun());
   }
 
+  Future<void> _restartGpsStreamOnly() async {
+    if (!_running || _finishing) return;
+    await _gpsSub?.cancel();
+    _gpsSub = Geolocator.getPositionStream(locationSettings: _locationSettings)
+        .listen(
+      _onPosition,
+      onError: (Object err) {
+        if (mounted) {
+          setState(() => _gpsStatus = 'Erro no GPS: $err');
+        }
+      },
+    );
+  }
+
   void _toggleManualPause() {
     if (!_running || _finishing) return;
     _engine.toggleManualPause();
     setState(() {
       _manualPaused = _engine.manualPaused;
       _autoPaused = _engine.autoPaused;
+      _gpsLost = false;
       _gpsStatus = _manualPaused
           ? 'Pausado — toque em Retomar'
           : 'Retomado — continue o treino';
     });
     unawaited(_persistActiveRun(force: true));
+    unawaited(_restartGpsStreamOnly());
     unawaited(CardioFeedback.playBeeps(1));
   }
 
