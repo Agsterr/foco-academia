@@ -147,7 +147,7 @@ class GpsTrackingEngine {
     this.relaxedAccuracyMeters = 70,
     this.maxSpeedKmh = 40,
     this.maxJumpMeters = 90,
-    this.minDistanceMeters = 1.5,
+    this.minDistanceMeters = 1.0,
     this.bufferSize = 40,
     this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
@@ -228,6 +228,25 @@ class GpsTrackingEngine {
   double? get liveLongitude => _lastRawLng ?? _lastAccepted?.longitude;
 
   double get displaySpeedKmh => _smoothedSpeedKmh;
+
+  /// Distância ao vivo: aceita + trecho até o fix atual (estilo Google Maps).
+  double get liveDistanceMeters {
+    var d = distanceMeters + estimatedGapMeters;
+    if (isPaused) return d;
+    final last = _lastAccepted;
+    if (last == null || _lastRawLat == null || _lastRawLng == null) return d;
+    final tip = Geolocator.distanceBetween(
+      last.latitude,
+      last.longitude,
+      _lastRawLat!,
+      _lastRawLng!,
+    );
+    // Só soma o tip se for deslocamento real (não jitter).
+    if (tip >= 0.5 && tip < maxJumpMeters) {
+      d += tip;
+    }
+    return d;
+  }
 
   bool get isStationary => _smoothedSpeedKmh < pauseBelowKmh && !_phoneMoving;
 
@@ -424,13 +443,13 @@ class GpsTrackingEngine {
       if (_smoothedSpeedKmh < 0.4) _smoothedSpeedKmh = 0;
       return;
     }
-    // Sobe quase na hora (usuário reclama que demora a marcar).
-    if (_smoothedSpeedKmh < 1.5) {
+    // Sobe quase na hora (tempo real).
+    if (_smoothedSpeedKmh < 2.0) {
       _smoothedSpeedKmh = sampleKmh;
     } else if (sampleKmh > _smoothedSpeedKmh) {
-      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.2 + sampleKmh * 0.8;
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.15 + sampleKmh * 0.85;
     } else {
-      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.55 + sampleKmh * 0.45;
+      _smoothedSpeedKmh = _smoothedSpeedKmh * 0.45 + sampleKmh * 0.55;
     }
   }
 

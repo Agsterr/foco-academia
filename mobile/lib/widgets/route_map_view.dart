@@ -58,8 +58,8 @@ class _RouteMapViewState extends State<RouteMapView> {
     if (next == null) return;
     final prev = _lastFollowed;
     if (prev == null ||
-        (prev.latitude - next.latitude).abs() > 0.000001 ||
-        (prev.longitude - next.longitude).abs() > 0.000001) {
+        (prev.latitude - next.latitude).abs() > 0.0000003 ||
+        (prev.longitude - next.longitude).abs() > 0.0000003) {
       _lastFollowed = next;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -114,6 +114,18 @@ class _RouteMapViewState extends State<RouteMapView> {
                   polylines: [
                     Polyline(
                       points: latLngs,
+                      strokeWidth: 5,
+                      color: _trailColor,
+                      borderStrokeWidth: 2,
+                      borderColor: Colors.white,
+                    ),
+                  ],
+                )
+              else if (latLngs.length == 1 && live != null)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: [latLngs.first, live],
                       strokeWidth: 5,
                       color: _trailColor,
                       borderStrokeWidth: 2,

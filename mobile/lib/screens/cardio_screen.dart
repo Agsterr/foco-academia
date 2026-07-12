@@ -59,8 +59,45 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int _lastCloudSeq = 0;
   DateTime? _lastCloudBackupAt;
   String? _lastSplitToast;
+  DateTime? _lastPersistAt;
+  int? _lastPersistElapsedSec;
+  int? _lastCloudElapsedSec;
 
-  List<TrackedPoint> get _displayPoints => _engine.smoothedRoute();
+  /// Rota + ponta ao vivo para o mapa acompanhar em tempo real.
+  List<TrackedPoint> get _displayPoints {
+    final base = _engine.acceptedPoints;
+    final lat = _engine.liveLatitude;
+    final lng = _engine.liveLongitude;
+    if (!_running || lat == null || lng == null) return base;
+    if (base.isEmpty) {
+      return [
+        TrackedPoint(
+          latitude: lat,
+          longitude: lng,
+          recordedAt: DateTime.now(),
+          sequenceNum: -1,
+        ),
+      ];
+    }
+    final last = base.last;
+    final tip = Geolocator.distanceBetween(
+      last.latitude,
+      last.longitude,
+      lat,
+      lng,
+    );
+    if (tip < 0.4) return base;
+    return [
+      ...base,
+      TrackedPoint(
+        latitude: lat,
+        longitude: lng,
+        recordedAt: DateTime.now(),
+        sequenceNum: -1,
+        speedKmh: _engine.displaySpeedKmh,
+      ),
+    ];
+  }
 
   @override
   void initState() {
@@ -280,7 +317,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 200),
       (_) => _syncFromWallClock(),
     );
     _startGpsWatchdog();
@@ -302,7 +339,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        intervalDuration: const Duration(milliseconds: 500),
+        intervalDuration: const Duration(milliseconds: 200),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: _engine.isPaused
@@ -401,7 +438,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _engine.markRunStarted(_startedAt!);
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
+      const Duration(milliseconds: 200),
       (_) => _syncFromWallClock(),
     );
     _startGpsWatchdog();
@@ -445,8 +482,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     }
 
     if (!mounted) return;
+    // Tempo real: atualiza tempo + distância/velocidade ao vivo a cada tick.
     setState(() {
       _elapsed = elapsed;
+      _distance = _engine.distanceMeters;
+      _estimatedGap = _engine.estimatedGapMeters;
       _autoPaused = _engine.autoPaused;
       _manualPaused = _engine.manualPaused;
       _phaseIndex = phaseIndex;
@@ -455,10 +495,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (phaseChanged) {
       unawaited(CardioFeedback.playPhase(_intervals[phaseIndex].phase));
     }
-    if (elapsed % 10 == 0) {
+    if (elapsed > 0 &&
+        elapsed % 10 == 0 &&
+        _lastPersistElapsedSec != elapsed) {
+      _lastPersistElapsedSec = elapsed;
       unawaited(_persistActiveRun());
     }
-    if (elapsed % 30 == 0) {
+    if (elapsed > 0 &&
+        elapsed % 30 == 0 &&
+        _lastCloudElapsedSec != elapsed) {
+      _lastCloudElapsedSec = elapsed;
       unawaited(_cloudBackup());
     }
   }
@@ -602,46 +648,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   void _onPosition(Position pos) {
     if (!_running) return;
-    // GPS stream continua com tela apagada — avança o cronômetro mesmo se
-    // o Timer.periodic do Flutter for throttled pelo Android.
     _engine.tickMovingTime(DateTime.now());
     final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
-    if (result.isPaused != wasPaused && mounted) {
-      setState(() {
-        _autoPaused = result.autoPaused;
-        _manualPaused = result.manualPaused;
-        _gpsLost = false;
-        _gpsStatus = result.manualPaused
-            ? 'Pausado — toque em Retomar'
-            : result.autoPaused
-                ? 'Auto-pause — ande para continuar'
-                : 'Retomado — ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)}';
-      });
-    }
-
-    // Sempre espelha distância/velocidade na UI (mesmo fix rejeitado por densificação).
     _distance = _engine.distanceMeters;
     _estimatedGap = _engine.estimatedGapMeters;
-
-    if (!result.accepted) {
-      if (mounted) {
-        setState(() {
-          _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
-          _gpsLost = false;
-          _autoPaused = result.autoPaused;
-          _manualPaused = result.manualPaused;
-          if (!_engine.isPaused && _engine.acceptedPoints.isNotEmpty) {
-            _gpsStatus =
-                '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
-                'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-                '${_engine.acceptedPoints.length} pts';
-          }
-        });
-      }
-      return;
-    }
 
     if (result.newSplit != null) {
       final s = result.newSplit!;
@@ -650,20 +662,37 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       unawaited(CardioFeedback.playBeeps(1));
     }
 
-    if (mounted) {
-      setState(() {
-        _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
-        _gpsLost = false;
-        _autoPaused = false;
-        _manualPaused = false;
-        _gpsStatus = _engine.acceptedPoints.length < 2
-            ? 'GPS ok — pode apagar a tela'
-            : '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
-                'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-                '${_engine.acceptedPoints.length} pts';
-      });
+    if (!mounted) return;
+    // Todo o painel em tempo real a cada fix GPS (~200 ms).
+    setState(() {
+      _elapsed = _engine.movingElapsedSec.clamp(0, 86400 * 7);
+      _gpsLost = false;
+      _autoPaused = result.autoPaused;
+      _manualPaused = result.manualPaused;
+      if (result.manualPaused) {
+        _gpsStatus = 'Pausado — toque em Retomar';
+      } else if (result.autoPaused) {
+        _gpsStatus = 'Auto-pause — ande para continuar';
+      } else if (wasPaused && !result.isPaused) {
+        _gpsStatus =
+            'Retomado — ${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h';
+      } else if (_engine.acceptedPoints.length < 2) {
+        _gpsStatus = 'GPS ok — pode apagar a tela';
+      } else {
+        _gpsStatus =
+            '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
+            'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
+            '${_engine.acceptedPoints.length} pts';
+      }
+    });
+
+    // Persistência em background, não a cada fix (evita travar a UI).
+    final now = DateTime.now();
+    if (_lastPersistAt == null ||
+        now.difference(_lastPersistAt!) >= const Duration(seconds: 5)) {
+      _lastPersistAt = now;
+      unawaited(_persistActiveRun());
     }
-    unawaited(_persistActiveRun());
   }
 
   Future<void> _restartGpsStreamOnly() async {
@@ -908,8 +937,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ? _intervals[_phaseIndex]
           : null;
 
-  double get _avgSpeedKmh =>
-      _elapsed > 0 ? ((_distance + _estimatedGap) / 1000) / (_elapsed / 3600) : 0;
+  double get _avgSpeedKmh {
+    final live = _engine.liveDistanceMeters;
+    return _elapsed > 0 ? (live / 1000) / (_elapsed / 3600) : 0;
+  }
 
   @override
   void dispose() {
@@ -1024,7 +1055,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               Expanded(
                                 child: _Stat(
                                   'Distância',
-                                  '${(_distance / 1000).toStringAsFixed(2)} km',
+                                  '${(_engine.liveDistanceMeters / 1000).toStringAsFixed(3)} km',
                                 ),
                               ),
                             ],
