@@ -6,6 +6,8 @@ enum FilterReason {
   impossibleSpeed,
   duplicate,
   lowConfidence,
+  /// Zig-zag / deriva típica de GPS no bolso (sensor fusion + bússola).
+  stationaryJitter,
 }
 
 extension FilterReasonApi on FilterReason {
@@ -23,6 +25,8 @@ extension FilterReasonApi on FilterReason {
         return 'DUPLICATE';
       case FilterReason.lowConfidence:
         return 'LOW_CONFIDENCE';
+      case FilterReason.stationaryJitter:
+        return 'STATIONARY_JITTER';
     }
   }
 
@@ -38,6 +42,8 @@ extension FilterReasonApi on FilterReason {
         return FilterReason.duplicate;
       case 'LOW_CONFIDENCE':
         return FilterReason.lowConfidence;
+      case 'STATIONARY_JITTER':
+        return FilterReason.stationaryJitter;
       default:
         return FilterReason.none;
     }

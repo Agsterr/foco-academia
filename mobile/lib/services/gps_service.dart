@@ -17,11 +17,13 @@ class GpsService {
     required String notificationTitle,
     required String notificationText,
   }) {
+    // Preferir `best` a `bestForNavigation`: navegação mistura bússola/giroscópio
+    // e, com o celular no bolso, gera deriva em espaguete e km/ritmo errados.
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+        accuracy: LocationAccuracy.best,
         distanceFilter: 0,
-        intervalDuration: const Duration(milliseconds: 200),
+        intervalDuration: const Duration(milliseconds: 500),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: notificationTitle,
@@ -36,7 +38,7 @@ class GpsService {
     }
     if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
       return AppleSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+        accuracy: LocationAccuracy.best,
         activityType: ActivityType.fitness,
         distanceFilter: 0,
         pauseLocationUpdatesAutomatically: false,
@@ -45,7 +47,7 @@ class GpsService {
       );
     }
     return const LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
+      accuracy: LocationAccuracy.best,
       distanceFilter: 0,
     );
   }
@@ -55,7 +57,7 @@ class GpsService {
   }) async {
     try {
       return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.bestForNavigation,
+        desiredAccuracy: LocationAccuracy.best,
         forceAndroidLocationManager: false,
         timeLimit: timeLimit,
       );

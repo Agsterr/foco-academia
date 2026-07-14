@@ -73,6 +73,41 @@ void main() {
       expect(GpsFilterService.maxSpeedForActivity(MotionActivity.walk), 10);
       expect(GpsFilterService.maxSpeedForActivity(MotionActivity.run), 30);
     });
+
+    test('rejeita zig-zag stationary jitter', () {
+      final f = GpsFilterService(minDistanceMeters: 1);
+      final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+      final a = TrackedPoint(
+        latitude: -23.55000,
+        longitude: -46.63000,
+        recordedAt: t0,
+        sequenceNum: 0,
+        accuracyMeters: 16,
+      );
+      final b = TrackedPoint(
+        latitude: -23.55004,
+        longitude: -46.63000,
+        recordedAt: t0.add(const Duration(seconds: 1)),
+        sequenceNum: 1,
+        accuracyMeters: 16,
+      );
+      // Volta quase ao ponto A (inversão de bearing).
+      final d = f.evaluate(
+        latitude: -23.550005,
+        longitude: -46.63000,
+        accuracyMeters: 16,
+        recordedAt: t0.add(const Duration(seconds: 2)),
+        previous: b,
+        beforePrevious: a,
+      );
+      expect(d.accepted, isFalse);
+      expect(d.reason, FilterReason.stationaryJitter);
+    });
+
+    test('bearingDeltaDegrees', () {
+      expect(GpsFilterService.bearingDeltaDegrees(10, 350), closeTo(20, 0.1));
+      expect(GpsFilterService.bearingDeltaDegrees(0, 180), closeTo(180, 0.1));
+    });
   });
 
   group('KalmanFilterService', () {
