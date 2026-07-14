@@ -16,14 +16,21 @@ class GpsService {
   LocationSettings buildSettings({
     required String notificationTitle,
     required String notificationText,
+    /// Tela apagada / bolso: menos fixes, só com deslocamento real.
+    /// Evita o espaguete típico de GPS ruidoso a cada 0,5 s.
+    bool backgroundMode = false,
   }) {
     // Preferir `best` a `bestForNavigation`: navegação mistura bússola/giroscópio
     // e, com o celular no bolso, gera deriva em espaguete e km/ritmo errados.
     if (!kIsWeb && Platform.isAndroid) {
       return AndroidSettings(
         accuracy: LocationAccuracy.best,
-        distanceFilter: 0,
-        intervalDuration: const Duration(milliseconds: 500),
+        // Em background o chip “salta” dentro do raio de erro; distanceFilter
+        // nativo evita desenhar ida-e-volta na mesma calçada.
+        distanceFilter: backgroundMode ? 8 : 0,
+        intervalDuration: backgroundMode
+            ? const Duration(milliseconds: 1500)
+            : const Duration(milliseconds: 500),
         forceLocationManager: false,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: notificationTitle,
@@ -40,15 +47,15 @@ class GpsService {
       return AppleSettings(
         accuracy: LocationAccuracy.best,
         activityType: ActivityType.fitness,
-        distanceFilter: 0,
+        distanceFilter: backgroundMode ? 8 : 0,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
       );
     }
-    return const LocationSettings(
+    return LocationSettings(
       accuracy: LocationAccuracy.best,
-      distanceFilter: 0,
+      distanceFilter: backgroundMode ? 8 : 0,
     );
   }
 

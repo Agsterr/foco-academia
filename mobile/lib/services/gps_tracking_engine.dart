@@ -317,6 +317,7 @@ class GpsTrackingEngine {
 
   double? _lastRawLat;
   double? _lastRawLng;
+  double? _lastRawAccuracy;
   DateTime? _lastRawAt;
   double? _pauseAnchorLat;
   double? _pauseAnchorLng;
@@ -328,6 +329,9 @@ class GpsTrackingEngine {
   DateTime? _runStartedAt;
   DateTime? _pauseStartedAt;
   int _closedPausedSec = 0;
+  /// Tela apagada / app em background — filtro de mapa mais rigoroso.
+  bool _backgroundMode = false;
+  bool? _kalmanBeforeBackground;
 
   final List<TrackedPoint> _accepted = [];
   final List<TrackedPoint> _buffer = [];
@@ -338,9 +342,30 @@ class GpsTrackingEngine {
   TrackedPoint? get lastAccepted => _lastAccepted;
   bool get isPaused => manualPaused || autoPaused;
   int get pausedMs => pausedSec * 1000;
+  bool get backgroundMode => _backgroundMode;
+  double? get lastRawAccuracy => _lastRawAccuracy;
 
-  double? get liveLatitude => _lastRawLat ?? _lastAccepted?.latitude;
-  double? get liveLongitude => _lastRawLng ?? _lastAccepted?.longitude;
+  /// Ponta ao vivo só com fix confiável — senão o mapa “risca errado” no bolso.
+  bool get liveTipReliable {
+    final acc = _lastRawAccuracy;
+    if (acc == null) return _lastAccepted != null;
+    if (_backgroundMode) return acc <= 22;
+    return acc <= 28;
+  }
+
+  double? get liveLatitude {
+    if (!liveTipReliable) {
+      return _lastAccepted?.latitude ?? _lastRawLat;
+    }
+    return _lastRawLat ?? _lastAccepted?.latitude;
+  }
+
+  double? get liveLongitude {
+    if (!liveTipReliable) {
+      return _lastAccepted?.longitude ?? _lastRawLng;
+    }
+    return _lastRawLng ?? _lastAccepted?.longitude;
+  }
 
   double get displaySpeedKmh => _smoothedSpeedKmh;
 
@@ -398,6 +423,24 @@ class GpsTrackingEngine {
 
   void setAutoPauseEnabled(bool enabled) {
     _autoPauseOverride = enabled;
+  }
+
+  /// Ativa perfil “tela apagada”: menos pontos no mapa, sem Kalman que arrasta deriva.
+  void setBackgroundMode(bool enabled) {
+    if (_backgroundMode == enabled) return;
+    _backgroundMode = enabled;
+    filter.backgroundMode = enabled;
+    if (enabled) {
+      _kalmanBeforeBackground ??= kalman.enabled;
+      kalman.enabled = false;
+      // Evita aceitar o primeiro fix ruidoso após apagar a tela.
+      _recoveryFixesLeft = 0;
+    } else {
+      if (_kalmanBeforeBackground != null) {
+        kalman.enabled = _kalmanBeforeBackground!;
+        _kalmanBeforeBackground = null;
+      }
+    }
   }
 
   void applyConfig(GpsConfig config) {
@@ -494,6 +537,7 @@ class GpsTrackingEngine {
       _smoothedSpeedKmh = last.speedKmh ?? 0;
       _lastRawLat = last.latitude;
       _lastRawLng = last.longitude;
+      _lastRawAccuracy = last.accuracyMeters;
       _lastRawAt = last.recordedAt;
       if (this.autoPaused || manualPaused) {
         _pauseAnchorLat = last.latitude;
@@ -531,6 +575,7 @@ class GpsTrackingEngine {
     _lastAltitude = null;
     _lastRawLat = null;
     _lastRawLng = null;
+    _lastRawAccuracy = null;
     _lastRawAt = null;
     _pauseAnchorLat = null;
     _pauseAnchorLng = null;
@@ -541,6 +586,9 @@ class GpsTrackingEngine {
     _runStartedAt = null;
     _pauseStartedAt = null;
     _closedPausedSec = 0;
+    _backgroundMode = false;
+    _kalmanBeforeBackground = null;
+    filter.backgroundMode = false;
     kalman.reset();
     _accepted.clear();
     _buffer.clear();
@@ -548,7 +596,8 @@ class GpsTrackingEngine {
   }
 
   void markForegroundRecovery() {
-    _recoveryFixesLeft = 5;
+    // Poucos fixes soltos — relaxar demais desenha espaguete ao desbloquear.
+    _recoveryFixesLeft = _backgroundMode ? 0 : 2;
   }
 
   void setManualPaused(bool paused) {
@@ -758,6 +807,7 @@ class GpsTrackingEngine {
 
     _lastRawLat = pos.latitude;
     _lastRawLng = pos.longitude;
+    _lastRawAccuracy = accuracy;
     _lastRawAt = recordedAt;
 
     // Velocidade: chip do GPS responde rápido; deslocamento confirma.
@@ -812,13 +862,22 @@ class GpsTrackingEngine {
     final longGap = previous == null ||
         recordedAt.difference(previous.recordedAt) >=
             const Duration(seconds: 20);
-    final relaxed = autoPaused || _recoveryFixesLeft > 0 || longGap;
+    // Em background, gap longo NÃO relaxa accuracy — isso virava espaguete no mapa.
+    final relaxed = autoPaused ||
+        _recoveryFixesLeft > 0 ||
+        (!_backgroundMode && longGap);
 
     // Sync filter params with engine (activity-aware max speed).
-    filter.maxAccuracyMeters = maxAccuracyMeters;
-    filter.relaxedAccuracyMeters = relaxedAccuracyMeters;
-    filter.maxJumpMeters = maxJumpMeters;
-    filter.minDistanceMeters = minDistanceMeters;
+    filter.backgroundMode = _backgroundMode;
+    filter.maxAccuracyMeters =
+        _backgroundMode ? math.min(maxAccuracyMeters, 32) : maxAccuracyMeters;
+    filter.relaxedAccuracyMeters = _backgroundMode
+        ? math.min(relaxedAccuracyMeters, 48)
+        : relaxedAccuracyMeters;
+    filter.maxJumpMeters =
+        _backgroundMode ? math.min(maxJumpMeters, 55) : maxJumpMeters;
+    filter.minDistanceMeters =
+        _backgroundMode ? math.max(minDistanceMeters, 8.0) : minDistanceMeters;
     filter.maxSpeedKmh = math.min(
       maxSpeedKmh,
       GpsFilterService.maxSpeedForActivity(
@@ -895,7 +954,11 @@ class GpsTrackingEngine {
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
       if (jumpDt > 0.4 && jumpDt < 12) {
         final implied = (jumpDelta / jumpDt) * 3.6;
-        final cap = GpsFilterService.maxSpeedForActivity(activity);
+        final cap = GpsFilterService.maxSpeedForActivity(
+          activity == MotionActivity.stopped
+              ? MotionActivity.walk
+              : activity,
+        );
         if (implied > cap) {
           lastFilterReason = FilterReason.impossibleSpeed;
           rejectCounts[FilterReason.impossibleSpeed] =
@@ -955,11 +1018,15 @@ class GpsTrackingEngine {
       lastValidSpeedKmh = _smoothedSpeedKmh;
     }
 
-    final smoothed = kalman.smooth(
-      latitude: pos.latitude,
-      longitude: pos.longitude,
-      accuracyMeters: accuracy,
-    );
+    // Kalman no bolso/tela apagada arrasta a rota; só suaviza com accuracy boa.
+    final useKalman = kalman.enabled && !_backgroundMode && accuracy <= 20;
+    final smoothed = useKalman
+        ? kalman.smooth(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            accuracyMeters: accuracy,
+          )
+        : (lat: pos.latitude, lng: pos.longitude);
 
     final point = TrackedPoint.fromPosition(
       pos,
@@ -967,7 +1034,7 @@ class GpsTrackingEngine {
       sequenceNum: sequenceNum++,
       speedKmh: _smoothedSpeedKmh,
       activity: activity,
-      provider: 'fused',
+      provider: _backgroundMode ? 'fused_bg' : 'fused',
       confidenceScore: decision.confidenceScore,
       filterReason: FilterReason.none,
       latitudeOverride: smoothed.lat,

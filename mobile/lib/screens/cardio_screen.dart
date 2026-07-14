@@ -89,20 +89,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       final out = matched
           .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
           .toList();
-      final tip = _snappedLive ??
-          (_engine.liveLatitude != null && _engine.liveLongitude != null
-              ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
-              : null);
-      if (tip != null) {
-        final last = matched.last;
-        final d = Geolocator.distanceBetween(
-          last.latitude,
-          last.longitude,
-          tip.latitude,
-          tip.longitude,
-        );
-        if (d >= 0.5) {
-          out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+      // Com tela apagada / accuracy ruim, a ponta crua risca espaguete.
+      if (_engine.liveTipReliable) {
+        final tip = _snappedLive ??
+            (_engine.liveLatitude != null && _engine.liveLongitude != null
+                ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
+                : null);
+        if (tip != null) {
+          final last = matched.last;
+          final d = Geolocator.distanceBetween(
+            last.latitude,
+            last.longitude,
+            tip.latitude,
+            tip.longitude,
+          );
+          if (d >= 0.5) {
+            out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+          }
         }
       }
       return out;
@@ -120,9 +123,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final points = cleaned.points
         .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
         .toList();
-    final tip = _snappedLive ??
-        (lat != null && lng != null ? LatLng(lat, lng) : null);
-    if (_running && tip != null) {
+    if (_running &&
+        _engine.liveTipReliable &&
+        lat != null &&
+        lng != null) {
+      final tip = _snappedLive ?? LatLng(lat, lng);
       if (points.isEmpty ||
           Geolocator.distanceBetween(
                 points.last.latitude,
@@ -164,7 +169,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       );
 
       LatLng? snapped;
-      if (_engine.liveLatitude != null && _engine.liveLongitude != null) {
+      if (_engine.liveTipReliable &&
+          _engine.liveLatitude != null &&
+          _engine.liveLongitude != null) {
         snapped = await _mapMatching.snapPoint(
           LatLng(_engine.liveLatitude!, _engine.liveLongitude!),
           radiusMeters: 40,
@@ -200,15 +207,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed && _running) {
       _inBackground = false;
       _stopBackgroundKeepalive();
+      _engine.setBackgroundMode(false);
       _engine.markForegroundRecovery();
+      _snappedLive = null;
       _syncFromWallClock();
       _persistActiveRun(force: true);
       unawaited(_reacquireGps());
+      // Rematch forçado: o traço acumulado com tela apagada precisa reencaixar.
+      unawaited(_refreshMapMatching(force: true));
     } else if ((state == AppLifecycleState.paused ||
             state == AppLifecycleState.inactive) &&
         _running) {
       _inBackground = true;
+      _engine.setBackgroundMode(true);
       _persistActiveRun(force: true);
+      unawaited(_restartGpsStreamOnly());
       _startBackgroundKeepalive();
     }
   }
@@ -216,14 +229,25 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _inBackground = false;
   Timer? _bgKeepalive;
 
+  /// Só puxa fix se o stream do FGS silenciar — getCurrentFix a cada 8s
+  /// misturava posição cacheada e riscava o mapa errado com a tela apagada.
   void _startBackgroundKeepalive() {
     _bgKeepalive?.cancel();
-    _bgKeepalive = Timer.periodic(const Duration(seconds: 8), (_) async {
+    _bgKeepalive = Timer.periodic(const Duration(seconds: 12), (_) async {
       if (!_running || _finishing || !_inBackground) return;
+      final last = _engine.lastRawFixAt;
+      if (last != null &&
+          DateTime.now().difference(last) < const Duration(seconds: 18)) {
+        return;
+      }
       final pos = await GpsService.instance.getCurrentFix(
-        timeLimit: const Duration(seconds: 6),
+        timeLimit: const Duration(seconds: 8),
       );
-      if (pos != null && _running) _onPosition(pos);
+      if (pos != null && _running && _inBackground) {
+        // Accuracy péssima de fix pontual não entra no mapa.
+        if (!pos.accuracy.isNaN && pos.accuracy > 40) return;
+        _onPosition(pos);
+      }
     });
   }
 
@@ -440,6 +464,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ? 'Corrida pausada'
           : 'Corrida em andamento',
       notificationText: notifText,
+      backgroundMode: _inBackground,
     );
   }
 
@@ -1159,7 +1184,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                 ? 'Auto-pause ativo — ande para retomar'
                                 : _gpsLost
                                     ? 'Sinal de GPS perdido. Tentando reconectar...'
-                                    : 'Pode apagar a tela — GPS + backup na nuvem ativos',
+                                    : 'Pode apagar a tela — modo bolso ativo (GPS + nuvem)',
                         style: TextStyle(
                           color: _manualPaused || _autoPaused || _gpsLost
                               ? Colors.orangeAccent
@@ -1177,14 +1202,18 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running
+                            liveLatitude: _running && _engine.liveTipReliable
                                 ? (_snappedLive?.latitude ??
                                     _engine.liveLatitude)
-                                : null,
-                            liveLongitude: _running
+                                : (_running
+                                    ? _engine.lastAccepted?.latitude
+                                    : null),
+                            liveLongitude: _running && _engine.liveTipReliable
                                 ? (_snappedLive?.longitude ??
                                     _engine.liveLongitude)
-                                : null,
+                                : (_running
+                                    ? _engine.lastAccepted?.longitude
+                                    : null),
                             points: mapPoints,
                           ),
                           const SizedBox(height: 12),

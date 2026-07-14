@@ -99,4 +99,29 @@ void main() {
     expect(lats.contains(-23.55001), isFalse);
     svc.dispose();
   });
+
+  test('cleanTrail remove cruzamentos em X de drift com tela apagada', () {
+    final svc = MapMatchingService(client: MockClient((_) async {
+      return http.Response('{}', 500);
+    }));
+    // Simula deriva: progresso + idas e voltas dentro de ~20 m.
+    final raw = <LatLng>[
+      const LatLng(-23.55000, -46.63000),
+      const LatLng(-23.55008, -46.63000),
+      const LatLng(-23.55008, -46.63012),
+      const LatLng(-23.55008, -46.62988),
+      const LatLng(-23.55016, -46.63000),
+      const LatLng(-23.55010, -46.63010),
+      const LatLng(-23.55024, -46.63000),
+    ];
+    final cleaned = svc.cleanTrail(
+      raw,
+      accuraciesMeters: List.filled(raw.length, 28.0),
+    );
+    expect(cleaned.points.length, lessThan(raw.length));
+    expect(cleaned.points.length, greaterThanOrEqualTo(2));
+    // Mantém progresso geral para o norte.
+    expect(cleaned.points.last.latitude, lessThan(cleaned.points.first.latitude));
+    svc.dispose();
+  });
 }
