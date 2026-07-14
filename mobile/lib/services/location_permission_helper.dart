@@ -1,10 +1,43 @@
 import 'dart:io' show Platform;
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Estado de energia que costuma matar GPS com a tela apagada.
+class EnergyThreatStatus {
+  const EnergyThreatStatus({
+    required this.batteryOptimized,
+    required this.powerSaverOn,
+    this.batteryLevel,
+  });
+
+  /// App ainda está sujeito à otimização de bateria do Android.
+  final bool batteryOptimized;
+
+  /// Economia de energia / Battery Saver do sistema ligado.
+  final bool powerSaverOn;
+
+  final int? batteryLevel;
+
+  bool get threatensBackgroundGps => batteryOptimized || powerSaverOn;
+
+  String? get shortWarning {
+    if (powerSaverOn && batteryOptimized) {
+      return 'Economia de energia + otimização ativas — GPS pode falhar com tela apagada';
+    }
+    if (powerSaverOn) {
+      return 'Economia de energia ligada — desligue para GPS estável com tela apagada';
+    }
+    if (batteryOptimized) {
+      return 'Otimização de bateria ativa — permita “sem restrições” para este app';
+    }
+    return null;
+  }
+}
 
 /// Fluxo de permissões de localização + otimização de bateria (Android).
 class LocationPermissionHelper {
@@ -12,21 +45,57 @@ class LocationPermissionHelper {
 
   static const _batteryPromptKey = 'battery_opt_prompted_v1';
   static const _locationRationaleKey = 'location_rationale_shown_v1';
+  static final _battery = Battery();
 
-  /// Status atuais para a tela Debug GPS.
+  /// Status atuais para a tela Debug GPS / diagnósticos.
   static Future<Map<String, String>> debugPermissionSnapshot() async {
     final loc = await Geolocator.checkPermission();
     final enabled = await Geolocator.isLocationServiceEnabled();
     var battery = 'n/a';
+    var powerSaver = 'n/a';
+    var level = 'n/a';
     if (!kIsWeb && Platform.isAndroid) {
       final s = await Permission.ignoreBatteryOptimizations.status;
       battery = s.isGranted ? 'ignored' : 'optimized';
+      try {
+        final saver = await _battery.isInBatterySaveMode;
+        powerSaver = saver ? 'on' : 'off';
+        level = '${await _battery.batteryLevel}';
+      } catch (_) {}
     }
     return {
       'location': loc.name,
       'serviceEnabled': enabled.toString(),
       'battery': battery,
+      'powerSaver': powerSaver,
+      'batteryLevel': level,
     };
+  }
+
+  /// Lê ameaças de energia (otimização do app + economia do sistema).
+  static Future<EnergyThreatStatus> readEnergyThreats() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const EnergyThreatStatus(
+        batteryOptimized: false,
+        powerSaverOn: false,
+      );
+    }
+    var optimized = true;
+    var saver = false;
+    int? level;
+    try {
+      final s = await Permission.ignoreBatteryOptimizations.status;
+      optimized = !s.isGranted;
+    } catch (_) {}
+    try {
+      saver = await _battery.isInBatterySaveMode;
+      level = await _battery.batteryLevel;
+    } catch (_) {}
+    return EnergyThreatStatus(
+      batteryOptimized: optimized,
+      powerSaverOn: saver,
+      batteryLevel: level,
+    );
   }
 
   /// Solicita: rationale → notificação → while-in-use → always → GPS ligado.
@@ -57,8 +126,8 @@ class LocationPermissionHelper {
         ),
       );
       if (ok != true) return false;
-      await prefs.setBool(_locationRationaleKey, true);
     }
+    await prefs.setBool(_locationRationaleKey, true);
 
     if (!kIsWeb && Platform.isAndroid) {
       final notif = await Permission.notification.request();
@@ -169,50 +238,58 @@ class LocationPermissionHelper {
     return true;
   }
 
-  /// Na primeira corrida, pede para ignorar otimização de bateria (Android).
-  static Future<void> promptBatteryOptimizationIfNeeded(
+  /// Antes de cada treino: avisa economia de energia e pede isenção de otimização.
+  /// Não “esquece” depois de um “Agora não” — se ainda estiver otimizado, pergunta de novo.
+  static Future<EnergyThreatStatus> promptBatteryOptimizationIfNeeded(
     BuildContext context,
   ) async {
-    if (kIsWeb || !Platform.isAndroid) return;
+    final threats = await readEnergyThreats();
+    if (kIsWeb || !Platform.isAndroid) return threats;
 
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_batteryPromptKey) == true) {
-      // Já perguntou: se ainda otimizado, só avisa levemente.
-      final status = await Permission.ignoreBatteryOptimizations.status;
-      if (!status.isGranted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Otimização de bateria ativa — o GPS pode falhar em segundo plano',
-            ),
-            duration: Duration(seconds: 4),
+    if (threats.powerSaverOn && context.mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Economia de energia ligada'),
+          content: const Text(
+            'O modo Economia de energia (Battery Saver) do celular '
+            'reduz ou atrasa o GPS com a tela apagada — a rota pode '
+            'ficar torta mesmo com o app em segundo plano.\n\n'
+            'Desligue a economia de energia durante o treino outdoor '
+            '(Configurações → Bateria).',
           ),
-        );
-      }
-      return;
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Entendi'),
+            ),
+          ],
+        ),
+      );
     }
 
-    final status = await Permission.ignoreBatteryOptimizations.status;
-    if (status.isGranted) {
+    if (!threats.batteryOptimized) {
+      final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_batteryPromptKey, true);
-      return;
+      return threats;
     }
 
-    if (!context.mounted) return;
+    if (!context.mounted) return threats;
     final allow = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Precisão do GPS'),
+        title: const Text('Bateria restringindo o GPS'),
         content: const Text(
-          'Seu celular pode interromper o GPS em segundo plano.\n\n'
-          'Para garantir um rastreamento preciso, permita que este aplicativo '
-          'ignore a otimização de bateria.\n\n'
-          'Isso vale apenas para o Foco Academia.',
+          'Seu celular ainda está otimizando (restringindo) este app.\n\n'
+          'Com a tela apagada isso costuma cortar ou atrasar o GPS e '
+          'a rota fica errada.\n\n'
+          'Permita que o Foco Academia ignore a otimização de bateria '
+          '(ou use “Sem restrições” / “Não otimizar”).',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Agora não'),
+            child: const Text('Continuar assim'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -222,27 +299,37 @@ class LocationPermissionHelper {
       ),
     );
 
-    await prefs.setBool(_batteryPromptKey, true);
-
     if (allow == true) {
       final result = await Permission.ignoreBatteryOptimizations.request();
       if (!result.isGranted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Sem essa permissão, a precisão em segundo plano pode cair',
+        final open = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Abrir configurações de bateria'),
+            content: const Text(
+              'Em alguns celulares (Samsung, Xiaomi, Motorola) o pedido '
+              'automático não basta.\n\n'
+              'Abra as configs do app → Bateria → Sem restrições / '
+              'Não otimizar / Autostart permitido.',
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Agora não'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Abrir configs'),
+              ),
+            ],
           ),
         );
+        if (open == true) {
+          await openAppSettings();
+        }
       }
-    } else if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Otimização de bateria ativa — a precisão poderá ser reduzida',
-          ),
-        ),
-      );
     }
+
+    return readEnergyThreats();
   }
 }

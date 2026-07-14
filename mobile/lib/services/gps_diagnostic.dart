@@ -13,6 +13,8 @@ enum GpsDiagnosticEvent {
   poorAccuracy,
   /// Keepalive pontual usado porque o stream silenciou.
   keepaliveFix,
+  /// Modo Economia de energia / Battery Saver do sistema ligado.
+  powerSaverMode,
 }
 
 extension GpsDiagnosticEventApi on GpsDiagnosticEvent {
@@ -40,6 +42,8 @@ extension GpsDiagnosticEventApi on GpsDiagnosticEvent {
         return 'POOR_ACCURACY';
       case GpsDiagnosticEvent.keepaliveFix:
         return 'KEEPALIVE_FIX';
+      case GpsDiagnosticEvent.powerSaverMode:
+        return 'POWER_SAVER_MODE';
     }
   }
 }

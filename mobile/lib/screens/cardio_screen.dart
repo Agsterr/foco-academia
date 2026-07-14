@@ -63,6 +63,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int _lastLapToast = 0;
   int _poorAccuracyStreak = 0;
   DateTime? _lastPoorAccuracyDiagAt;
+  EnergyThreatStatus? _energyThreat;
+  bool _energyBannerDismissed = false;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -390,6 +392,19 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         await _emitDiagnostic(
           GpsDiagnosticEvent.batteryOptimization,
           message: 'Otimização de bateria ativa — GPS com tela apagada pode falhar',
+        );
+      }
+      if (snap['powerSaver'] == 'on') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.powerSaverMode,
+          message: 'Economia de energia do sistema ligada — GPS em background degradado',
+        );
+      }
+      final level = int.tryParse(snap['batteryLevel'] ?? '');
+      if (level != null && level <= 15) {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.lowBattery,
+          message: 'Bateria em $level%',
         );
       }
       final perm = snap['location'] ?? '';
@@ -755,12 +770,17 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return;
     }
     if (!mounted) return;
-    await LocationPermissionHelper.promptBatteryOptimizationIfNeeded(context);
+    final energy =
+        await LocationPermissionHelper.promptBatteryOptimizationIfNeeded(
+      context,
+    );
     if (!mounted) return;
 
     setState(() {
       _error = null;
       _finishing = false;
+      _energyThreat = energy;
+      _energyBannerDismissed = false;
     });
 
     _clientSessionId = const Uuid().v4();
@@ -1302,14 +1322,85 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                 ? 'Auto-pause ativo — ande para retomar'
                                 : _gpsLost
                                     ? 'Sinal de GPS perdido. Tentando reconectar...'
-                                    : 'Pode apagar a tela — modo bolso ativo (GPS + nuvem)',
+                                    : (_energyThreat?.threatensBackgroundGps ==
+                                            true
+                                        ? 'Atenção: economia/otimização de bateria pode estragar o GPS com tela apagada'
+                                        : 'Pode apagar a tela — modo bolso ativo (GPS + nuvem)'),
                         style: TextStyle(
-                          color: _manualPaused || _autoPaused || _gpsLost
+                          color: _manualPaused ||
+                                  _autoPaused ||
+                                  _gpsLost ||
+                                  (_energyThreat?.threatensBackgroundGps ==
+                                      true)
                               ? Colors.orangeAccent
                               : Colors.lightGreenAccent,
                           fontSize: 12,
                         ),
                       ),
+                      if (_energyThreat?.threatensBackgroundGps == true &&
+                          !_energyBannerDismissed) ...[
+                        const SizedBox(height: 8),
+                        Material(
+                          color: const Color(0x33F59E0B),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.battery_alert,
+                                  color: Color(0xFFFBBF24),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _energyThreat!.shortWarning ??
+                                        'Economia de energia pode atrapalhar o GPS',
+                                    style: const TextStyle(
+                                      color: Color(0xFFFDE68A),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Abrir configs',
+                                  iconSize: 20,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () =>
+                                      LocationPermissionHelper
+                                          .promptBatteryOptimizationIfNeeded(
+                                    context,
+                                  ).then((e) {
+                                    if (mounted) {
+                                      setState(() => _energyThreat = e);
+                                    }
+                                  }),
+                                  icon: const Icon(
+                                    Icons.settings,
+                                    color: Color(0xFFFBBF24),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Fechar',
+                                  iconSize: 20,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => setState(
+                                    () => _energyBannerDismissed = true,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Color(0xFFFBBF24),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 8),
                     Expanded(

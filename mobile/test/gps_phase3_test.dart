@@ -39,6 +39,7 @@ void main() {
       expect(GpsDiagnosticEvent.screenOffMode.apiName, 'SCREEN_OFF_MODE');
       expect(GpsDiagnosticEvent.poorAccuracy.apiName, 'POOR_ACCURACY');
       expect(GpsDiagnosticEvent.keepaliveFix.apiName, 'KEEPALIVE_FIX');
+      expect(GpsDiagnosticEvent.powerSaverMode.apiName, 'POWER_SAVER_MODE');
     });
 
     test('toJson', () {
