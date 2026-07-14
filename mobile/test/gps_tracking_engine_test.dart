@@ -169,17 +169,17 @@ void main() {
     expect(engine.movingElapsedSec, 40);
   });
 
-  test('velocidade sobe rápido com chip mesmo com passo GPS pequeno', () {
+  test('velocidade sobe com chip quando há passo GPS mínimo', () {
     final engine = GpsTrackingEngine();
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
     engine.process(
       _pos(lat: -23.55000, lng: -46.63000, speed: 0),
       now: t0,
     );
-    // Passo ~0,3 m em 0,5 s + chip 1,5 m/s (~5,4 km/h).
+    // ~1 m em 0,5 s + chip 1,5 m/s — deslocamento confirma o chip.
     engine.process(
       _pos(
-        lat: -23.5500027,
+        lat: -23.550009,
         lng: -46.63000,
         speed: 1.5,
         accuracy: 8,
@@ -187,6 +187,77 @@ void main() {
       now: t0.add(const Duration(milliseconds: 500)),
     );
     expect(engine.displaySpeedKmh, greaterThan(3.0));
+  });
+
+  test('chip sozinho sem deslocamento não inventa velocidade (bolso)', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 0),
+      now: t0,
+    );
+    engine.process(
+      _pos(
+        lat: -23.5500005,
+        lng: -46.63000,
+        speed: 2.0,
+        accuracy: 18,
+      ),
+      now: t0.add(const Duration(milliseconds: 500)),
+    );
+    expect(engine.displaySpeedKmh, lessThan(2.0));
+  });
+
+  test('ritmo médio bate com vel. média (distância/tempo)', () {
+    final engine = GpsTrackingEngine(
+      minDistanceMeters: 1.5,
+      minDistanceForKm: 2.0,
+    );
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.markRunStarted(t0);
+    for (var i = 0; i < 30; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000045),
+          lng: -46.63000,
+          speed: 1.5,
+          accuracy: 8,
+        ),
+        now: t0.add(Duration(seconds: i * 3)),
+      );
+    }
+    engine.tickMovingTime(t0.add(const Duration(seconds: 90)));
+    expect(engine.distanceMeters, greaterThan(100));
+    final pace = engine.averagePaceSecPerKm;
+    expect(pace, isNotNull);
+    final fromAvgSpeed = 3600.0 / engine.averageSpeedKmh;
+    expect(pace!, closeTo(fromAvgSpeed, 1.0));
+  });
+
+  test('zig-zag de bolso não desenha espaguete nem infla km', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.markRunStarted(t0);
+    // Deriva típica: vai e volta ~4–6 m dentro do raio de erro.
+    for (var i = 0; i < 24; i++) {
+      final north = i.isEven ? 0.000045 : 0.0;
+      final east = i % 4 < 2 ? 0.00004 : -0.00004;
+      engine.process(
+        _pos(
+          lat: -23.55000 + north,
+          lng: -46.63000 + east,
+          speed: 3.0,
+          accuracy: 18,
+        ),
+        now: t0.add(Duration(seconds: i)),
+      );
+    }
+    expect(engine.acceptedPoints.length, lessThan(12));
+    expect(engine.distanceMeters, lessThan(40));
+    final pace = engine.averagePaceSecPerKm;
+    if (pace != null && engine.averageSpeedKmh > 0) {
+      expect(pace, closeTo(3600.0 / engine.averageSpeedKmh, 2.0));
+    }
   });
 
   test('fixixa ruim ainda marca sinal GPS (lastRawFixAt)', () {

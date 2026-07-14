@@ -251,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             _MenuCard(
               icon: Icons.history,
               title: 'Histórico e Replay',
-              subtitle: 'Reproduzir rotas e compartilhar atividades',
+              subtitle: 'Calendário Seg–Dom, constância e rotas',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CardioHistoryScreen()),
               ),

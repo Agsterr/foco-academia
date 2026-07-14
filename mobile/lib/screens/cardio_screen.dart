@@ -108,23 +108,30 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return out;
     }
 
-    // Fallback: GPS bruto até o primeiro match.
+    // Fallback: trilha limpa (sem zig-zag de bolso), nunca GPS bruto em espaguete.
     final raw = _engine.acceptedPoints;
+    final cleaned = _mapMatching.cleanTrail(
+      raw.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+      accuraciesMeters: raw.map((p) => p.accuracyMeters ?? 25.0).toList(),
+      recordedAt: raw.map((p) => p.recordedAt).toList(),
+    );
     final lat = _engine.liveLatitude;
     final lng = _engine.liveLongitude;
-    final points = raw
+    final points = cleaned.points
         .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
         .toList();
-    if (_running && lat != null && lng != null) {
+    final tip = _snappedLive ??
+        (lat != null && lng != null ? LatLng(lat, lng) : null);
+    if (_running && tip != null) {
       if (points.isEmpty ||
           Geolocator.distanceBetween(
                 points.last.latitude,
                 points.last.longitude,
-                lat,
-                lng,
+                tip.latitude,
+                tip.longitude,
               ) >=
               0.4) {
-        points.add(RoutePointView(latitude: lat, longitude: lng));
+        points.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
       }
     }
     return points;
@@ -136,9 +143,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (accepted.length < 3) return;
 
     final now = DateTime.now();
-    final grew = accepted.length - _lastMatchedPointCount >= 4;
+    final grew = accepted.length - _lastMatchedPointCount >= 3;
     final due = _lastMatchAt == null ||
-        now.difference(_lastMatchAt!) >= const Duration(seconds: 4);
+        now.difference(_lastMatchAt!) >= const Duration(seconds: 3);
     if (!force && !grew && !due) return;
 
     _mapMatchBusy = true;
@@ -149,15 +156,18 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       final accuracies = accepted
           .map((p) => p.accuracyMeters ?? 25.0)
           .toList();
+      final times = accepted.map((p) => p.recordedAt).toList();
       final matched = await _mapMatching.matchToRoads(
         pts,
         accuraciesMeters: accuracies,
+        recordedAt: times,
       );
 
       LatLng? snapped;
       if (_engine.liveLatitude != null && _engine.liveLongitude != null) {
         snapped = await _mapMatching.snapPoint(
           LatLng(_engine.liveLatitude!, _engine.liveLongitude!),
+          radiusMeters: 40,
         );
       }
 
@@ -166,6 +176,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         if (matched != null && matched.length >= 2) {
           _matchedRoute = matched;
           _lastMatchedPointCount = accepted.length;
+          _lastMatchAt = now;
+        } else {
+          // Sem OSRM: mostra trilha limpa (já usada no getter), marca tentativa.
           _lastMatchAt = now;
         }
         if (snapped != null) _snappedLive = snapped;

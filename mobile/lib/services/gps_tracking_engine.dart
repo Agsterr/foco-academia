@@ -322,8 +322,6 @@ class GpsTrackingEngine {
   double? _pauseAnchorLng;
   int _recoveryFixesLeft = 0;
   double _smoothedSpeedKmh = 0;
-  double _confidenceWeightedSpeedSum = 0;
-  double _confidenceWeightSum = 0;
   DateTime? _lastPhoneMotionAt;
   bool _phoneMoving = false;
   /// Início da sessão (relógio de parede) — Tempo nunca trava por Timer atrasado.
@@ -385,13 +383,11 @@ class GpsTrackingEngine {
     return DateTime.now().difference(last);
   }
 
-  /// Pace médio ponderado por confidence (quando disponível).
+  /// Pace médio oficial: mesmo critério da vel. média (distância / tempo).
+  /// Não usa média de velocidades instantâneas — no bolso o chip mente e
+  /// ritmos “bons” apareciam com km baixíssimo.
   double? get averagePaceSecPerKm {
     if (distanceMeters < 30 || movingElapsedSec < 10) return null;
-    if (_confidenceWeightSum > 0.5 && _confidenceWeightedSpeedSum > 0) {
-      final avgSpeed = _confidenceWeightedSpeedSum / _confidenceWeightSum;
-      if (avgSpeed >= 1.0) return 3600.0 / avgSpeed;
-    }
     return movingElapsedSec / (distanceMeters / 1000.0);
   }
 
@@ -540,8 +536,6 @@ class GpsTrackingEngine {
     _pauseAnchorLng = null;
     _recoveryFixesLeft = 0;
     _smoothedSpeedKmh = 0;
-    _confidenceWeightedSpeedSum = 0;
-    _confidenceWeightSum = 0;
     _lastPhoneMotionAt = null;
     _phoneMoving = false;
     _runStartedAt = null;
@@ -785,15 +779,20 @@ class GpsTrackingEngine {
       }
     }
     final chip = chipSpeedKmh ?? 0;
+    // No bolso, bestForNavigation/chip inventa velocidade via bússola.
+    // Só confia no chip com deslocamento real ou accuracy boa + movimento.
     if (sampleSpeed <= 0 && chip >= 0.8) {
-      // Chip mentiroso parado: só aceita se houve passo mínimo ou acel. do telefone.
-      if (step >= 0.15 || _phoneMoving) {
+      if (step >= 0.8 || (_phoneMoving && step >= 0.35 && accuracy <= 20)) {
         sampleSpeed = chip;
       }
     } else if (sampleSpeed > 0 && chip >= 0.8) {
-      sampleSpeed = sampleSpeed * 0.45 + chip * 0.55;
+      final agree = (chip - sampleSpeed).abs() <= math.max(2.5, sampleSpeed * 0.75);
+      if (agree && accuracy <= 25) {
+        sampleSpeed = sampleSpeed * 0.55 + chip * 0.45;
+      }
+      // senão: mantém velocidade pelo deslocamento GPS.
     } else if (sampleSpeed <= 0 && _phoneMoving && _smoothedSpeedKmh > 0) {
-      sampleSpeed = _smoothedSpeedKmh;
+      sampleSpeed = _smoothedSpeedKmh * 0.7;
     }
     _pushSpeed(sampleSpeed);
 
@@ -829,12 +828,15 @@ class GpsTrackingEngine {
       ),
     );
 
+    final beforePrevious =
+        _accepted.length >= 2 ? _accepted[_accepted.length - 2] : null;
     final decision = filter.evaluate(
       latitude: pos.latitude,
       longitude: pos.longitude,
       accuracyMeters: accuracy,
       recordedAt: recordedAt,
       previous: previous,
+      beforePrevious: beforePrevious,
       relaxedAccuracy: relaxed,
     );
 
@@ -929,11 +931,15 @@ class GpsTrackingEngine {
       }
 
       // Conta km só com deslocamento maior que o ruído típico do chip.
-      // Peso leve pela confidence (não reduz demais a distância).
+      // Cap no limiar: accuracy ruim no bolso não pode exigir 15+ m por passo
+      // (senão a caminhada real some e o ritmo/kcal ficam absurdos).
       final conf = decision.confidenceScore;
-      final kmThreshold = math.max(minDistanceForKm, accuracy * 0.45);
+      final kmThreshold = math.min(
+        math.max(minDistanceForKm, accuracy * 0.30),
+        7.5,
+      );
       if (!recovering && delta >= kmThreshold && delta <= maxJumpMeters) {
-        final weight = 0.85 + 0.15 * conf; // 0.85–1.0
+        final weight = 0.88 + 0.12 * conf; // 0.88–1.0
         distanceMeters += delta * weight;
       }
 
@@ -947,9 +953,6 @@ class GpsTrackingEngine {
 
     if (_smoothedSpeedKmh >= 1.0) {
       lastValidSpeedKmh = _smoothedSpeedKmh;
-      final conf = decision.confidenceScore;
-      _confidenceWeightedSpeedSum += _smoothedSpeedKmh * conf;
-      _confidenceWeightSum += conf;
     }
 
     final smoothed = kalman.smooth(
@@ -1030,6 +1033,7 @@ class GpsTrackingEngine {
         return GpsRejectReason.speed;
       case FilterReason.duplicate:
       case FilterReason.lowConfidence:
+      case FilterReason.stationaryJitter:
         return GpsRejectReason.tooSoon;
       case FilterReason.none:
         return GpsRejectReason.tooSoon;

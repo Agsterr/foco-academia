@@ -9,15 +9,16 @@ void main() {
     test('defaults e versionSnapshot', () {
       const c = GpsConfig.defaults;
       expect(c.kalmanEnabled, isTrue);
-      expect(c.gpsAlgorithmVersion, '1');
-      expect(c.versionSnapshot()['filterVersion'], '1');
+      expect(c.gpsAlgorithmVersion, '2');
+      expect(c.versionSnapshot()['filterVersion'], '3');
+      expect(c.versionSnapshot()['distanceVersion'], '2');
     });
 
     test('copyWith preserva versões', () {
       final c = GpsConfig.defaults.copyWith(autoPauseEnabled: true, maxSpeed: 25);
       expect(c.autoPauseEnabled, isTrue);
       expect(c.maxSpeed, 25);
-      expect(c.filterVersion, '1');
+      expect(c.filterVersion, '3');
     });
 
     test('fromJson roundtrip parcial', () {

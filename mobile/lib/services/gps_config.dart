@@ -11,10 +11,10 @@ class GpsConfig {
     this.minAccuracy = 45,
     this.maxSpeed = 40,
     this.minDistance = 2.5,
-    this.gpsAlgorithmVersion = '1',
-    this.filterVersion = '1',
+    this.gpsAlgorithmVersion = '2',
+    this.filterVersion = '3',
     this.kalmanVersion = '1',
-    this.distanceVersion = '1',
+    this.distanceVersion = '2',
     this.caloriesVersion = '1',
   });
 
@@ -89,10 +89,10 @@ class GpsConfig {
         minAccuracy: (json['minAccuracy'] as num?)?.toDouble() ?? 45,
         maxSpeed: (json['maxSpeed'] as num?)?.toDouble() ?? 40,
         minDistance: (json['minDistance'] as num?)?.toDouble() ?? 2.5,
-        gpsAlgorithmVersion: json['gpsAlgorithmVersion'] as String? ?? '1',
-        filterVersion: json['filterVersion'] as String? ?? '1',
+        gpsAlgorithmVersion: json['gpsAlgorithmVersion'] as String? ?? '2',
+        filterVersion: json['filterVersion'] as String? ?? '3',
         kalmanVersion: json['kalmanVersion'] as String? ?? '1',
-        distanceVersion: json['distanceVersion'] as String? ?? '1',
+        distanceVersion: json['distanceVersion'] as String? ?? '2',
         caloriesVersion: json['caloriesVersion'] as String? ?? '1',
       );
 

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/cardio_service.dart';
 import '../services/gps_ai_service.dart';
+import '../services/outdoor_consistency.dart';
+import '../widgets/outdoor_calendar_card.dart';
 import 'login_screen.dart';
 import 'run_replay_screen.dart';
 
@@ -16,6 +18,7 @@ class CardioHistoryScreen extends StatefulWidget {
 
 class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
   List<CardioSession> _sessions = [];
+  OutdoorConsistencySummary? _consistency;
   AthleteRecommendations? _recs;
   bool _loading = true;
   String? _error;
@@ -40,8 +43,10 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
         recs = null;
       }
       if (!mounted) return;
+      final completed = list.where((s) => s.completedAt != null).toList();
       setState(() {
-        _sessions = list.where((s) => s.completedAt != null).toList();
+        _sessions = completed;
+        _consistency = OutdoorConsistency.fromSessions(completed);
         _recs = recs;
         _loading = false;
       });
@@ -80,6 +85,10 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                   : ListView(
                       padding: const EdgeInsets.all(12),
                       children: [
+                        if (_consistency != null) ...[
+                          OutdoorCalendarCard(summary: _consistency!),
+                          const SizedBox(height: 16),
+                        ],
                         if (_recs != null) ...[
                           Text(
                             'Recomendações',
@@ -111,10 +120,22 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                           ),
                           const SizedBox(height: 16),
                         ],
+                        Text(
+                          'Treinos',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
                         if (_sessions.isEmpty)
                           const Padding(
-                            padding: EdgeInsets.only(top: 48),
-                            child: Center(child: Text('Nenhuma corrida concluída')),
+                            padding: EdgeInsets.only(top: 24),
+                            child: Center(
+                              child: Text(
+                                'Nenhuma corrida/caminhada concluída ainda.\n'
+                                'Os dias que você treinar aparecem no calendário.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            ),
                           )
                         else
                           ..._sessions.map((s) {
