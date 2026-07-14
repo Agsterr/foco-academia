@@ -38,6 +38,16 @@ interface SessionAiInsights {
   suspiciousActivity: boolean;
 }
 
+interface SessionDiagnostic {
+  id: string;
+  eventType: string;
+  recordedAt: string;
+  message?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy?: number | null;
+}
+
 interface CardioStats {
   sessionsThisWeek: number;
   totalKmThisWeek: number;
@@ -106,6 +116,9 @@ export default function CardioPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [aiBySession, setAiBySession] = useState<Record<string, SessionAiInsights | "loading" | "error">>({});
+  const [diagBySession, setDiagBySession] = useState<
+    Record<string, SessionDiagnostic[] | "loading" | "error" | "empty">
+  >({});
 
   async function loadAiInsights(sessionId: string) {
     setAiBySession((prev) => ({ ...prev, [sessionId]: "loading" }));
@@ -116,6 +129,21 @@ export default function CardioPage() {
       setAiBySession((prev) => ({ ...prev, [sessionId]: r }));
     } catch {
       setAiBySession((prev) => ({ ...prev, [sessionId]: "error" }));
+    }
+  }
+
+  async function loadDiagnostics(sessionId: string) {
+    setDiagBySession((prev) => ({ ...prev, [sessionId]: "loading" }));
+    try {
+      const r = await api<SessionDiagnostic[]>(
+        `/api/instructor/cardio-sessions/${sessionId}/diagnostics`
+      );
+      setDiagBySession((prev) => ({
+        ...prev,
+        [sessionId]: r.length === 0 ? "empty" : r,
+      }));
+    } catch {
+      setDiagBySession((prev) => ({ ...prev, [sessionId]: "error" }));
     }
   }
 
@@ -378,6 +406,14 @@ export default function CardioPage() {
             >
               {aiBySession[s.id] === "loading" ? "Analisando…" : "Insights IA"}
             </button>
+            <button
+              type="button"
+              className="mt-2 ml-2 rounded-lg border border-amber-900/50 px-3 py-1 text-xs text-amber-200 hover:bg-amber-950/30"
+              onClick={() => void loadDiagnostics(s.id)}
+              disabled={diagBySession[s.id] === "loading"}
+            >
+              {diagBySession[s.id] === "loading" ? "Carregando…" : "Erros GPS"}
+            </button>
             {aiBySession[s.id] && aiBySession[s.id] !== "loading" && aiBySession[s.id] !== "error" && (
               <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-xs text-slate-400">
                 <p>
@@ -395,6 +431,28 @@ export default function CardioPage() {
             )}
             {aiBySession[s.id] === "error" && (
               <p className="mt-1 text-xs text-red-400">Falha ao carregar insights</p>
+            )}
+            {Array.isArray(diagBySession[s.id]) && (
+              <div className="mt-2 rounded-lg border border-amber-900/40 bg-amber-950/20 p-2 text-xs text-amber-100/90">
+                <p className="font-medium text-amber-200">
+                  {(diagBySession[s.id] as SessionDiagnostic[]).length} evento(s) de diagnóstico
+                </p>
+                <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                  {(diagBySession[s.id] as SessionDiagnostic[]).slice(0, 12).map((d) => (
+                    <li key={d.id}>
+                      <span className="text-amber-300">{d.eventType}</span>
+                      {d.message ? ` — ${d.message}` : ""}
+                      {d.accuracy != null ? ` · ±${Math.round(d.accuracy)}m` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {diagBySession[s.id] === "error" && (
+              <p className="mt-1 text-xs text-red-400">Falha ao carregar erros GPS</p>
+            )}
+            {diagBySession[s.id] === "empty" && (
+              <p className="mt-1 text-xs text-slate-500">Nenhum diagnóstico nesta sessão</p>
             )}
           </div>
         ))}

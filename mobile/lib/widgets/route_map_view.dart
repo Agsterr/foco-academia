@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/lap_detector_service.dart';
+
 class RoutePointView {
   const RoutePointView({required this.latitude, required this.longitude});
 
@@ -11,25 +13,43 @@ class RoutePointView {
   LatLng get latLng => LatLng(latitude, longitude);
 }
 
+class RouteLapView {
+  const RouteLapView({
+    required this.lapNumber,
+    required this.points,
+    this.distanceMeters = 0,
+  });
+
+  final int lapNumber;
+  final List<RoutePointView> points;
+  final double distanceMeters;
+}
+
 /// Mapa real (OpenStreetMap) com traço da rota, no estilo Strava/Google.
+/// Com várias voltas, cada lap ganha uma cor e legenda numerada.
 class RouteMapView extends StatefulWidget {
   const RouteMapView({
     super.key,
     required this.points,
+    this.laps = const [],
     this.height = 280,
     this.statusMessage,
     this.followUser = true,
     this.liveLatitude,
     this.liveLongitude,
+    this.showLapLegend = true,
   });
 
   final List<RoutePointView> points;
+  /// Quando preenchido (≥2 voltas), desenha uma polyline colorida por volta.
+  final List<RouteLapView> laps;
   final double height;
   final String? statusMessage;
   final bool followUser;
   /// Ponto azul ao vivo (último fix), mesmo antes de entrar na rota.
   final double? liveLatitude;
   final double? liveLongitude;
+  final bool showLapLegend;
 
   @override
   State<RouteMapView> createState() => _RouteMapViewState();
@@ -48,6 +68,10 @@ class _RouteMapViewState extends State<RouteMapView> {
     if (lat == null || lng == null) return null;
     return LatLng(lat, lng);
   }
+
+  bool get _useLaps =>
+      widget.laps.length >= 2 &&
+      widget.laps.any((l) => l.points.length >= 2);
 
   @override
   void didUpdateWidget(covariant RouteMapView oldWidget) {
@@ -77,12 +101,53 @@ class _RouteMapViewState extends State<RouteMapView> {
     super.dispose();
   }
 
+  List<Polyline> _buildPolylines(List<LatLng> flat) {
+    if (_useLaps) {
+      return [
+        for (final lap in widget.laps)
+          if (lap.points.length >= 2)
+            Polyline(
+              points: lap.points.map((p) => p.latLng).toList(),
+              strokeWidth: lap.lapNumber == widget.laps.last.lapNumber ? 6 : 4.5,
+              color: Color(LapDetectorService.colorForLap(lap.lapNumber)),
+              borderStrokeWidth: 1.5,
+              borderColor: Colors.white,
+            ),
+      ];
+    }
+    if (flat.length >= 2) {
+      return [
+        Polyline(
+          points: flat,
+          strokeWidth: 5,
+          color: _trailColor,
+          borderStrokeWidth: 2,
+          borderColor: Colors.white,
+        ),
+      ];
+    }
+    final live = _livePoint;
+    if (flat.length == 1 && live != null) {
+      return [
+        Polyline(
+          points: [flat.first, live],
+          strokeWidth: 5,
+          color: _trailColor,
+          borderStrokeWidth: 2,
+          borderColor: Colors.white,
+        ),
+      ];
+    }
+    return const [];
+  }
+
   @override
   Widget build(BuildContext context) {
     final latLngs = widget.points.map((p) => p.latLng).toList();
     final live = _livePoint;
     final center = live ?? (latLngs.isNotEmpty ? latLngs.last : _fallbackCenter);
     final status = widget.statusMessage;
+    final polylines = _buildPolylines(latLngs);
 
     return Container(
       height: widget.height,
@@ -109,30 +174,7 @@ class _RouteMapViewState extends State<RouteMapView> {
                 userAgentPackageName: 'com.focodev.academia.aluno',
                 maxNativeZoom: 19,
               ),
-              if (latLngs.length >= 2)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: latLngs,
-                      strokeWidth: 5,
-                      color: _trailColor,
-                      borderStrokeWidth: 2,
-                      borderColor: Colors.white,
-                    ),
-                  ],
-                )
-              else if (latLngs.length == 1 && live != null)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: [latLngs.first, live],
-                      strokeWidth: 5,
-                      color: _trailColor,
-                      borderStrokeWidth: 2,
-                      borderColor: Colors.white,
-                    ),
-                  ],
-                ),
+              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
               MarkerLayer(
                 markers: [
                   if (latLngs.isNotEmpty && latLngs.length >= 2)
@@ -160,8 +202,8 @@ class _RouteMapViewState extends State<RouteMapView> {
                           Container(
                             width: 36,
                             height: 36,
-                            decoration: BoxDecoration(
-                              color: const Color(0x334285F4),
+                            decoration: const BoxDecoration(
+                              color: Color(0x334285F4),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -191,7 +233,13 @@ class _RouteMapViewState extends State<RouteMapView> {
                       height: 28,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: _trailColor,
+                          color: _useLaps
+                              ? Color(
+                                  LapDetectorService.colorForLap(
+                                    widget.laps.last.lapNumber,
+                                  ),
+                                )
+                              : _trailColor,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
                         ),
@@ -201,6 +249,65 @@ class _RouteMapViewState extends State<RouteMapView> {
               ),
             ],
           ),
+          if (widget.showLapLegend && _useLaps)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Material(
+                color: const Color(0xCC0F172A),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${widget.laps.length} volta${widget.laps.length == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...widget.laps.map((lap) {
+                        final color =
+                            Color(LapDetectorService.colorForLap(lap.lapNumber));
+                        final km = lap.distanceMeters / 1000.0;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 12,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white54),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Volta ${lap.lapNumber}'
+                                '${km >= 0.05 ? ' · ${km.toStringAsFixed(2)} km' : ''}',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (status != null && status.isNotEmpty)
             Positioned(
               left: 10,

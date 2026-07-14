@@ -21,6 +21,7 @@ import '../services/gps_quality_service.dart';
 import '../services/gps_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/health_sync_service.dart';
+import '../services/lap_detector_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
 import '../services/profile_service.dart';
@@ -53,11 +54,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   final _engine = GpsTrackingEngine();
   final _mapMatching = MapMatchingService();
+  final _laps = LapDetectorService();
   List<LatLng> _matchedRoute = [];
   LatLng? _snappedLive;
   bool _mapMatchBusy = false;
   int _lastMatchedPointCount = 0;
   DateTime? _lastMatchAt;
+  int _lastLapToast = 0;
+  int _poorAccuracyStreak = 0;
+  DateTime? _lastPoorAccuracyDiagAt;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -83,7 +88,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int? _lastCloudElapsedSec;
 
   /// Mapa: rota encaixada nas ruas + ponta ao vivo (snap).
+  /// Com 2+ voltas, prioriza traço colorido por lap (campo/pista).
   List<RoutePointView> get _mapRoutePoints {
+    final lapViews = _lapViews;
+    if (lapViews.length >= 2) {
+      return lapViews
+          .expand((l) => l.points)
+          .toList();
+    }
+
     final matched = _matchedRoute;
     if (matched.length >= 2) {
       final out = matched
@@ -140,6 +153,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       }
     }
     return points;
+  }
+
+  List<RouteLapView> get _lapViews {
+    return _laps.allLaps
+        .where((l) => l.points.length >= 2)
+        .map(
+          (l) => RouteLapView(
+            lapNumber: l.lapNumber,
+            distanceMeters: l.distanceMeters,
+            points: l.points
+                .map((p) => RoutePointView(
+                      latitude: p.latitude,
+                      longitude: p.longitude,
+                    ))
+                .toList(),
+          ),
+        )
+        .toList();
   }
 
   Future<void> _refreshMapMatching({bool force = false}) async {
@@ -210,6 +241,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _engine.setBackgroundMode(false);
       _engine.markForegroundRecovery();
       _snappedLive = null;
+      unawaited(_emitDiagnostic(
+        GpsDiagnosticEvent.screenOffMode,
+        message: 'Tela ligada / foreground — saindo do modo bolso',
+      ));
       _syncFromWallClock();
       _persistActiveRun(force: true);
       unawaited(_reacquireGps());
@@ -220,6 +255,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _running) {
       _inBackground = true;
       _engine.setBackgroundMode(true);
+      unawaited(_emitDiagnostic(
+        GpsDiagnosticEvent.screenOffMode,
+        message: 'Tela apagada / background — modo bolso ativo',
+      ));
       _persistActiveRun(force: true);
       unawaited(_restartGpsStreamOnly());
       _startBackgroundKeepalive();
@@ -246,6 +285,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (pos != null && _running && _inBackground) {
         // Accuracy péssima de fix pontual não entra no mapa.
         if (!pos.accuracy.isNaN && pos.accuracy > 40) return;
+        unawaited(_emitDiagnostic(
+          GpsDiagnosticEvent.keepaliveFix,
+          message:
+              'Keepalive após silêncio do stream · acc=${pos.accuracy.toStringAsFixed(0)}m',
+        ));
         _onPosition(pos);
       }
     });
@@ -324,6 +368,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Future<void> _emitDiagnostic(
     GpsDiagnosticEvent type, {
     String? message,
+    double? accuracy,
   }) async {
     await GpsDiagnosticStore.instance.add(
       GpsDiagnosticEventRecord(
@@ -332,9 +377,34 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         message: message,
         latitude: _engine.liveLatitude,
         longitude: _engine.liveLongitude,
+        accuracy: accuracy ?? _engine.lastRawAccuracy,
         clientSessionId: _clientSessionId,
       ),
     );
+  }
+
+  Future<void> _emitStartupDiagnostics() async {
+    try {
+      final snap = await LocationPermissionHelper.debugPermissionSnapshot();
+      if (snap['battery'] == 'optimized') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.batteryOptimization,
+          message: 'Otimização de bateria ativa — GPS com tela apagada pode falhar',
+        );
+      }
+      final perm = snap['location'] ?? '';
+      if (perm.contains('denied') || perm.contains('Denied')) {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.permissionDenied,
+          message: 'Permissão: $perm',
+        );
+      } else if (perm == 'whileInUse') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.backgroundRestricted,
+          message: 'Só while-in-use — peça "sempre permitir" para tela apagada',
+        );
+      }
+    } catch (_) {}
   }
 
   int get _liveCalories {
@@ -413,6 +483,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       manualPaused: snapshot.manualPaused,
       runStartedAt: snapshot.startedAt,
     );
+    _laps.rebuildFrom(
+      snapshot.points
+          .map((p) => LatLng(p.latitude, p.longitude))
+          .toList(),
+    );
+    _lastLapToast = _laps.completedLaps.length;
 
     setState(() {
       _clientSessionId = snapshot.clientSessionId;
@@ -543,6 +619,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _snappedLive = null;
     _lastMatchedPointCount = 0;
     _lastMatchAt = null;
+    _lastLapToast = 0;
+    _poorAccuracyStreak = 0;
+    _laps.reset();
     _engine.markRunStarted(_startedAt!);
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(
@@ -551,6 +630,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     );
     _startGpsWatchdog();
     _startMotionSensor();
+    unawaited(_emitStartupDiagnostics());
   }
 
   void _syncFromWallClock() {
@@ -767,6 +847,40 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _distance = _engine.distanceMeters;
     _estimatedGap = _engine.estimatedGapMeters;
 
+    // Accuracy ruim em rajada → telemetria (ajuda a ver falha com tela apagada).
+    final acc = pos.accuracy.isNaN ? 99.0 : pos.accuracy;
+    if (acc > 35) {
+      _poorAccuracyStreak++;
+      if (_poorAccuracyStreak >= 6) {
+        final now = DateTime.now();
+        if (_lastPoorAccuracyDiagAt == null ||
+            now.difference(_lastPoorAccuracyDiagAt!) >=
+                const Duration(seconds: 45)) {
+          _lastPoorAccuracyDiagAt = now;
+          unawaited(_emitDiagnostic(
+            GpsDiagnosticEvent.poorAccuracy,
+            message:
+                'Accuracy ${acc.toStringAsFixed(0)}m ×$_poorAccuracyStreak'
+                '${_inBackground ? ' (tela apagada)' : ''}',
+            accuracy: acc,
+          ));
+        }
+      }
+    } else {
+      _poorAccuracyStreak = 0;
+    }
+
+    if (result.accepted && result.point != null && !result.isPaused) {
+      final beforeLaps = _laps.completedLaps.length;
+      _laps.addPoint(LatLng(result.point!.latitude, result.point!.longitude));
+      final afterLaps = _laps.completedLaps.length;
+      if (afterLaps > beforeLaps && afterLaps != _lastLapToast) {
+        _lastLapToast = afterLaps;
+        _lastSplitToast = 'Volta $afterLaps concluída';
+        unawaited(CardioFeedback.playBeeps(2));
+      }
+    }
+
     if (result.newSplit != null) {
       final s = result.newSplit!;
       _lastSplitToast =
@@ -791,10 +905,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       } else if (_engine.acceptedPoints.length < 2) {
         _gpsStatus = 'GPS ok — pode apagar a tela';
       } else {
+        final lapHint = _laps.lapCount >= 2 ? ' · ${_laps.lapCount} voltas' : '';
         _gpsStatus =
             '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
             'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-            '${_engine.acceptedPoints.length} pts';
+            '${_engine.acceptedPoints.length} pts$lapHint';
       }
     });
 
@@ -805,7 +920,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _lastPersistAt = now;
       unawaited(_persistActiveRun());
     }
-    unawaited(_refreshMapMatching());
+    // Com voltas ativas o traço colorido prevalece; OSRM ainda ajuda na 1ª volta.
+    if (_laps.lapCount < 2) {
+      unawaited(_refreshMapMatching());
+    }
   }
 
   Future<void> _restartGpsStreamOnly() async {
@@ -1215,6 +1333,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                     ? _engine.lastAccepted?.longitude
                                     : null),
                             points: mapPoints,
+                            laps: _lapViews,
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -1266,8 +1385,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               ),
                               Expanded(
                                 child: _Stat(
-                                  'Pausas',
-                                  '${_engine.pauseCount}',
+                                  'Voltas',
+                                  '${_laps.lapCount}',
                                 ),
                               ),
                               Expanded(

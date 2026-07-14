@@ -36,6 +36,9 @@ void main() {
     test('apiName', () {
       expect(GpsDiagnosticEvent.gpsLost.apiName, 'GPS_LOST');
       expect(GpsDiagnosticEvent.permissionDenied.apiName, 'PERMISSION_DENIED');
+      expect(GpsDiagnosticEvent.screenOffMode.apiName, 'SCREEN_OFF_MODE');
+      expect(GpsDiagnosticEvent.poorAccuracy.apiName, 'POOR_ACCURACY');
+      expect(GpsDiagnosticEvent.keepaliveFix.apiName, 'KEEPALIVE_FIX');
     });
 
     test('toJson', () {
