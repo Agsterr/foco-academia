@@ -104,6 +104,35 @@ void main() {
       expect(d.reason, FilterReason.stationaryJitter);
     });
 
+    test('rejeita retorno quase ao ponto anterior (calçada)', () {
+      final f = GpsFilterService(minDistanceMeters: 1);
+      final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+      final a = TrackedPoint(
+        latitude: -23.55000,
+        longitude: -46.63000,
+        recordedAt: t0,
+        sequenceNum: 0,
+        accuracyMeters: 16,
+      );
+      final b = TrackedPoint(
+        latitude: -23.55005,
+        longitude: -46.63004,
+        recordedAt: t0.add(const Duration(seconds: 1)),
+        sequenceNum: 1,
+        accuracyMeters: 16,
+      );
+      final d = f.evaluate(
+        latitude: -23.55001,
+        longitude: -46.63001,
+        accuracyMeters: 16,
+        recordedAt: t0.add(const Duration(seconds: 2)),
+        previous: b,
+        beforePrevious: a,
+      );
+      expect(d.accepted, isFalse);
+      expect(d.reason, FilterReason.stationaryJitter);
+    });
+
     test('bearingDeltaDegrees', () {
       expect(GpsFilterService.bearingDeltaDegrees(10, 350), closeTo(20, 0.1));
       expect(GpsFilterService.bearingDeltaDegrees(0, 180), closeTo(180, 0.1));

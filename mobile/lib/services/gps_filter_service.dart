@@ -150,7 +150,7 @@ class GpsFilterService {
       if (jitterDetectionEnabled &&
           beforePrevious != null &&
           jumpDt > 0.2 &&
-          jumpDt < 10) {
+          jumpDt < 12) {
         final prevSeg = Geolocator.distanceBetween(
           beforePrevious.latitude,
           beforePrevious.longitude,
@@ -158,11 +158,11 @@ class GpsFilterService {
           previous.longitude,
         );
         final noiseRadius = math.max(
-          8.0,
+          10.0,
           math.max(
             accuracyMeters,
             previous.accuracyMeters ?? accuracyMeters,
-          ) * 0.85,
+          ) * 0.95,
         );
         if (prevSeg > 0.5 &&
             jumpDelta > 0.5 &&
@@ -181,7 +181,14 @@ class GpsFilterService {
             lng2: longitude,
           );
           final turn = bearingDeltaDegrees(b1, b2);
-          if (turn >= 110) {
+          final backToBefore = Geolocator.distanceBetween(
+            beforePrevious.latitude,
+            beforePrevious.longitude,
+            latitude,
+            longitude,
+          );
+          // Ida/volta na calçada: curva fechada OU quase retorna ao ponto anterior.
+          if (turn >= 95 || backToBefore < noiseRadius * 0.7) {
             return GpsFilterDecision.reject(
               FilterReason.stationaryJitter,
               confidenceScore: confidence,
