@@ -5,10 +5,14 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 /// Heading (0–360°) a partir de acelerômetro + magnetômetro (bússola).
 ///
-/// Usa a mesma ideia do `SensorManager.getRotationMatrix` + `getOrientation`
-/// do Android: azimute = direção do **topo do celular** (eixo Y) em relação
-/// ao norte magnético — funciona com o aparelho na vertical (caminhada) e
-/// deitado.
+/// Mesma ideia do `SensorManager.getRotationMatrix` + `getOrientation` do
+/// Android, com remap por inclinação:
+/// - **Deitado** (tela pra cima): azimute do **topo** do celular (+Y).
+/// - **Vertical** (caminhada, celular na frente): azimute da **frente** (−Z),
+///   como `remapCoordinateSystem(R, AXIS_X, AXIS_MINUS_Z)`.
+///
+/// Sem o remap, na vertical o eixo Y aponta para o céu e o azimute fica
+/// instável / ~90° errado — a seta “de lado” no mapa.
 class CompassHeadingService {
   CompassHeadingService._();
   static final instance = CompassHeadingService._();
@@ -57,41 +61,15 @@ class CompassHeadingService {
     final m = _mag;
     if (a == null || m == null) return;
 
-    // Vetor gravidade (acelerômetro) e campo magnético normalizados.
-    var ax = a.x, ay = a.y, az = a.z;
-    final normA = math.sqrt(ax * ax + ay * ay + az * az);
-    if (normA < 1e-3) return;
-    ax /= normA;
-    ay /= normA;
-    az /= normA;
-
-    var mx = m.x, my = m.y, mz = m.z;
-    final normM = math.sqrt(mx * mx + my * my + mz * mz);
-    if (normM < 1e-3) return;
-    mx /= normM;
-    my /= normM;
-    mz /= normM;
-
-    // East = mag × gravity (produto vetorial).
-    var ex = my * az - mz * ay;
-    var ey = mz * ax - mx * az;
-    var ez = mx * ay - my * ax;
-    final normE = math.sqrt(ex * ex + ey * ey + ez * ez);
-    // Campo magnético quase paralelo à gravidade → azimute instável.
-    if (normE < 0.1) return;
-    ex /= normE;
-    ey /= normE;
-    ez /= normE;
-
-    // North = gravity × east.
-    final nx = ay * ez - az * ey;
-    final ny = az * ex - ax * ez;
-    // nz não usado no azimute (getOrientation).
-
-    // Azimuth: ângulo do eixo Y do aparelho (topo da tela) vs norte.
-    // Equivale a atan2(R[1], R[4]) do Android com R = [E; N; A].
-    var heading = math.atan2(ey, ny) * 180.0 / math.pi;
-    if (heading < 0) heading += 360.0;
+    final heading = computeHeadingDegrees(
+      ax: a.x,
+      ay: a.y,
+      az: a.z,
+      mx: m.x,
+      my: m.y,
+      mz: m.z,
+    );
+    if (heading == null) return;
 
     // Suavização adaptativa: gira rápido quando o celular vira de verdade,
     // filtra tremor fino (evita “travar” e seta de lado).
@@ -116,6 +94,9 @@ class CompassHeadingService {
   }
 
   /// Recalcula heading síncrono (útil em testes).
+  ///
+  /// [ax]/ay]/az] no mesmo referencial do acelerômetro do aparelho
+  /// (Android: ~+g no eixo que aponta para cima).
   static double? computeHeadingDegrees({
     required double ax,
     required double ay,
@@ -136,17 +117,38 @@ class CompassHeadingService {
     my /= normM;
     mz /= normM;
 
+    // East = mag × gravity (produto vetorial).
     var ex = my * az - mz * ay;
     var ey = mz * ax - mx * az;
     var ez = mx * ay - my * ax;
     final normE = math.sqrt(ex * ex + ey * ey + ez * ez);
+    // Campo magnético quase paralelo à gravidade → azimute instável.
     if (normE < 0.1) return null;
     ex /= normE;
     ey /= normE;
     ez /= normE;
 
+    // North = gravity × east.
+    final nx = ay * ez - az * ey;
     final ny = az * ex - ax * ez;
-    var heading = math.atan2(ey, ny) * 180.0 / math.pi;
+    final nz = ax * ey - ay * ex;
+
+    // Inclinação: |ay| alto = vertical (retrato); |az| alto = deitado.
+    // Na vertical o topo (+Y) aponta pro céu — azimute de Y é inútil.
+    // Usamos a frente do aparelho (−Z), direção da caminhada com a tela
+    // virada para o usuário.
+    final upright = ay.abs();
+    final flat = az.abs();
+    final double headingRad;
+    if (upright >= flat) {
+      // Frente (−Z): equivalente a AXIS_X + AXIS_MINUS_Z no Android.
+      headingRad = math.atan2(-ez, -nz);
+    } else {
+      // Topo da tela (+Y).
+      headingRad = math.atan2(ey, ny);
+    }
+
+    var heading = headingRad * 180.0 / math.pi;
     if (heading < 0) heading += 360.0;
     return heading;
   }

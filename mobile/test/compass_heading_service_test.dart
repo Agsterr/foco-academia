@@ -3,61 +3,105 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:foco_academia_mobile/services/compass_heading_service.dart';
 
 void main() {
-  test('celular deitado com norte no topo → heading ~0°', () {
-    // Gravidade no -Z (tela pra cima); mag apontando para +Y (topo = norte).
-    final h = CompassHeadingService.computeHeadingDegrees(
-      ax: 0,
-      ay: 0,
-      az: -9.8,
-      mx: 0,
-      my: 40,
-      mz: -20,
-    );
-    expect(h, isNotNull);
-    expect(h!, closeTo(0, 8));
+  group('celular deitado (acelerômetro +Z ≈ +g)', () {
+    test('topo ao norte → heading ~0°', () {
+      // Tela pra cima; topo (+Y) = norte; mag com componente em +Y.
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 0,
+        az: 9.8,
+        mx: 0,
+        my: 40,
+        mz: -20,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(0, 8));
+    });
+
+    test('topo ao leste → heading ~90°', () {
+      // Topo (+Y) = leste ⇒ direita (+X) = sul ⇒ norte = −X.
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 0,
+        az: 9.8,
+        mx: -40,
+        my: 0,
+        mz: -20,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(90, 8));
+    });
+
+    test('topo ao sul → heading ~180°', () {
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 0,
+        az: 9.8,
+        mx: 0,
+        my: -40,
+        mz: -20,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(180, 8));
+    });
   });
 
-  test('celular deitado com leste no topo → heading ~90°', () {
-    // Topo do aparelho (+Y) aponta para leste → mag no +X.
-    final h = CompassHeadingService.computeHeadingDegrees(
-      ax: 0,
-      ay: 0,
-      az: -9.8,
-      mx: 40,
-      my: 0,
-      mz: -20,
-    );
-    expect(h, isNotNull);
-    expect(h!, closeTo(90, 8));
-  });
+  group('celular na vertical / caminhada (acelerômetro +Y ≈ +g)', () {
+    test('frente (−Z) ao norte → heading ~0°', () {
+      // Retrato: Y pra cima. Usuário olha a tela e caminha para o norte
+      // (frente do aparelho = −Z = norte). Mag: norte em −Z + dip em −Y.
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 9.8,
+        az: 0,
+        mx: 0,
+        my: -10,
+        mz: -40,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(0, 12));
+    });
 
-  test('celular na vertical (caminhada) com topo ao norte → ~0°', () {
-    // Gravidade no -Y (retrato); mag no -Z (atrás da tela = norte à frente).
-    // Topo do celular (+Y) aponta para o céu; frente do usuário = -Z.
-    // Remap mental: azimute do eixo Y com phone upright é a direção do topo.
-    // Com mag em -Z e gravity -Y, east/north matrix dá heading da face.
-    final h = CompassHeadingService.computeHeadingDegrees(
-      ax: 0,
-      ay: -9.8,
-      az: 0,
-      mx: 0,
-      my: -10,
-      mz: -40,
-    );
-    expect(h, isNotNull);
-    // Aceita faixa larga: importante é ser finito e estável, não NaN.
-    expect(h!.isFinite, isTrue);
-    expect(h >= 0 && h < 360, isTrue);
+    test('frente (−Z) ao leste → heading ~90°', () {
+      // Frente = leste (−Z = leste) → mag horizontal em −Z? 
+      // X = norte quando frente = leste? 
+      // Device: X=right=south when facing east? Facing east: X→south, Y→up, −Z→east.
+      // Mag north = −X direction → mx negative; dip −Y.
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 9.8,
+        az: 0,
+        mx: -40,
+        my: -10,
+        mz: 0,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(90, 12));
+    });
+
+    test('frente (−Z) ao sul → heading ~180°', () {
+      // Facing south: −Z = south, X = west, mag north = +Z.
+      final h = CompassHeadingService.computeHeadingDegrees(
+        ax: 0,
+        ay: 9.8,
+        az: 0,
+        mx: 0,
+        my: -10,
+        mz: 40,
+      );
+      expect(h, isNotNull);
+      expect(h!, closeTo(180, 12));
+    });
   });
 
   test('campo paralelo à gravidade → null (instável)', () {
     final h = CompassHeadingService.computeHeadingDegrees(
       ax: 0,
       ay: 0,
-      az: -9.8,
+      az: 9.8,
       mx: 0,
       my: 0,
-      mz: -50,
+      mz: 50,
     );
     expect(h, isNull);
   });
