@@ -33,6 +33,7 @@ class GpsFilterService {
     this.confidenceEnabled = true,
     this.jumpDetectionEnabled = true,
     this.jitterDetectionEnabled = true,
+    this.backgroundMode = false,
   });
 
   double maxAccuracyMeters;
@@ -44,6 +45,8 @@ class GpsFilterService {
   bool confidenceEnabled;
   bool jumpDetectionEnabled;
   bool jitterDetectionEnabled;
+  /// Tela apagada / bolso: exige passo maior que o ruído do chip.
+  bool backgroundMode;
 
   /// Accuracy 3 m → ~0.99; 8 m → ~0.95; 20 m → ~0.75; 45 m → ~0.35
   double confidenceFromAccuracy(double accuracyMeters) {
@@ -54,8 +57,13 @@ class GpsFilterService {
 
   double accuracyLimit({
     required bool relaxed,
-  }) =>
-      relaxed ? relaxedAccuracyMeters : maxAccuracyMeters;
+  }) {
+    if (backgroundMode) {
+      // Tela apagada: não desenha no mapa com accuracy de canyon urbano.
+      return relaxed ? 48.0 : 32.0;
+    }
+    return relaxed ? relaxedAccuracyMeters : maxAccuracyMeters;
+  }
 
   /// Bearing inicial→final em graus [0, 360).
   static double bearingDegrees({
@@ -117,7 +125,11 @@ class GpsFilterService {
       final jumpDt =
           recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
 
-      if (jumpDt < 12 && jumpDelta > maxJumpMeters) {
+      // Tela apagada: saltos curtos dentro do raio de erro viram espaguete no mapa.
+      final jumpCap = backgroundMode
+          ? math.min(maxJumpMeters, math.max(35.0, accuracyMeters * 1.6))
+          : maxJumpMeters;
+      if (jumpDt < 12 && jumpDelta > jumpCap) {
         return GpsFilterDecision.reject(
           FilterReason.gpsJump,
           confidenceScore: confidence,
@@ -135,10 +147,16 @@ class GpsFilterService {
       }
 
       // Min distance sobe com accuracy ruim (bolso / canyon urbano).
-      final dynMin = math.max(
-        minDistanceMeters,
-        math.min(accuracyMeters * 0.22, 6.0),
-      );
+      // Em background o passo precisa superar o ruído típico do chip (~accuracy).
+      final dynMin = backgroundMode
+          ? math.max(
+              math.max(minDistanceMeters, 8.0),
+              math.min(accuracyMeters * 0.55, 18.0),
+            )
+          : math.max(
+              minDistanceMeters,
+              math.min(accuracyMeters * 0.22, 6.0),
+            );
       if (jumpDt < 20 && jumpDelta < dynMin) {
         return GpsFilterDecision.reject(
           FilterReason.duplicate,
@@ -150,19 +168,20 @@ class GpsFilterService {
       if (jitterDetectionEnabled &&
           beforePrevious != null &&
           jumpDt > 0.2 &&
-          jumpDt < 12) {
+          jumpDt < 18) {
         final prevSeg = Geolocator.distanceBetween(
           beforePrevious.latitude,
           beforePrevious.longitude,
           previous.latitude,
           previous.longitude,
         );
+        final noiseScale = backgroundMode ? 1.15 : 0.95;
         final noiseRadius = math.max(
-          10.0,
+          backgroundMode ? 14.0 : 10.0,
           math.max(
             accuracyMeters,
             previous.accuracyMeters ?? accuracyMeters,
-          ) * 0.95,
+          ) * noiseScale,
         );
         if (prevSeg > 0.5 &&
             jumpDelta > 0.5 &&
@@ -188,7 +207,9 @@ class GpsFilterService {
             longitude,
           );
           // Ida/volta na calçada: curva fechada OU quase retorna ao ponto anterior.
-          if (turn >= 95 || backToBefore < noiseRadius * 0.7) {
+          final turnLimit = backgroundMode ? 75.0 : 95.0;
+          final backLimit = backgroundMode ? 0.85 : 0.7;
+          if (turn >= turnLimit || backToBefore < noiseRadius * backLimit) {
             return GpsFilterDecision.reject(
               FilterReason.stationaryJitter,
               confidenceScore: confidence,
@@ -205,11 +226,12 @@ class GpsFilterService {
   static double maxSpeedForActivity(MotionActivity activity) {
     switch (activity) {
       case MotionActivity.walk:
-        return 10;
+        // 12 km/h: passo nativo de 8 m a cada ~2,5 s (tela apagada) não estoura.
+        return 12;
       case MotionActivity.run:
         return 30;
       case MotionActivity.stopped:
-        return 6;
+        return 8;
     }
   }
 }

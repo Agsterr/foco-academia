@@ -1,13 +1,11 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../services/active_run_store.dart';
 import '../services/gps_service.dart';
+import '../services/location_permission_helper.dart';
 import '../services/sync_service.dart';
 
 /// Tela de telemetria GPS — apenas para desenvolvedores (kDebugMode / flavor).
@@ -27,6 +25,8 @@ class _GpsDebugScreenState extends State<GpsDebugScreen> {
   Position? _prev;
   String _permission = '...';
   String _batteryOpt = '...';
+  String _powerSaver = '...';
+  String _batteryLevel = '...';
   String _fgs = 'parado';
   int _syncQueue = 0;
   int _localPoints = 0;
@@ -46,20 +46,22 @@ class _GpsDebugScreenState extends State<GpsDebugScreen> {
   }
 
   Future<void> _refreshStatus() async {
-    final perm = await Geolocator.checkPermission();
-    final enabled = await Geolocator.isLocationServiceEnabled();
-    var battery = 'n/a';
-    if (!kIsWeb && Platform.isAndroid) {
-      final s = await Permission.ignoreBatteryOptimizations.status;
-      battery = s.isGranted ? 'ignorada (ok)' : 'otimização ATIVA';
-    }
+    final snap = await LocationPermissionHelper.debugPermissionSnapshot();
     final queue = await SyncService.instance.pendingCount();
     final points = await ActiveRunStore.instance.pointCount();
     if (!mounted) return;
     setState(() {
-      _permission = perm.name;
-      _serviceEnabled = enabled;
-      _batteryOpt = battery;
+      _permission = snap['location'] ?? '...';
+      _serviceEnabled = snap['serviceEnabled'] == 'true';
+      _batteryOpt = snap['battery'] == 'ignored'
+          ? 'ignorada (ok)'
+          : (snap['battery'] == 'optimized'
+              ? 'otimização ATIVA'
+              : snap['battery'] ?? '...');
+      _powerSaver = snap['powerSaver'] == 'on'
+          ? 'LIGADA (atrapalha GPS)'
+          : (snap['powerSaver'] == 'off' ? 'desligada' : snap['powerSaver'] ?? '...');
+      _batteryLevel = snap['batteryLevel'] ?? '...';
       _syncQueue = queue;
       _localPoints = points;
       _fgs = _sub != null ? 'stream ativo (FGS no Android em treino)' : 'parado';
@@ -161,6 +163,8 @@ class _GpsDebugScreenState extends State<GpsDebugScreen> {
           _row('Permissão localização', _permission),
           _row('GPS do aparelho', _serviceEnabled ? 'ligado' : 'desligado'),
           _row('Otimização de bateria', _batteryOpt),
+          _row('Economia de energia', _powerSaver),
+          _row('Nível da bateria', '$_batteryLevel%'),
           _row('Fila de sync', '$_syncQueue'),
           _row('Pontos SQLite (corrida ativa)', '$_localPoints'),
           const SizedBox(height: 16),

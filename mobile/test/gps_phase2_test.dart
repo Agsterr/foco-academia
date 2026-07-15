@@ -70,7 +70,7 @@ void main() {
     });
 
     test('maxSpeed por atividade', () {
-      expect(GpsFilterService.maxSpeedForActivity(MotionActivity.walk), 10);
+      expect(GpsFilterService.maxSpeedForActivity(MotionActivity.walk), 12);
       expect(GpsFilterService.maxSpeedForActivity(MotionActivity.run), 30);
     });
 

@@ -21,6 +21,7 @@ import '../services/gps_quality_service.dart';
 import '../services/gps_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/health_sync_service.dart';
+import '../services/lap_detector_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
 import '../services/profile_service.dart';
@@ -53,11 +54,19 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   final _engine = GpsTrackingEngine();
   final _mapMatching = MapMatchingService();
+  final _laps = LapDetectorService();
   List<LatLng> _matchedRoute = [];
   LatLng? _snappedLive;
   bool _mapMatchBusy = false;
   int _lastMatchedPointCount = 0;
   DateTime? _lastMatchAt;
+  int _lastLapToast = 0;
+  int _poorAccuracyStreak = 0;
+  DateTime? _lastPoorAccuracyDiagAt;
+  EnergyThreatStatus? _energyThreat;
+  bool _energyBannerDismissed = false;
+  /// Pedimos para desligar a Economia no início → oferecer religar ao finalizar.
+  bool _askedToDisablePowerSaver = false;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -83,26 +92,37 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int? _lastCloudElapsedSec;
 
   /// Mapa: rota encaixada nas ruas + ponta ao vivo (snap).
+  /// Com 2+ voltas, prioriza traço colorido por lap (campo/pista).
   List<RoutePointView> get _mapRoutePoints {
+    final lapViews = _lapViews;
+    if (lapViews.length >= 2) {
+      return lapViews
+          .expand((l) => l.points)
+          .toList();
+    }
+
     final matched = _matchedRoute;
     if (matched.length >= 2) {
       final out = matched
           .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
           .toList();
-      final tip = _snappedLive ??
-          (_engine.liveLatitude != null && _engine.liveLongitude != null
-              ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
-              : null);
-      if (tip != null) {
-        final last = matched.last;
-        final d = Geolocator.distanceBetween(
-          last.latitude,
-          last.longitude,
-          tip.latitude,
-          tip.longitude,
-        );
-        if (d >= 0.5) {
-          out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+      // Com tela apagada / accuracy ruim, a ponta crua risca espaguete.
+      if (_engine.liveTipReliable) {
+        final tip = _snappedLive ??
+            (_engine.liveLatitude != null && _engine.liveLongitude != null
+                ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
+                : null);
+        if (tip != null) {
+          final last = matched.last;
+          final d = Geolocator.distanceBetween(
+            last.latitude,
+            last.longitude,
+            tip.latitude,
+            tip.longitude,
+          );
+          if (d >= 0.5) {
+            out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+          }
         }
       }
       return out;
@@ -120,9 +140,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final points = cleaned.points
         .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
         .toList();
-    final tip = _snappedLive ??
-        (lat != null && lng != null ? LatLng(lat, lng) : null);
-    if (_running && tip != null) {
+    if (_running &&
+        _engine.liveTipReliable &&
+        lat != null &&
+        lng != null) {
+      final tip = _snappedLive ?? LatLng(lat, lng);
       if (points.isEmpty ||
           Geolocator.distanceBetween(
                 points.last.latitude,
@@ -135,6 +157,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       }
     }
     return points;
+  }
+
+  List<RouteLapView> get _lapViews {
+    return _laps.allLaps
+        .where((l) => l.points.length >= 2)
+        .map(
+          (l) => RouteLapView(
+            lapNumber: l.lapNumber,
+            distanceMeters: l.distanceMeters,
+            points: l.points
+                .map((p) => RoutePointView(
+                      latitude: p.latitude,
+                      longitude: p.longitude,
+                    ))
+                .toList(),
+          ),
+        )
+        .toList();
   }
 
   Future<void> _refreshMapMatching({bool force = false}) async {
@@ -164,7 +204,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       );
 
       LatLng? snapped;
-      if (_engine.liveLatitude != null && _engine.liveLongitude != null) {
+      if (_engine.liveTipReliable &&
+          _engine.liveLatitude != null &&
+          _engine.liveLongitude != null) {
         snapped = await _mapMatching.snapPoint(
           LatLng(_engine.liveLatitude!, _engine.liveLongitude!),
           radiusMeters: 40,
@@ -200,15 +242,29 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed && _running) {
       _inBackground = false;
       _stopBackgroundKeepalive();
+      _engine.setBackgroundMode(false);
       _engine.markForegroundRecovery();
+      _snappedLive = null;
+      unawaited(_emitDiagnostic(
+        GpsDiagnosticEvent.screenOffMode,
+        message: 'Tela ligada / foreground — saindo do modo bolso',
+      ));
       _syncFromWallClock();
       _persistActiveRun(force: true);
       unawaited(_reacquireGps());
+      // Rematch forçado: o traço acumulado com tela apagada precisa reencaixar.
+      unawaited(_refreshMapMatching(force: true));
     } else if ((state == AppLifecycleState.paused ||
             state == AppLifecycleState.inactive) &&
         _running) {
       _inBackground = true;
+      _engine.setBackgroundMode(true);
+      unawaited(_emitDiagnostic(
+        GpsDiagnosticEvent.screenOffMode,
+        message: 'Tela apagada / background — modo bolso ativo',
+      ));
       _persistActiveRun(force: true);
+      unawaited(_restartGpsStreamOnly());
       _startBackgroundKeepalive();
     }
   }
@@ -216,14 +272,30 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _inBackground = false;
   Timer? _bgKeepalive;
 
+  /// Só puxa fix se o stream do FGS silenciar — getCurrentFix a cada 8s
+  /// misturava posição cacheada e riscava o mapa errado com a tela apagada.
   void _startBackgroundKeepalive() {
     _bgKeepalive?.cancel();
-    _bgKeepalive = Timer.periodic(const Duration(seconds: 8), (_) async {
+    _bgKeepalive = Timer.periodic(const Duration(seconds: 12), (_) async {
       if (!_running || _finishing || !_inBackground) return;
+      final last = _engine.lastRawFixAt;
+      if (last != null &&
+          DateTime.now().difference(last) < const Duration(seconds: 18)) {
+        return;
+      }
       final pos = await GpsService.instance.getCurrentFix(
-        timeLimit: const Duration(seconds: 6),
+        timeLimit: const Duration(seconds: 8),
       );
-      if (pos != null && _running) _onPosition(pos);
+      if (pos != null && _running && _inBackground) {
+        // Accuracy péssima de fix pontual não entra no mapa.
+        if (!pos.accuracy.isNaN && pos.accuracy > 40) return;
+        unawaited(_emitDiagnostic(
+          GpsDiagnosticEvent.keepaliveFix,
+          message:
+              'Keepalive após silêncio do stream · acc=${pos.accuracy.toStringAsFixed(0)}m',
+        ));
+        _onPosition(pos);
+      }
     });
   }
 
@@ -300,6 +372,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Future<void> _emitDiagnostic(
     GpsDiagnosticEvent type, {
     String? message,
+    double? accuracy,
   }) async {
     await GpsDiagnosticStore.instance.add(
       GpsDiagnosticEventRecord(
@@ -308,9 +381,47 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         message: message,
         latitude: _engine.liveLatitude,
         longitude: _engine.liveLongitude,
+        accuracy: accuracy ?? _engine.lastRawAccuracy,
         clientSessionId: _clientSessionId,
       ),
     );
+  }
+
+  Future<void> _emitStartupDiagnostics() async {
+    try {
+      final snap = await LocationPermissionHelper.debugPermissionSnapshot();
+      if (snap['battery'] == 'optimized') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.batteryOptimization,
+          message: 'Otimização de bateria ativa — GPS com tela apagada pode falhar',
+        );
+      }
+      if (snap['powerSaver'] == 'on') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.powerSaverMode,
+          message: 'Economia de energia do sistema ligada — GPS em background degradado',
+        );
+      }
+      final level = int.tryParse(snap['batteryLevel'] ?? '');
+      if (level != null && level <= 15) {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.lowBattery,
+          message: 'Bateria em $level%',
+        );
+      }
+      final perm = snap['location'] ?? '';
+      if (perm.contains('denied') || perm.contains('Denied')) {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.permissionDenied,
+          message: 'Permissão: $perm',
+        );
+      } else if (perm == 'whileInUse') {
+        await _emitDiagnostic(
+          GpsDiagnosticEvent.backgroundRestricted,
+          message: 'Só while-in-use — peça "sempre permitir" para tela apagada',
+        );
+      }
+    } catch (_) {}
   }
 
   int get _liveCalories {
@@ -389,6 +500,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       manualPaused: snapshot.manualPaused,
       runStartedAt: snapshot.startedAt,
     );
+    _laps.rebuildFrom(
+      snapshot.points
+          .map((p) => LatLng(p.latitude, p.longitude))
+          .toList(),
+    );
+    _lastLapToast = _laps.completedLaps.length;
 
     setState(() {
       _clientSessionId = snapshot.clientSessionId;
@@ -440,6 +557,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ? 'Corrida pausada'
           : 'Corrida em andamento',
       notificationText: notifText,
+      backgroundMode: _inBackground,
     );
   }
 
@@ -518,6 +636,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _snappedLive = null;
     _lastMatchedPointCount = 0;
     _lastMatchAt = null;
+    _lastLapToast = 0;
+    _poorAccuracyStreak = 0;
+    _laps.reset();
     _engine.markRunStarted(_startedAt!);
     _clockTimer?.cancel();
     _clockTimer = Timer.periodic(
@@ -526,6 +647,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     );
     _startGpsWatchdog();
     _startMotionSensor();
+    unawaited(_emitStartupDiagnostics());
   }
 
   void _syncFromWallClock() {
@@ -650,12 +772,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return;
     }
     if (!mounted) return;
-    await LocationPermissionHelper.promptBatteryOptimizationIfNeeded(context);
+    final energyFlow =
+        await LocationPermissionHelper.promptEnergyForWorkout(context);
     if (!mounted) return;
 
     setState(() {
       _error = null;
       _finishing = false;
+      _energyThreat = energyFlow.status;
+      _askedToDisablePowerSaver = energyFlow.askedToDisablePowerSaver;
+      _energyBannerDismissed = false;
     });
 
     _clientSessionId = const Uuid().v4();
@@ -742,6 +868,40 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _distance = _engine.distanceMeters;
     _estimatedGap = _engine.estimatedGapMeters;
 
+    // Accuracy ruim em rajada → telemetria (ajuda a ver falha com tela apagada).
+    final acc = pos.accuracy.isNaN ? 99.0 : pos.accuracy;
+    if (acc > 35) {
+      _poorAccuracyStreak++;
+      if (_poorAccuracyStreak >= 6) {
+        final now = DateTime.now();
+        if (_lastPoorAccuracyDiagAt == null ||
+            now.difference(_lastPoorAccuracyDiagAt!) >=
+                const Duration(seconds: 45)) {
+          _lastPoorAccuracyDiagAt = now;
+          unawaited(_emitDiagnostic(
+            GpsDiagnosticEvent.poorAccuracy,
+            message:
+                'Accuracy ${acc.toStringAsFixed(0)}m ×$_poorAccuracyStreak'
+                '${_inBackground ? ' (tela apagada)' : ''}',
+            accuracy: acc,
+          ));
+        }
+      }
+    } else {
+      _poorAccuracyStreak = 0;
+    }
+
+    if (result.accepted && result.point != null && !result.isPaused) {
+      final beforeLaps = _laps.completedLaps.length;
+      _laps.addPoint(LatLng(result.point!.latitude, result.point!.longitude));
+      final afterLaps = _laps.completedLaps.length;
+      if (afterLaps > beforeLaps && afterLaps != _lastLapToast) {
+        _lastLapToast = afterLaps;
+        _lastSplitToast = 'Volta $afterLaps concluída';
+        unawaited(CardioFeedback.playBeeps(2));
+      }
+    }
+
     if (result.newSplit != null) {
       final s = result.newSplit!;
       _lastSplitToast =
@@ -766,10 +926,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       } else if (_engine.acceptedPoints.length < 2) {
         _gpsStatus = 'GPS ok — pode apagar a tela';
       } else {
+        final lapHint = _laps.lapCount >= 2 ? ' · ${_laps.lapCount} voltas' : '';
         _gpsStatus =
             '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
             'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-            '${_engine.acceptedPoints.length} pts';
+            '${_engine.acceptedPoints.length} pts$lapHint';
       }
     });
 
@@ -780,7 +941,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _lastPersistAt = now;
       unawaited(_persistActiveRun());
     }
-    unawaited(_refreshMapMatching());
+    // Com voltas ativas o traço colorido prevalece; OSRM ainda ajuda na 1ª volta.
+    if (_laps.lapCount < 2) {
+      unawaited(_refreshMapMatching());
+    }
   }
 
   Future<void> _restartGpsStreamOnly() async {
@@ -994,6 +1158,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           await SyncService.instance.queue('cardio_session', payload);
           await ActiveRunStore.instance.clear();
           if (!mounted) return;
+          await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+            context,
+            askedToDisablePowerSaver: _askedToDisablePowerSaver,
+          );
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Salvo offline — sincronize depois')),
           );
@@ -1021,6 +1190,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ),
         );
       } catch (_) {}
+      if (!mounted) return;
+      await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+        context,
+        askedToDisablePowerSaver: _askedToDisablePowerSaver,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1066,6 +1240,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       };
       await SyncService.instance.queue('cardio_session', payload);
       await ActiveRunStore.instance.clear();
+      if (!mounted) return;
+      await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+        context,
+        askedToDisablePowerSaver: _askedToDisablePowerSaver,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Salvo offline — sincronize depois')),
@@ -1159,14 +1338,90 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                 ? 'Auto-pause ativo — ande para retomar'
                                 : _gpsLost
                                     ? 'Sinal de GPS perdido. Tentando reconectar...'
-                                    : 'Pode apagar a tela — GPS + backup na nuvem ativos',
+                                    : (_energyThreat?.threatensBackgroundGps ==
+                                            true
+                                        ? 'Atenção: economia/otimização de bateria pode estragar o GPS com tela apagada'
+                                        : 'Pode apagar a tela — modo bolso ativo (GPS + nuvem)'),
                         style: TextStyle(
-                          color: _manualPaused || _autoPaused || _gpsLost
+                          color: _manualPaused ||
+                                  _autoPaused ||
+                                  _gpsLost ||
+                                  (_energyThreat?.threatensBackgroundGps ==
+                                      true)
                               ? Colors.orangeAccent
                               : Colors.lightGreenAccent,
                           fontSize: 12,
                         ),
                       ),
+                      if (_energyThreat?.threatensBackgroundGps == true &&
+                          !_energyBannerDismissed) ...[
+                        const SizedBox(height: 8),
+                        Material(
+                          color: const Color(0x33F59E0B),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.battery_alert,
+                                  color: Color(0xFFFBBF24),
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _energyThreat!.shortWarning ??
+                                        'Economia de energia pode atrapalhar o GPS',
+                                    style: const TextStyle(
+                                      color: Color(0xFFFDE68A),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Abrir economia de energia',
+                                  iconSize: 20,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () async {
+                                    if (_energyThreat?.powerSaverOn == true) {
+                                      await EnergySettingsLauncher
+                                          .openBatterySaverSettings();
+                                    } else {
+                                      await EnergySettingsLauncher
+                                          .openIgnoreBatteryOptimizations();
+                                    }
+                                    final e = await LocationPermissionHelper
+                                        .readEnergyThreats();
+                                    if (mounted) {
+                                      setState(() => _energyThreat = e);
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.settings,
+                                    color: Color(0xFFFBBF24),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Fechar',
+                                  iconSize: 20,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => setState(
+                                    () => _energyBannerDismissed = true,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Color(0xFFFBBF24),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 8),
                     Expanded(
@@ -1177,15 +1432,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running
+                            liveLatitude: _running && _engine.liveTipReliable
                                 ? (_snappedLive?.latitude ??
                                     _engine.liveLatitude)
-                                : null,
-                            liveLongitude: _running
+                                : (_running
+                                    ? _engine.lastAccepted?.latitude
+                                    : null),
+                            liveLongitude: _running && _engine.liveTipReliable
                                 ? (_snappedLive?.longitude ??
                                     _engine.liveLongitude)
-                                : null,
+                                : (_running
+                                    ? _engine.lastAccepted?.longitude
+                                    : null),
                             points: mapPoints,
+                            laps: _lapViews,
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -1237,8 +1497,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               ),
                               Expanded(
                                 child: _Stat(
-                                  'Pausas',
-                                  '${_engine.pauseCount}',
+                                  'Voltas',
+                                  '${_laps.lapCount}',
                                 ),
                               ),
                               Expanded(

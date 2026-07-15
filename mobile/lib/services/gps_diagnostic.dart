@@ -7,6 +7,14 @@ enum GpsDiagnosticEvent {
   lowBattery,
   locationProviderChanged,
   mockLocationDetected,
+  /// App foi para background / tela apagada durante o treino.
+  screenOffMode,
+  /// Accuracy ruim persistente (típico de bolso / canyon).
+  poorAccuracy,
+  /// Keepalive pontual usado porque o stream silenciou.
+  keepaliveFix,
+  /// Modo Economia de energia / Battery Saver do sistema ligado.
+  powerSaverMode,
 }
 
 extension GpsDiagnosticEventApi on GpsDiagnosticEvent {
@@ -28,6 +36,14 @@ extension GpsDiagnosticEventApi on GpsDiagnosticEvent {
         return 'LOCATION_PROVIDER_CHANGED';
       case GpsDiagnosticEvent.mockLocationDetected:
         return 'MOCK_LOCATION_DETECTED';
+      case GpsDiagnosticEvent.screenOffMode:
+        return 'SCREEN_OFF_MODE';
+      case GpsDiagnosticEvent.poorAccuracy:
+        return 'POOR_ACCURACY';
+      case GpsDiagnosticEvent.keepaliveFix:
+        return 'KEEPALIVE_FIX';
+      case GpsDiagnosticEvent.powerSaverMode:
+        return 'POWER_SAVER_MODE';
     }
   }
 }

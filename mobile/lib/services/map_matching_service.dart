@@ -94,13 +94,14 @@ class MapMatchingService {
           ? 20.0
           : accuraciesMeters[math.min(i, accuraciesMeters.length - 1)];
       final dist = _haversineMeters(prev, cur);
-      final minStep = math.max(3.0, math.min(acc * 0.28, 8.0));
+      // Accuracy ruim (tela apagada) exige passo maior para não riscar espaguete.
+      final minStep = math.max(3.5, math.min(acc * 0.40, 14.0));
       if (dist < minStep) continue;
 
       if (kept.length >= 2) {
         final before = kept[kept.length - 2];
         final prevSeg = _haversineMeters(before, prev);
-        final noise = math.max(10.0, acc * 0.9);
+        final noise = math.max(12.0, acc * 1.05);
         final backToBefore = _haversineMeters(before, cur);
         final turn = _bearingDelta(
           _bearing(before, prev),
@@ -110,16 +111,30 @@ class MapMatchingService {
         // Ida e volta na mesma calçada / deriva no bolso.
         if (prevSeg < noise &&
             dist < noise &&
-            (turn >= 95 || backToBefore < noise * 0.75)) {
+            (turn >= 80 || backToBefore < noise * 0.80)) {
           continue;
         }
 
         // Ponto que desfaz progresso recente (volta atrás na trilha).
         if (kept.length >= 3) {
           final older = kept[kept.length - 3];
-          if (_haversineMeters(older, cur) < noise * 0.7 && dist < noise) {
+          if (_haversineMeters(older, cur) < noise * 0.75 && dist < noise) {
             continue;
           }
+        }
+
+        // Cruzamento em X típico de drift com tela apagada: volta perto de
+        // qualquer ponto recente dentro do raio de erro.
+        if (kept.length >= 4 && dist < noise) {
+          var nearRecent = false;
+          final from = math.max(0, kept.length - 6);
+          for (var j = from; j < kept.length - 1; j++) {
+            if (_haversineMeters(kept[j], cur) < noise * 0.55) {
+              nearRecent = true;
+              break;
+            }
+          }
+          if (nearRecent && turn >= 60) continue;
         }
       }
 

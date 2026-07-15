@@ -405,4 +405,70 @@ void main() {
     expect(engine.averageSpeedKmh, greaterThan(2));
     expect(engine.averageSpeedKmh, lessThan(15));
   });
+
+  test('modo background rejeita deriva em espaguete com accuracy média', () {
+    final engine = GpsTrackingEngine(enableKalman: true);
+    engine.setBackgroundMode(true);
+    expect(engine.backgroundMode, isTrue);
+
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 1.4, accuracy: 18),
+      now: t0,
+    );
+
+    // Zig-zag típico com tela apagada: saltos de ~8–12 m em direções opostas.
+    for (var i = 1; i <= 16; i++) {
+      final east = i.isEven ? 0.00009 : -0.00009; // ~10 m
+      final north = i * 0.00001; // ~1 m progresso
+      engine.process(
+        _pos(
+          lat: -23.55000 - north,
+          lng: -46.63000 + east,
+          speed: 1.2,
+          accuracy: 22,
+        ),
+        now: t0.add(Duration(seconds: i * 2)),
+      );
+    }
+
+    // Em background, quase todos os ziguezagues devem cair (duplicate/jitter).
+    expect(engine.acceptedPoints.length, lessThan(7));
+  });
+
+  test('modo background aceita caminhada reta com passo real', () {
+    final engine = GpsTrackingEngine();
+    engine.setBackgroundMode(true);
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    for (var i = 0; i < 12; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.00010), // ~11 m
+          lng: -46.63000,
+          speed: 1.5,
+          accuracy: 12,
+        ),
+        now: t0.add(Duration(seconds: i * 4)),
+      );
+    }
+    expect(engine.acceptedPoints.length, greaterThan(8));
+    expect(engine.distanceMeters, greaterThan(80));
+  });
+
+  test('ponta ao vivo fica no último aceito com accuracy ruim', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, accuracy: 8),
+      now: t0,
+    );
+    engine.process(
+      _pos(lat: -23.55020, lng: -46.63020, accuracy: 55, speed: 0),
+      now: t0.add(const Duration(seconds: 3)),
+    );
+    expect(engine.liveTipReliable, isFalse);
+    expect(engine.acceptedPoints.length, 1);
+    expect(engine.liveLatitude, closeTo(-23.55000, 0.00001));
+    expect(engine.liveLongitude, closeTo(-46.63000, 0.00001));
+  });
 }
