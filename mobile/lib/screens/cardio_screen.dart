@@ -70,6 +70,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _askedToDisablePowerSaver = false;
   bool _mapExpanded = false;
   bool _compassMode = true;
+  /// Preserva o FlutterMap ao expandir (evita tela branca por remount).
+  final GlobalKey _routeMapKey = GlobalKey();
   double? _headingDegrees;
   StreamSubscription<double>? _compassSub;
   double _distance = 0;
@@ -1334,66 +1336,56 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final currentPace =
         GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
     final avgPace = GpsTrackingEngine.formatPace(_engine.averagePaceSecPerKm);
+    final expanded = _running && _mapExpanded;
+    final liveLat = _running && _engine.hasLiveFix
+        ? (_engine.liveTipReliable
+            ? (_snappedLive?.latitude ?? _engine.liveLatitude)
+            : _engine.liveLatitude)
+        : null;
+    final liveLng = _running && _engine.hasLiveFix
+        ? (_engine.liveTipReliable
+            ? (_snappedLive?.longitude ?? _engine.liveLongitude)
+            : _engine.liveLongitude)
+        : null;
 
-    if (_running && _mapExpanded) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: RouteMapView(
-          points: mapPoints,
-          laps: _lapViews,
-          expanded: true,
-          height: MediaQuery.sizeOf(context).height,
-          followUser: true,
-          headingDegrees: _headingDegrees,
-          rotateWithHeading: _compassMode,
-          showLapLegend: false,
-          liveLatitude: _engine.hasLiveFix ? _engine.liveLatitude : null,
-          liveLongitude: _engine.hasLiveFix ? _engine.liveLongitude : null,
-          onToggleExpand: () => setState(() => _mapExpanded = false),
-          onToggleCompass: () => setState(() => _compassMode = !_compassMode),
-          statusMessage: _gpsStatus,
-          hud: _MapHud(
-            elapsed: _fmt(_elapsed),
-            distanceKm:
-                (_engine.distanceMeters / 1000).toStringAsFixed(2),
-            pace: currentPace,
-            speed: _engine.displaySpeedKmh.toStringAsFixed(1),
-            phaseLabel: phase == null
-                ? null
-                : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
-            roundLabel: phase == null ? null : _roundLabel,
-            onPause: _toggleManualPause,
-            paused: _manualPaused,
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Treino outdoor'),
-        actions: [
-          if (_engine.acceptedPoints.isNotEmpty)
-            PopupMenuButton<String>(
-              tooltip: 'Exportar',
-              onSelected: (v) => unawaited(_export(v)),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'gpx', child: Text('Exportar GPX')),
-                PopupMenuItem(value: 'tcx', child: Text('Exportar TCX')),
+    return PopScope(
+      canPop: !expanded,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && expanded) {
+          setState(() => _mapExpanded = false);
+        }
+      },
+      child: Scaffold(
+      backgroundColor: expanded ? const Color(0xFF1E293B) : null,
+      appBar: expanded
+          ? null
+          : AppBar(
+              title: const Text('Treino outdoor'),
+              actions: [
+                if (_engine.acceptedPoints.isNotEmpty)
+                  PopupMenuButton<String>(
+                    tooltip: 'Exportar',
+                    onSelected: (v) => unawaited(_export(v)),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'gpx', child: Text('Exportar GPX')),
+                      PopupMenuItem(value: 'tcx', child: Text('Exportar TCX')),
+                    ],
+                    icon: const Icon(Icons.ios_share),
+                  ),
+                if (!_running)
+                  IconButton(
+                    onPressed: _loading ? null : _loadWorkout,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Atualizar treino',
+                  ),
               ],
-              icon: const Icon(Icons.ios_share),
             ),
-          if (!_running)
-            IconButton(
-              onPressed: _loading ? null : _loadWorkout,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Atualizar treino',
-            ),
-        ],
-      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -1505,36 +1497,31 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     Expanded(
                       child: ListView(
                         children: [
-                          RouteMapView(
-                            height: 220,
-                            statusMessage: _running
-                                ? (_gpsStatus ?? 'Buscando sinal GPS...')
-                                : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running && _engine.hasLiveFix
-                                ? (_engine.liveTipReliable
-                                    ? (_snappedLive?.latitude ??
-                                        _engine.liveLatitude)
-                                    : _engine.liveLatitude)
-                                : null,
-                            liveLongitude: _running && _engine.hasLiveFix
-                                ? (_engine.liveTipReliable
-                                    ? (_snappedLive?.longitude ??
-                                        _engine.liveLongitude)
-                                    : _engine.liveLongitude)
-                                : null,
-                            points: mapPoints,
-                            laps: _lapViews,
-                            headingDegrees: _headingDegrees,
-                            rotateWithHeading: _running && _compassMode,
-                            onToggleExpand: _running
-                                ? () => setState(() => _mapExpanded = true)
-                                : null,
-                            onToggleCompass: _running
-                                ? () => setState(
-                                      () => _compassMode = !_compassMode,
-                                    )
-                                : null,
-                          ),
+                          if (!expanded)
+                            RouteMapView(
+                              key: _routeMapKey,
+                              height: 220,
+                              statusMessage: _running
+                                  ? (_gpsStatus ?? 'Buscando sinal GPS...')
+                                  : 'Inicie para começar o rastreio GPS',
+                              liveLatitude: liveLat,
+                              liveLongitude: liveLng,
+                              points: mapPoints,
+                              laps: _lapViews,
+                              headingDegrees: _headingDegrees,
+                              rotateWithHeading: _running && _compassMode,
+                              onToggleExpand: _running
+                                  ? () =>
+                                      setState(() => _mapExpanded = true)
+                                  : null,
+                              onToggleCompass: _running
+                                  ? () => setState(
+                                        () => _compassMode = !_compassMode,
+                                      )
+                                  : null,
+                            )
+                          else
+                            const SizedBox(height: 220),
                           const SizedBox(height: 12),
                           Row(
                             children: [
@@ -1794,6 +1781,46 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                 ),
               ),
             ),
+                if (expanded)
+                  Positioned.fill(
+                    child: Material(
+                      color: const Color(0xFF1E293B),
+                      child: RouteMapView(
+                        key: _routeMapKey,
+                        points: mapPoints,
+                        laps: _lapViews,
+                        expanded: true,
+                        height: 220,
+                        followUser: true,
+                        headingDegrees: _headingDegrees,
+                        rotateWithHeading: _compassMode,
+                        showLapLegend: false,
+                        liveLatitude: liveLat,
+                        liveLongitude: liveLng,
+                        onToggleExpand: () =>
+                            setState(() => _mapExpanded = false),
+                        onToggleCompass: () =>
+                            setState(() => _compassMode = !_compassMode),
+                        statusMessage: _gpsStatus,
+                        hud: _MapHud(
+                          elapsed: _fmt(_elapsed),
+                          distanceKm: (_engine.distanceMeters / 1000)
+                              .toStringAsFixed(2),
+                          pace: currentPace,
+                          speed: _engine.displaySpeedKmh.toStringAsFixed(1),
+                          phaseLabel: phase == null
+                              ? null
+                              : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
+                          roundLabel: phase == null ? null : _roundLabel,
+                          onPause: _toggleManualPause,
+                          paused: _manualPaused,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+      ),
     );
   }
 }
