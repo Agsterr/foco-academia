@@ -149,16 +149,31 @@ class MapMatchingService {
       }
     }
 
+    // Nunca colapsar em só [início, fim]: isso vira “corda” no OSRM
+    // (corredor start→atual que estica/encolhe em vez de desenhar o caminho).
     if (kept.length < 2 && points.length >= 2) {
-      return (
-        points: [points.first, points.last],
-        times: recordedAt == null
-            ? null
-            : [recordedAt.first, recordedAt.last],
-        accuracies: accuraciesMeters == null
-            ? null
-            : [accuraciesMeters.first, accuraciesMeters.last],
+      return _downsample(
+        points,
+        times: recordedAt,
+        accuracies: accuraciesMeters,
+        maxPoints: math.min(40, points.length),
       );
+    }
+
+    // Garante a ponta atual na trilha limpa.
+    if (kept.length >= 2) {
+      final lastIn = points.last;
+      final lastKept = kept.last;
+      if ((lastIn.latitude - lastKept.latitude).abs() > 1e-7 ||
+          (lastIn.longitude - lastKept.longitude).abs() > 1e-7) {
+        kept.add(lastIn);
+        if (keptTimes != null && recordedAt != null) {
+          keptTimes.add(recordedAt.last);
+        }
+        if (keptAcc != null && accuraciesMeters != null) {
+          keptAcc.add(accuraciesMeters.last);
+        }
+      }
     }
 
     return (points: kept, times: keptTimes, accuracies: keptAcc);
@@ -254,11 +269,21 @@ class MapMatchingService {
         candidates,
   }) {
     final rawLen = _pathLength(raw);
+    final straight = raw.length >= 2
+        ? _haversineMeters(raw.first, raw.last)
+        : 0.0;
     ({List<LatLng> geometry, double confidence, double lengthMeters})? best;
     var bestScore = -1.0;
 
     for (final c in candidates) {
       if (c == null || c.geometry.length < 2) continue;
+      // Rejeita match que “achatou” um caminho sinuoso em corredor start→fim.
+      if (raw.length >= 5 &&
+          rawLen > straight * 1.25 &&
+          c.lengthMeters < rawLen * 0.70 &&
+          c.lengthMeters <= straight * 1.35) {
+        continue;
+      }
       // Penaliza rota que “passeia” demais vs trilha limpa (ida-e-volta).
       final inflate = rawLen <= 1
           ? 1.0
