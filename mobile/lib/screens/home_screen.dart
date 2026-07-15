@@ -6,6 +6,7 @@ import '../data/services/app_update_service.dart';
 import '../presentation/widgets/app_update_prompt.dart';
 import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
+import '../services/location_permission_helper.dart';
 import '../services/profile_service.dart';
 import '../services/sync_service.dart';
 import 'calorie_stats_screen.dart';
@@ -34,6 +35,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   double _kmToday = 0;
   double _totalKm = 0;
   int _minutesToday = 0;
+  EnergyThreatStatus? _energyThreat;
+  bool _energyBannerDismissed = false;
+  bool _energyDialogShownThisSession = false;
+  bool _energyCheckBusy = false;
 
   @override
   void initState() {
@@ -44,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _loadVersion();
       _checkActiveRun();
       _loadTodayStats();
+      _checkEnergyWarning(showDialogIfNeeded: true);
     });
   }
 
@@ -80,7 +86,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _loadVersion();
       _checkActiveRun();
       _loadTodayStats();
+      // Voltou das configs / outro app: relê Economia e mantém o alerta.
+      _checkEnergyWarning(showDialogIfNeeded: false);
     }
+  }
+
+  Future<void> _checkEnergyWarning({required bool showDialogIfNeeded}) async {
+    if (_energyCheckBusy) return;
+    _energyCheckBusy = true;
+    try {
+      final shouldDialog =
+          showDialogIfNeeded && !_energyDialogShownThisSession;
+      final flow = await LocationPermissionHelper.promptEnergyOnAppEntry(
+        context,
+        showDialogIfNeeded: shouldDialog,
+      );
+      if (!mounted) return;
+      if (shouldDialog && flow.status.powerSaverOn) {
+        _energyDialogShownThisSession = true;
+      }
+      setState(() {
+        _energyThreat = flow.status;
+        // Se ainda está ligada, o alerta volta mesmo se o usuário fechou.
+        if (flow.status.powerSaverOn) {
+          _energyBannerDismissed = false;
+        }
+      });
+    } finally {
+      _energyCheckBusy = false;
+    }
+  }
+
+  Future<void> _openEnergySettings() async {
+    if (_energyThreat?.powerSaverOn == true) {
+      await EnergySettingsLauncher.openBatterySaverSettings();
+    } else {
+      await EnergySettingsLauncher.openIgnoreBatteryOptimizations();
+    }
+    await _checkEnergyWarning(showDialogIfNeeded: false);
   }
 
   Future<void> _loadVersion() async {
@@ -185,6 +228,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               minutesToday: _minutesToday,
               totalKm: _totalKm,
             ),
+            if (_energyThreat?.powerSaverOn == true &&
+                !_energyBannerDismissed) ...[
+              const SizedBox(height: 10),
+              _EnergyWarningBanner(
+                message: _energyThreat!.shortWarning ??
+                    'Economia de energia ligada — desligue para o GPS outdoor',
+                onOpenSettings: _openEnergySettings,
+                onDismiss: () => setState(() => _energyBannerDismissed = true),
+              ),
+            ],
             const SizedBox(height: 10),
             if (_hasActiveRun) ...[
               _MenuCard(
@@ -420,6 +473,78 @@ class _StatCell extends StatelessWidget {
         ),
         Text(label, style: TextStyle(color: labelColor, fontSize: 12)),
       ],
+    );
+  }
+}
+
+class _EnergyWarningBanner extends StatelessWidget {
+  const _EnergyWarningBanner({
+    required this.message,
+    required this.onOpenSettings,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x33F59E0B),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.battery_alert,
+              color: Color(0xFFFBBF24),
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Economia de energia ligada',
+                    style: TextStyle(
+                      color: Color(0xFFFDE68A),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      color: Color(0xFFFDE68A),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: onOpenSettings,
+              child: const Text(
+                'Desligar',
+                style: TextStyle(color: Color(0xFFFBBF24)),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Fechar',
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: onDismiss,
+              icon: const Icon(Icons.close, color: Color(0xFFFBBF24)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
