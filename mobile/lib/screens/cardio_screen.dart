@@ -1265,6 +1265,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ? _intervals[_phaseIndex]
           : null;
 
+  /// Cada rodada prescrita = 1 caminhada + 1 corrida (2 fases no app).
+  String get _roundLabel {
+    if (_intervals.isEmpty) return '';
+    final totalRounds = (_intervals.length + 1) ~/ 2;
+    final roundNum = (_phaseIndex ~/ 2) + 1;
+    final paused =
+        _manualPaused || _autoPaused ? ' · pausado' : '';
+    return 'Rodada $roundNum de $totalRounds$paused';
+  }
+
   double get _avgSpeedKmh => _engine.averageSpeedKmh;
 
   @override
@@ -1602,8 +1612,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                     ),
                                   ),
                                   Text(
-                                    'Fase ${_phaseIndex + 1} de ${_intervals.length}'
-                                    '${_manualPaused || _autoPaused ? ' · pausado' : ''}',
+                                    () {
+                                      // Cada rodada = caminhada + corrida (2 fases).
+                                      final totalRounds =
+                                          (_intervals.length + 1) ~/ 2;
+                                      final roundNum = (_phaseIndex ~/ 2) + 1;
+                                      final paused = _manualPaused || _autoPaused
+                                          ? ' · pausado'
+                                          : '';
+                                      return 'Rodada $roundNum de $totalRounds$paused';
+                                    }(),
                                     style: const TextStyle(
                                       color: Colors.white70,
                                       fontSize: 12,
