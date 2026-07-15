@@ -229,7 +229,8 @@ class _RouteMapViewState extends State<RouteMapView> {
       width: 48,
       height: 48,
       child: Transform.rotate(
-        // Seta aponta para frente do celular; no modo bússola o mapa já gira.
+        // No modo bússola o mapa já gira com o heading; seta fica “pra cima”.
+        // Fora dele, a seta gira no mapa north-up (rumo GPS ou bússola).
         angle: widget.rotateWithHeading
             ? 0
             : ((heading ?? 0) * math.pi / 180.0),
