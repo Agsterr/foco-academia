@@ -46,6 +46,16 @@ class EnergySettingsLauncher {
 
   static const _channel = MethodChannel('com.focodev.academia/energy_settings');
 
+  /// Lê o interruptor de Economia via PowerManager (mais confiável que o plugin).
+  static Future<bool?> isPowerSaveMode() async {
+    if (kIsWeb || !Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<bool>('isPowerSaveMode');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Vai direto ao interruptor de Economia de energia do sistema.
   static Future<bool> openBatterySaverSettings() async {
     if (kIsWeb || !Platform.isAndroid) return false;
@@ -88,9 +98,9 @@ class LocationPermissionHelper {
       final s = await Permission.ignoreBatteryOptimizations.status;
       battery = s.isGranted ? 'ignored' : 'optimized';
       try {
-        final saver = await _battery.isInBatterySaveMode;
-        powerSaver = saver ? 'on' : 'off';
-        level = '${await _battery.batteryLevel}';
+        final threats = await readEnergyThreats();
+        powerSaver = threats.powerSaverOn ? 'on' : 'off';
+        level = threats.batteryLevel != null ? '${threats.batteryLevel}' : 'n/a';
       } catch (_) {}
     }
     return {
@@ -103,6 +113,8 @@ class LocationPermissionHelper {
   }
 
   /// Lê ameaças de energia (otimização do app + economia do sistema).
+  ///
+  /// Economia: PowerManager nativo OU battery_plus (qualquer um ligado = ligada).
   static Future<EnergyThreatStatus> readEnergyThreats() async {
     if (kIsWeb || !Platform.isAndroid) {
       return const EnergyThreatStatus(
@@ -118,7 +130,13 @@ class LocationPermissionHelper {
       optimized = !s.isGranted;
     } catch (_) {}
     try {
-      saver = await _battery.isInBatterySaveMode;
+      final native = await EnergySettingsLauncher.isPowerSaveMode();
+      if (native == true) saver = true;
+    } catch (_) {}
+    try {
+      if (await _battery.isInBatterySaveMode) saver = true;
+    } catch (_) {}
+    try {
       level = await _battery.batteryLevel;
     } catch (_) {}
     return EnergyThreatStatus(
@@ -126,6 +144,74 @@ class LocationPermissionHelper {
       powerSaverOn: saver,
       batteryLevel: level,
     );
+  }
+
+  static Future<bool> _showPowerSaverDialog(BuildContext context) async {
+    final go = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Economia de energia ligada'),
+        content: const Text(
+          'Com a Economia de energia ligada, o celular reduz o GPS '
+          'quando a tela apaga. O app continua gravando, mas os pontos '
+          'chegam atrasados ou imprecisos — e a rota no mapa fica torta '
+          'ou em zigue-zague.\n\n'
+          'Desligue a Economia só durante o treino. Toque em '
+          '“Desligar agora” para ir direto ao interruptor.\n\n'
+          'Se não desligar, o aviso continua na tela.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Continuar assim'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Desligar agora'),
+          ),
+        ],
+      ),
+    );
+    if (go == true) {
+      await EnergySettingsLauncher.openBatterySaverSettings();
+      return true;
+    }
+    return false;
+  }
+
+  /// Ao entrar na conta / voltar ao app: se a Economia estiver ligada, avisa.
+  ///
+  /// [showDialogIfNeeded] controla o modal; o caller deve manter um banner
+  /// enquanto [EnergyThreatStatus.powerSaverOn] for true.
+  static Future<({EnergyThreatStatus status, bool askedToDisablePowerSaver})>
+      promptEnergyOnAppEntry(
+    BuildContext context, {
+    bool showDialogIfNeeded = true,
+  }) async {
+    var threats = await readEnergyThreats();
+    var askedToDisable = false;
+    if (kIsWeb || !Platform.isAndroid) {
+      return (status: threats, askedToDisablePowerSaver: false);
+    }
+
+    if (threats.powerSaverOn && showDialogIfNeeded && context.mounted) {
+      askedToDisable = true;
+      final opened = await _showPowerSaverDialog(context);
+      threats = await readEnergyThreats();
+      if (opened && threats.powerSaverOn && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Economia ainda ligada — desligue o interruptor na tela que abriu',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+
+    return (status: threats, askedToDisablePowerSaver: askedToDisable);
   }
 
   /// Solicita: rationale → notificação → while-in-use → always → GPS ligado.
@@ -283,46 +369,17 @@ class LocationPermissionHelper {
     // 1) Economia de energia do SISTEMA — o app NÃO desliga sozinho.
     if (threats.powerSaverOn && context.mounted) {
       askedToDisable = true;
-      final go = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Economia de energia ligada'),
-          content: const Text(
-            'Com a Economia de energia ligada, o celular reduz o GPS '
-            'quando a tela apaga. O app continua gravando, mas os pontos '
-            'chegam atrasados ou imprecisos — e a rota no mapa fica torta '
-            'ou em zigue-zague.\n\n'
-            'Desligue a Economia só durante o treino. Toque em '
-            '“Desligar agora” para ir direto ao interruptor.\n\n'
-            'Ao finalizar, podemos te levar de volta para religar.',
+      final opened = await _showPowerSaverDialog(context);
+      threats = await readEnergyThreats();
+      if (opened && threats.powerSaverOn && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Economia ainda ligada — desligue o interruptor na tela que abriu',
+            ),
+            duration: Duration(seconds: 4),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Continuar assim'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Desligar agora'),
-            ),
-          ],
-        ),
-      );
-      if (go == true) {
-        await EnergySettingsLauncher.openBatterySaverSettings();
-        // Usuário volta das configs — relê o status.
-        threats = await readEnergyThreats();
-        if (threats.powerSaverOn && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Economia ainda ligada — desligue o interruptor na tela que abriu',
-              ),
-              duration: Duration(seconds: 4),
-            ),
-          );
-        }
+        );
       }
     }
 

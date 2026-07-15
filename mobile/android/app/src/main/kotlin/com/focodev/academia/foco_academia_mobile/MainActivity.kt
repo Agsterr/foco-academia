@@ -1,8 +1,10 @@
 package com.focodev.academia.foco_academia_mobile
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,6 +18,9 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "isPowerSaveMode" -> {
+                        result.success(isPowerSaveMode())
+                    }
                     "openBatterySaverSettings" -> {
                         result.success(openBatterySaverSettings())
                     }
@@ -25,6 +30,16 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /** Economia de energia / Battery Saver do sistema (PowerManager). */
+    private fun isPowerSaveMode(): Boolean {
+        return try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            pm.isPowerSaveMode
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** Abre a tela do sistema com o interruptor de Economia de energia. */

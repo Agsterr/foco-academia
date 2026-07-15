@@ -71,5 +71,6 @@ void main() {
       EnergySettingsLauncher.openIgnoreBatteryOptimizations,
       isA<Function>(),
     );
+    expect(EnergySettingsLauncher.isPowerSaveMode, isA<Function>());
   });
 }

@@ -240,10 +240,42 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadWorkout();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Só lê status + banner; o modal já aparece no login (Home) e no Iniciar.
+      unawaited(_refreshEnergyThreat(promptIfNeeded: false));
+    });
+  }
+
+  Future<void> _refreshEnergyThreat({bool promptIfNeeded = false}) async {
+    if (!mounted) return;
+    if (promptIfNeeded && !_running) {
+      final flow = await LocationPermissionHelper.promptEnergyOnAppEntry(
+        context,
+        showDialogIfNeeded: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _energyThreat = flow.status;
+        if (flow.status.powerSaverOn) _energyBannerDismissed = false;
+        if (flow.askedToDisablePowerSaver) {
+          _askedToDisablePowerSaver = true;
+        }
+      });
+      return;
+    }
+    final e = await LocationPermissionHelper.readEnergyThreats();
+    if (!mounted) return;
+    setState(() {
+      _energyThreat = e;
+      if (e.powerSaverOn) _energyBannerDismissed = false;
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshEnergyThreat(promptIfNeeded: false));
+    }
     if (state == AppLifecycleState.resumed && _running) {
       _inBackground = false;
       _stopBackgroundKeepalive();
@@ -1422,6 +1454,71 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (_energyThreat?.threatensBackgroundGps == true &&
+                        !_energyBannerDismissed) ...[
+                      const SizedBox(height: 8),
+                      Material(
+                        color: const Color(0x33F59E0B),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.battery_alert,
+                                color: Color(0xFFFBBF24),
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _energyThreat!.shortWarning ??
+                                      'Economia de energia pode atrapalhar o GPS',
+                                  style: const TextStyle(
+                                    color: Color(0xFFFDE68A),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Abrir economia de energia',
+                                iconSize: 20,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () async {
+                                  if (_energyThreat?.powerSaverOn == true) {
+                                    await EnergySettingsLauncher
+                                        .openBatterySaverSettings();
+                                  } else {
+                                    await EnergySettingsLauncher
+                                        .openIgnoreBatteryOptimizations();
+                                  }
+                                  await _refreshEnergyThreat();
+                                },
+                                icon: const Icon(
+                                  Icons.settings,
+                                  color: Color(0xFFFBBF24),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Fechar',
+                                iconSize: 20,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => setState(
+                                  () => _energyBannerDismissed = true,
+                                ),
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Color(0xFFFBBF24),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     if (_running) ...[
                       const SizedBox(height: 6),
                       Text(
@@ -1446,75 +1543,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           fontSize: 12,
                         ),
                       ),
-                      if (_energyThreat?.threatensBackgroundGps == true &&
-                          !_energyBannerDismissed) ...[
-                        const SizedBox(height: 8),
-                        Material(
-                          color: const Color(0x33F59E0B),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.battery_alert,
-                                  color: Color(0xFFFBBF24),
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _energyThreat!.shortWarning ??
-                                        'Economia de energia pode atrapalhar o GPS',
-                                    style: const TextStyle(
-                                      color: Color(0xFFFDE68A),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Abrir economia de energia',
-                                  iconSize: 20,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () async {
-                                    if (_energyThreat?.powerSaverOn == true) {
-                                      await EnergySettingsLauncher
-                                          .openBatterySaverSettings();
-                                    } else {
-                                      await EnergySettingsLauncher
-                                          .openIgnoreBatteryOptimizations();
-                                    }
-                                    final e = await LocationPermissionHelper
-                                        .readEnergyThreats();
-                                    if (mounted) {
-                                      setState(() => _energyThreat = e);
-                                    }
-                                  },
-                                  icon: const Icon(
-                                    Icons.settings,
-                                    color: Color(0xFFFBBF24),
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Fechar',
-                                  iconSize: 20,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () => setState(
-                                    () => _energyBannerDismissed = true,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.close,
-                                    color: Color(0xFFFBBF24),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
                     const SizedBox(height: 8),
                     Expanded(
