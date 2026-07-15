@@ -22,11 +22,42 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
   AthleteRecommendations? _recs;
   bool _loading = true;
   String? _error;
+  late DateTime _focusMonth;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _focusMonth = DateTime(now.year, now.month);
     _load();
+  }
+
+  void _rebuildConsistency() {
+    _consistency = OutdoorConsistency.fromSessions(
+      _sessions,
+      focusMonth: _focusMonth,
+    );
+  }
+
+  void _shiftMonth(int delta) {
+    setState(() {
+      _focusMonth = DateTime(_focusMonth.year, _focusMonth.month + delta);
+      _rebuildConsistency();
+    });
+  }
+
+  void _jumpToYear(int year) {
+    final now = DateTime.now();
+    final month = year == now.year ? now.month : 12;
+    setState(() {
+      _focusMonth = DateTime(year, month);
+      // Não passar do mês atual.
+      final current = DateTime(now.year, now.month);
+      if (_focusMonth.isAfter(current)) {
+        _focusMonth = current;
+      }
+      _rebuildConsistency();
+    });
   }
 
   Future<void> _load() async {
@@ -46,7 +77,7 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
       final completed = list.where((s) => s.completedAt != null).toList();
       setState(() {
         _sessions = completed;
-        _consistency = OutdoorConsistency.fromSessions(completed);
+        _rebuildConsistency();
         _recs = recs;
         _loading = false;
       });
@@ -65,8 +96,18 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
     }
   }
 
+  List<CardioSession> get _sessionsInFocusMonth {
+    return _sessions.where((s) {
+      final when = s.completedAt ?? s.startedAt;
+      if (when == null) return false;
+      final local = when.toLocal();
+      return local.year == _focusMonth.year && local.month == _focusMonth.month;
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final monthSessions = _sessionsInFocusMonth;
     return Scaffold(
       appBar: AppBar(title: const Text('Histórico outdoor')),
       body: _loading
@@ -86,7 +127,12 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                       padding: const EdgeInsets.all(12),
                       children: [
                         if (_consistency != null) ...[
-                          OutdoorCalendarCard(summary: _consistency!),
+                          OutdoorCalendarCard(
+                            summary: _consistency!,
+                            onPreviousMonth: () => _shiftMonth(-1),
+                            onNextMonth: () => _shiftMonth(1),
+                            onSelectYear: _jumpToYear,
+                          ),
                           const SizedBox(height: 16),
                         ],
                         if (_recs != null) ...[
@@ -103,7 +149,8 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                           ..._recs!.recommendations.map(
                             (r) => Padding(
                               padding: const EdgeInsets.only(bottom: 4),
-                              child: Text('• $r', style: const TextStyle(fontSize: 13)),
+                              child: Text('• $r',
+                                  style: const TextStyle(fontSize: 13)),
                             ),
                           ),
                           ..._recs!.warnings.map(
@@ -121,7 +168,9 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                           const SizedBox(height: 16),
                         ],
                         Text(
-                          'Treinos',
+                          _consistency != null
+                              ? 'Treinos · ${_consistency!.monthLabel}'
+                              : 'Treinos',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
@@ -137,8 +186,20 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                               ),
                             ),
                           )
+                        else if (monthSessions.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 16, bottom: 24),
+                            child: Center(
+                              child: Text(
+                                'Nenhum treino neste mês.\n'
+                                'Use as setas para ver meses e anos anteriores.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white54),
+                              ),
+                            ),
+                          )
                         else
-                          ..._sessions.map((s) {
+                          ...monthSessions.map((s) {
                             final km = ((s.distanceMeters ?? 0) / 1000)
                                 .toStringAsFixed(2);
                             final when =
