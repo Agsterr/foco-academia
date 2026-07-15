@@ -28,10 +28,10 @@ class EnergyThreatStatus {
 
   String? get shortWarning {
     if (powerSaverOn && batteryOptimized) {
-      return 'Economia de energia + otimização ativas — GPS pode falhar com tela apagada';
+      return 'Economia + otimização ativas: com a tela apagada o GPS atrasa e a rota fica torta';
     }
     if (powerSaverOn) {
-      return 'Economia de energia ligada — desligue para GPS estável com tela apagada';
+      return 'Economia ligada: com a tela apagada o GPS fica impreciso e a rota sai torta';
     }
     if (batteryOptimized) {
       return 'Otimização de bateria ativa — permita “sem restrições” para este app';
@@ -46,7 +46,7 @@ class EnergySettingsLauncher {
 
   static const _channel = MethodChannel('com.focodev.academia/energy_settings');
 
-  /// Vai direto ao interruptor de Economia de energia (como o Strava).
+  /// Vai direto ao interruptor de Economia de energia do sistema.
   static Future<bool> openBatterySaverSettings() async {
     if (kIsWeb || !Platform.isAndroid) return false;
     try {
@@ -267,8 +267,8 @@ class LocationPermissionHelper {
     return true;
   }
 
-  /// Antes do treino (estilo Strava): se a Economia estiver ligada, leva
-  /// direto ao interruptor. Também pede isenção de otimização do app.
+  /// Antes do treino: se a Economia estiver ligada, explica o problema e
+  /// leva direto ao interruptor.
   ///
   /// Retorna o status após o fluxo e se pedimos ao usuário desligar a Economia
   /// (para religar ao finalizar).
@@ -287,13 +287,15 @@ class LocationPermissionHelper {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          title: const Text('Desligar economia de energia'),
+          title: const Text('Economia de energia ligada'),
           content: const Text(
-            'A Economia de energia do celular está ligada e atrapalha o GPS '
-            'com a tela apagada (a rota fica torta).\n\n'
-            'O app não consegue desligar isso sozinho. Toque em '
-            '“Desligar agora” para ir direto ao interruptor — como no Strava.\n\n'
-            'Ao terminar o treino, podemos te levar de volta para religar.',
+            'Com a Economia de energia ligada, o celular reduz o GPS '
+            'quando a tela apaga. O app continua gravando, mas os pontos '
+            'chegam atrasados ou imprecisos — e a rota no mapa fica torta '
+            'ou em zigue-zague.\n\n'
+            'Desligue a Economia só durante o treino. Toque em '
+            '“Desligar agora” para ir direto ao interruptor.\n\n'
+            'Ao finalizar, podemos te levar de volta para religar.',
           ),
           actions: [
             TextButton(

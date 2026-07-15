@@ -27,7 +27,7 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    /** Abre a tela do sistema com o interruptor de Economia de energia (estilo Strava). */
+    /** Abre a tela do sistema com o interruptor de Economia de energia. */
     private fun openBatterySaverSettings(): Boolean {
         return try {
             val candidates = ArrayList<Intent>()

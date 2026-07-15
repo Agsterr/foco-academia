@@ -1340,7 +1340,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                     ? 'Sinal de GPS perdido. Tentando reconectar...'
                                     : (_energyThreat?.threatensBackgroundGps ==
                                             true
-                                        ? 'Atenção: economia/otimização de bateria pode estragar o GPS com tela apagada'
+                                        ? 'Economia ligada: com tela apagada a rota pode sair torta'
                                         : 'Pode apagar a tela — modo bolso ativo (GPS + nuvem)'),
                         style: TextStyle(
                           color: _manualPaused ||
