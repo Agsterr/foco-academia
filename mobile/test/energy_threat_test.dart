@@ -35,12 +35,14 @@ void main() {
         powerSaverOn: true,
       ).shortWarning!;
       expect(both.toLowerCase(), contains('economia'));
+      expect(both.toLowerCase(), contains('rota'));
 
       final saver = const EnergyThreatStatus(
         batteryOptimized: false,
         powerSaverOn: true,
       ).shortWarning!;
       expect(saver.toLowerCase(), contains('economia'));
+      expect(saver.toLowerCase(), contains('rota'));
 
       final opt = const EnergyThreatStatus(
         batteryOptimized: true,
