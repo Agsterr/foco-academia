@@ -159,6 +159,15 @@ class MapMatchingService {
         maxPoints: math.min(40, points.length),
       );
     }
+    // Filtro agressivo demais (accuracy ruim) → só restaram extremos:
+    // segunda passagem com passo menor para preservar o formato.
+    if (points.length >= 6 && kept.length <= 2) {
+      return _cleanTrailRelaxed(
+        points,
+        accuraciesMeters: accuraciesMeters,
+        recordedAt: recordedAt,
+      );
+    }
 
     // Garante a ponta atual na trilha limpa.
     if (kept.length >= 2) {
@@ -176,6 +185,55 @@ class MapMatchingService {
       }
     }
 
+    return (points: kept, times: keptTimes, accuracies: keptAcc);
+  }
+
+  /// Passo menor quando o filtro principal apagou o formato do caminho.
+  ({
+    List<LatLng> points,
+    List<DateTime>? times,
+    List<double>? accuracies,
+  }) _cleanTrailRelaxed(
+    List<LatLng> points, {
+    List<double>? accuraciesMeters,
+    List<DateTime>? recordedAt,
+  }) {
+    final kept = <LatLng>[points.first];
+    final keptTimes = recordedAt != null ? <DateTime>[recordedAt.first] : null;
+    final keptAcc =
+        accuraciesMeters != null ? <double>[accuraciesMeters.first] : null;
+
+    for (var i = 1; i < points.length; i++) {
+      final cur = points[i];
+      final prev = kept.last;
+      final acc = accuraciesMeters == null
+          ? 12.0
+          : math.min(
+              accuraciesMeters[math.min(i, accuraciesMeters.length - 1)],
+              14.0,
+            );
+      final dist = _haversineMeters(prev, cur);
+      final minStep = math.max(3.0, math.min(acc * 0.22, 6.0));
+      if (dist < minStep && i < points.length - 1) continue;
+      kept.add(cur);
+      if (keptTimes != null && recordedAt != null) {
+        keptTimes.add(recordedAt[math.min(i, recordedAt.length - 1)]);
+      }
+      if (keptAcc != null && accuraciesMeters != null) {
+        keptAcc.add(
+          accuraciesMeters[math.min(i, accuraciesMeters.length - 1)],
+        );
+      }
+    }
+
+    if (kept.length < 3) {
+      return _downsample(
+        points,
+        times: recordedAt,
+        accuracies: accuraciesMeters,
+        maxPoints: math.min(40, points.length),
+      );
+    }
     return (points: kept, times: keptTimes, accuracies: keptAcc);
   }
 

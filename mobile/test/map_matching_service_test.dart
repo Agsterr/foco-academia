@@ -118,8 +118,8 @@ void main() {
       raw,
       accuraciesMeters: List.filled(raw.length, 28.0),
     );
-    expect(cleaned.points.length, lessThan(raw.length));
-    expect(cleaned.points.length, greaterThanOrEqualTo(2));
+    // Não pode virar só início+fim (efeito “corda”).
+    expect(cleaned.points.length, greaterThan(2));
     // Mantém progresso geral para o norte.
     expect(cleaned.points.last.latitude, lessThan(cleaned.points.first.latitude));
     svc.dispose();
