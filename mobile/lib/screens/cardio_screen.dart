@@ -65,6 +65,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   DateTime? _lastPoorAccuracyDiagAt;
   EnergyThreatStatus? _energyThreat;
   bool _energyBannerDismissed = false;
+  /// Pedimos para desligar a Economia no início → oferecer religar ao finalizar.
+  bool _askedToDisablePowerSaver = false;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -770,16 +772,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       return;
     }
     if (!mounted) return;
-    final energy =
-        await LocationPermissionHelper.promptBatteryOptimizationIfNeeded(
-      context,
-    );
+    final energyFlow =
+        await LocationPermissionHelper.promptEnergyForWorkout(context);
     if (!mounted) return;
 
     setState(() {
       _error = null;
       _finishing = false;
-      _energyThreat = energy;
+      _energyThreat = energyFlow.status;
+      _askedToDisablePowerSaver = energyFlow.askedToDisablePowerSaver;
       _energyBannerDismissed = false;
     });
 
@@ -1157,6 +1158,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           await SyncService.instance.queue('cardio_session', payload);
           await ActiveRunStore.instance.clear();
           if (!mounted) return;
+          await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+            context,
+            askedToDisablePowerSaver: _askedToDisablePowerSaver,
+          );
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Salvo offline — sincronize depois')),
           );
@@ -1184,6 +1190,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           ),
         );
       } catch (_) {}
+      if (!mounted) return;
+      await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+        context,
+        askedToDisablePowerSaver: _askedToDisablePowerSaver,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1229,6 +1240,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       };
       await SyncService.instance.queue('cardio_session', payload);
       await ActiveRunStore.instance.clear();
+      if (!mounted) return;
+      await LocationPermissionHelper.promptRestorePowerSaverIfNeeded(
+        context,
+        askedToDisablePowerSaver: _askedToDisablePowerSaver,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Salvo offline — sincronize depois')),
@@ -1365,19 +1381,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   ),
                                 ),
                                 IconButton(
-                                  tooltip: 'Abrir configs',
+                                  tooltip: 'Abrir economia de energia',
                                   iconSize: 20,
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
-                                  onPressed: () =>
-                                      LocationPermissionHelper
-                                          .promptBatteryOptimizationIfNeeded(
-                                    context,
-                                  ).then((e) {
+                                  onPressed: () async {
+                                    if (_energyThreat?.powerSaverOn == true) {
+                                      await EnergySettingsLauncher
+                                          .openBatterySaverSettings();
+                                    } else {
+                                      await EnergySettingsLauncher
+                                          .openIgnoreBatteryOptimizations();
+                                    }
+                                    final e = await LocationPermissionHelper
+                                        .readEnergyThreats();
                                     if (mounted) {
                                       setState(() => _energyThreat = e);
                                     }
-                                  }),
+                                  },
                                   icon: const Icon(
                                     Icons.settings,
                                     color: Color(0xFFFBBF24),

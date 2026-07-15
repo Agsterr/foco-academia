@@ -61,4 +61,13 @@ void main() {
   test('POWER_SAVER_MODE apiName', () {
     expect(GpsDiagnosticEvent.powerSaverMode.apiName, 'POWER_SAVER_MODE');
   });
+
+  test('EnergySettingsLauncher channel name is estável', () {
+    // Garante que a API pública existe sem depender de platform channel.
+    expect(EnergySettingsLauncher.openBatterySaverSettings, isA<Function>());
+    expect(
+      EnergySettingsLauncher.openIgnoreBatteryOptimizations,
+      isA<Function>(),
+    );
+  });
 }
