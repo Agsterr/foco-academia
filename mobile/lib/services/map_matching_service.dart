@@ -149,18 +149,91 @@ class MapMatchingService {
       }
     }
 
+    // Nunca colapsar em só [início, fim]: isso vira “corda” no OSRM
+    // (corredor start→atual que estica/encolhe em vez de desenhar o caminho).
     if (kept.length < 2 && points.length >= 2) {
-      return (
-        points: [points.first, points.last],
-        times: recordedAt == null
-            ? null
-            : [recordedAt.first, recordedAt.last],
-        accuracies: accuraciesMeters == null
-            ? null
-            : [accuraciesMeters.first, accuraciesMeters.last],
+      return _downsample(
+        points,
+        times: recordedAt,
+        accuracies: accuraciesMeters,
+        maxPoints: math.min(40, points.length),
+      );
+    }
+    // Filtro agressivo demais (accuracy ruim) → só restaram extremos:
+    // segunda passagem com passo menor para preservar o formato.
+    if (points.length >= 6 && kept.length <= 2) {
+      return _cleanTrailRelaxed(
+        points,
+        accuraciesMeters: accuraciesMeters,
+        recordedAt: recordedAt,
       );
     }
 
+    // Garante a ponta atual na trilha limpa.
+    if (kept.length >= 2) {
+      final lastIn = points.last;
+      final lastKept = kept.last;
+      if ((lastIn.latitude - lastKept.latitude).abs() > 1e-7 ||
+          (lastIn.longitude - lastKept.longitude).abs() > 1e-7) {
+        kept.add(lastIn);
+        if (keptTimes != null && recordedAt != null) {
+          keptTimes.add(recordedAt.last);
+        }
+        if (keptAcc != null && accuraciesMeters != null) {
+          keptAcc.add(accuraciesMeters.last);
+        }
+      }
+    }
+
+    return (points: kept, times: keptTimes, accuracies: keptAcc);
+  }
+
+  /// Passo menor quando o filtro principal apagou o formato do caminho.
+  ({
+    List<LatLng> points,
+    List<DateTime>? times,
+    List<double>? accuracies,
+  }) _cleanTrailRelaxed(
+    List<LatLng> points, {
+    List<double>? accuraciesMeters,
+    List<DateTime>? recordedAt,
+  }) {
+    final kept = <LatLng>[points.first];
+    final keptTimes = recordedAt != null ? <DateTime>[recordedAt.first] : null;
+    final keptAcc =
+        accuraciesMeters != null ? <double>[accuraciesMeters.first] : null;
+
+    for (var i = 1; i < points.length; i++) {
+      final cur = points[i];
+      final prev = kept.last;
+      final acc = accuraciesMeters == null
+          ? 12.0
+          : math.min(
+              accuraciesMeters[math.min(i, accuraciesMeters.length - 1)],
+              14.0,
+            );
+      final dist = _haversineMeters(prev, cur);
+      final minStep = math.max(3.0, math.min(acc * 0.22, 6.0));
+      if (dist < minStep && i < points.length - 1) continue;
+      kept.add(cur);
+      if (keptTimes != null && recordedAt != null) {
+        keptTimes.add(recordedAt[math.min(i, recordedAt.length - 1)]);
+      }
+      if (keptAcc != null && accuraciesMeters != null) {
+        keptAcc.add(
+          accuraciesMeters[math.min(i, accuraciesMeters.length - 1)],
+        );
+      }
+    }
+
+    if (kept.length < 3) {
+      return _downsample(
+        points,
+        times: recordedAt,
+        accuracies: accuraciesMeters,
+        maxPoints: math.min(40, points.length),
+      );
+    }
     return (points: kept, times: keptTimes, accuracies: keptAcc);
   }
 
@@ -254,11 +327,21 @@ class MapMatchingService {
         candidates,
   }) {
     final rawLen = _pathLength(raw);
+    final straight = raw.length >= 2
+        ? _haversineMeters(raw.first, raw.last)
+        : 0.0;
     ({List<LatLng> geometry, double confidence, double lengthMeters})? best;
     var bestScore = -1.0;
 
     for (final c in candidates) {
       if (c == null || c.geometry.length < 2) continue;
+      // Rejeita match que “achatou” um caminho sinuoso em corredor start→fim.
+      if (raw.length >= 5 &&
+          rawLen > straight * 1.25 &&
+          c.lengthMeters < rawLen * 0.70 &&
+          c.lengthMeters <= straight * 1.35) {
+        continue;
+      }
       // Penaliza rota que “passeia” demais vs trilha limpa (ida-e-volta).
       final inflate = rawLen <= 1
           ? 1.0

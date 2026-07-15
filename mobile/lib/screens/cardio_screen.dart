@@ -70,8 +70,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _askedToDisablePowerSaver = false;
   bool _mapExpanded = false;
   bool _compassMode = true;
+  /// Preserva o FlutterMap ao expandir (evita tela branca por remount).
+  final GlobalKey _routeMapKey = GlobalKey();
   double? _headingDegrees;
   StreamSubscription<double>? _compassSub;
+  /// Ponta ao vivo máxima anexada ao match — acima disso = “corda” elástica.
+  static const _maxMatchedTipMeters = 32.0;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -106,45 +110,51 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           .toList();
     }
 
+    final cleanedTrail = _cleanedAcceptedTrail();
     final matched = _matchedRoute;
     if (matched.length >= 2) {
-      final out = matched
-          .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
-          .toList();
-      // Com tela apagada / accuracy ruim, a ponta crua risca espaguete.
+      LatLng? tip;
       if (_engine.liveTipReliable) {
-        final tip = _snappedLive ??
+        tip = _snappedLive ??
             (_engine.liveLatitude != null && _engine.liveLongitude != null
                 ? LatLng(_engine.liveLatitude!, _engine.liveLongitude!)
                 : null);
-        if (tip != null) {
-          final last = matched.last;
-          final d = Geolocator.distanceBetween(
-            last.latitude,
-            last.longitude,
-            tip.latitude,
-            tip.longitude,
-          );
-          if (d >= 0.5) {
-            out.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
-          }
-        }
       }
-      return out;
+      final last = matched.last;
+      final tipDist = tip == null
+          ? 0.0
+          : Geolocator.distanceBetween(
+              last.latitude,
+              last.longitude,
+              tip.latitude,
+              tip.longitude,
+            );
+      // Match velho / ponta longe = efeito “corda”. Prefere trilha acumulada.
+      final staleMatch = tip != null && tipDist > _maxMatchedTipMeters;
+      final matchTooShort = cleanedTrail.length >= 5 &&
+          matched.length <= 3 &&
+          cleanedTrail.length > matched.length + 2;
+      if (!staleMatch && !matchTooShort) {
+        final out = matched
+            .map((p) =>
+                RoutePointView(latitude: p.latitude, longitude: p.longitude))
+            .toList();
+        if (tip != null && tipDist >= 0.5) {
+          out.add(RoutePointView(
+            latitude: tip.latitude,
+            longitude: tip.longitude,
+          ));
+        }
+        return out;
+      }
     }
 
-    // Fallback: trilha limpa (sem zig-zag de bolso), nunca GPS bruto em espaguete.
-    final raw = _engine.acceptedPoints;
-    final cleaned = _mapMatching.cleanTrail(
-      raw.map((p) => LatLng(p.latitude, p.longitude)).toList(),
-      accuraciesMeters: raw.map((p) => p.accuracyMeters ?? 25.0).toList(),
-      recordedAt: raw.map((p) => p.recordedAt).toList(),
-    );
-    final lat = _engine.liveLatitude;
-    final lng = _engine.liveLongitude;
-    final points = cleaned.points
+    // Fallback: trilha limpa acumulada (desenha o formato do caminho).
+    final points = cleanedTrail
         .map((p) => RoutePointView(latitude: p.latitude, longitude: p.longitude))
         .toList();
+    final lat = _engine.liveLatitude;
+    final lng = _engine.liveLongitude;
     if (_running &&
         _engine.liveTipReliable &&
         lat != null &&
@@ -158,10 +168,32 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                 tip.longitude,
               ) >=
               0.4) {
-        points.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+        // Cap na ponta também no fallback (evita elástico longo).
+        final d = points.isEmpty
+            ? 0.0
+            : Geolocator.distanceBetween(
+                points.last.latitude,
+                points.last.longitude,
+                tip.latitude,
+                tip.longitude,
+              );
+        if (d <= _maxMatchedTipMeters) {
+          points.add(RoutePointView(latitude: tip.latitude, longitude: tip.longitude));
+        }
       }
     }
     return points;
+  }
+
+  List<LatLng> _cleanedAcceptedTrail() {
+    final raw = _engine.acceptedPoints;
+    if (raw.isEmpty) return const [];
+    final cleaned = _mapMatching.cleanTrail(
+      raw.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+      accuraciesMeters: raw.map((p) => p.accuracyMeters ?? 25.0).toList(),
+      recordedAt: raw.map((p) => p.recordedAt).toList(),
+    );
+    return cleaned.points;
   }
 
   List<RouteLapView> get _lapViews {
@@ -225,7 +257,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           _lastMatchedPointCount = accepted.length;
           _lastMatchAt = now;
         } else {
-          // Sem OSRM: mostra trilha limpa (já usada no getter), marca tentativa.
+          // Sem OSRM: limpa match velho para não esticar “corda” no mapa.
+          _matchedRoute = [];
           _lastMatchAt = now;
         }
         if (snapped != null) _snappedLive = snapped;
@@ -870,8 +903,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
-    // Heading do GPS quando está andando (mais estável na rua).
-    if (!pos.heading.isNaN && pos.heading >= 0 && _engine.displaySpeedKmh >= 1.2) {
+    // Heading: bússola manda no modo “girar com o celular”.
+    // GPS só preenche se ainda não houver heading da bússola.
+    if (!pos.heading.isNaN &&
+        pos.heading >= 0 &&
+        _engine.displaySpeedKmh >= 1.2 &&
+        _headingDegrees == null) {
       _headingDegrees = pos.heading;
     }
 
@@ -1009,16 +1046,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       CompassHeadingService.instance.start();
       _compassSub = CompassHeadingService.instance.stream.listen((h) {
         if (!_running || _finishing) return;
-        // GPS heading manda quando há deslocamento; bússola quando vira o celular.
-        final gpsH = _engine.lastAccepted?.heading;
-        final moving = _engine.displaySpeedKmh >= 1.2;
-        final next = (moving && gpsH != null && gpsH >= 0) ? gpsH : h;
+        // Modo bússola = orientação do celular. GPS heading só como fallback
+        // quando a bússola ainda não entregou nada (senão a seta “trava”).
+        final next = h;
         if (_headingDegrees == null ||
-            (_headingDegrees! - next).abs() > 1.5) {
+            _headingDeltaAbs(_headingDegrees!, next) > 0.8) {
           if (mounted) setState(() => _headingDegrees = next);
         }
       });
     } catch (_) {}
+  }
+
+  static double _headingDeltaAbs(double a, double b) {
+    var d = (b - a).abs() % 360.0;
+    if (d > 180) d = 360 - d;
+    return d;
   }
 
   void _stopMotionSensor() {
@@ -1349,66 +1391,56 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         ? _avgSpeedKmh.toStringAsFixed(1)
         : '--';
 
-    if (_running && _mapExpanded) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: RouteMapView(
-          points: mapPoints,
-          laps: _lapViews,
-          expanded: true,
-          height: MediaQuery.sizeOf(context).height,
-          followUser: true,
-          headingDegrees: _headingDegrees,
-          rotateWithHeading: _compassMode,
-          showLapLegend: false,
-          liveLatitude: _engine.hasLiveFix ? _engine.liveLatitude : null,
-          liveLongitude: _engine.hasLiveFix ? _engine.liveLongitude : null,
-          liveAccuracyMeters: _engine.lastRawAccuracy,
-          onToggleExpand: () => setState(() => _mapExpanded = false),
-          onToggleCompass: () => setState(() => _compassMode = !_compassMode),
-          statusMessage: _gpsStatus,
-          hud: _MapHud(
-            elapsed: _fmt(_elapsed),
-            distanceKm:
-                (_engine.distanceMeters / 1000).toStringAsFixed(2),
-            pace: currentPace,
-            speed: currentSpeedLabel,
-            phaseLabel: phase == null
-                ? null
-                : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
-            roundLabel: phase == null ? null : _roundLabel,
-            onPause: _toggleManualPause,
-            paused: _manualPaused,
-          ),
-        ),
-      );
-    }
+    final expanded = _running && _mapExpanded;
+    final liveLat = _running && _engine.hasLiveFix
+        ? (_engine.liveTipReliable
+            ? (_snappedLive?.latitude ?? _engine.liveLatitude)
+            : _engine.liveLatitude)
+        : null;
+    final liveLng = _running && _engine.hasLiveFix
+        ? (_engine.liveTipReliable
+            ? (_snappedLive?.longitude ?? _engine.liveLongitude)
+            : _engine.liveLongitude)
+        : null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Treino outdoor'),
-        actions: [
-          if (_engine.acceptedPoints.isNotEmpty)
-            PopupMenuButton<String>(
-              tooltip: 'Exportar',
-              onSelected: (v) => unawaited(_export(v)),
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'gpx', child: Text('Exportar GPX')),
-                PopupMenuItem(value: 'tcx', child: Text('Exportar TCX')),
+    return PopScope(
+      canPop: !expanded,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && expanded) {
+          setState(() => _mapExpanded = false);
+        }
+      },
+      child: Scaffold(
+      backgroundColor: expanded ? const Color(0xFF1E293B) : null,
+      appBar: expanded
+          ? null
+          : AppBar(
+              title: const Text('Treino outdoor'),
+              actions: [
+                if (_engine.acceptedPoints.isNotEmpty)
+                  PopupMenuButton<String>(
+                    tooltip: 'Exportar',
+                    onSelected: (v) => unawaited(_export(v)),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'gpx', child: Text('Exportar GPX')),
+                      PopupMenuItem(value: 'tcx', child: Text('Exportar TCX')),
+                    ],
+                    icon: const Icon(Icons.ios_share),
+                  ),
+                if (!_running)
+                  IconButton(
+                    onPressed: _loading ? null : _loadWorkout,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Atualizar treino',
+                  ),
               ],
-              icon: const Icon(Icons.ios_share),
             ),
-          if (!_running)
-            IconButton(
-              onPressed: _loading ? null : _loadWorkout,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Atualizar treino',
-            ),
-        ],
-      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                SafeArea(
               top: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -1520,39 +1552,34 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     Expanded(
                       child: ListView(
                         children: [
-                          RouteMapView(
-                            height: 220,
-                            statusMessage: _running
-                                ? (_gpsStatus ?? 'Buscando sinal GPS...')
-                                : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running && _engine.hasLiveFix
-                                ? (_engine.liveTipReliable
-                                    ? (_snappedLive?.latitude ??
-                                        _engine.liveLatitude)
-                                    : _engine.liveLatitude)
-                                : null,
-                            liveLongitude: _running && _engine.hasLiveFix
-                                ? (_engine.liveTipReliable
-                                    ? (_snappedLive?.longitude ??
-                                        _engine.liveLongitude)
-                                    : _engine.liveLongitude)
-                                : null,
-                            liveAccuracyMeters: _running
-                                ? _engine.lastRawAccuracy
-                                : null,
-                            points: mapPoints,
-                            laps: _lapViews,
-                            headingDegrees: _headingDegrees,
-                            rotateWithHeading: _running && _compassMode,
-                            onToggleExpand: _running
-                                ? () => setState(() => _mapExpanded = true)
-                                : null,
-                            onToggleCompass: _running
-                                ? () => setState(
-                                      () => _compassMode = !_compassMode,
-                                    )
-                                : null,
-                          ),
+                          if (!expanded)
+                            RouteMapView(
+                              key: _routeMapKey,
+                              height: 220,
+                              statusMessage: _running
+                                  ? (_gpsStatus ?? 'Buscando sinal GPS...')
+                                  : 'Inicie para começar o rastreio GPS',
+                              liveLatitude: liveLat,
+                              liveLongitude: liveLng,
+                              liveAccuracyMeters: _running
+                                  ? _engine.lastRawAccuracy
+                                  : null,
+                              points: mapPoints,
+                              laps: _lapViews,
+                              headingDegrees: _headingDegrees,
+                              rotateWithHeading: _running && _compassMode,
+                              onToggleExpand: _running
+                                  ? () =>
+                                      setState(() => _mapExpanded = true)
+                                  : null,
+                              onToggleCompass: _running
+                                  ? () => setState(
+                                        () => _compassMode = !_compassMode,
+                                      )
+                                  : null,
+                            )
+                          else
+                            const SizedBox(height: 220),
                           const SizedBox(height: 12),
                           Row(
                             children: [
@@ -1816,6 +1843,47 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                 ),
               ),
             ),
+                if (expanded)
+                  Positioned.fill(
+                    child: Material(
+                      color: const Color(0xFF1E293B),
+                      child: RouteMapView(
+                        key: _routeMapKey,
+                        points: mapPoints,
+                        laps: _lapViews,
+                        expanded: true,
+                        height: 220,
+                        followUser: true,
+                        headingDegrees: _headingDegrees,
+                        rotateWithHeading: _compassMode,
+                        showLapLegend: false,
+                        liveLatitude: liveLat,
+                        liveLongitude: liveLng,
+                        liveAccuracyMeters: _engine.lastRawAccuracy,
+                        onToggleExpand: () =>
+                            setState(() => _mapExpanded = false),
+                        onToggleCompass: () =>
+                            setState(() => _compassMode = !_compassMode),
+                        statusMessage: _gpsStatus,
+                        hud: _MapHud(
+                          elapsed: _fmt(_elapsed),
+                          distanceKm: (_engine.distanceMeters / 1000)
+                              .toStringAsFixed(2),
+                          pace: currentPace,
+                          speed: currentSpeedLabel,
+                          phaseLabel: phase == null
+                              ? null
+                              : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
+                          roundLabel: phase == null ? null : _roundLabel,
+                          onPause: _toggleManualPause,
+                          paused: _manualPaused,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+      ),
     );
   }
 }

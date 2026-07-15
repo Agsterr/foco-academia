@@ -118,10 +118,62 @@ void main() {
       raw,
       accuraciesMeters: List.filled(raw.length, 28.0),
     );
-    expect(cleaned.points.length, lessThan(raw.length));
-    expect(cleaned.points.length, greaterThanOrEqualTo(2));
+    // Não pode virar só início+fim (efeito “corda”).
+    expect(cleaned.points.length, greaterThan(2));
     // Mantém progresso geral para o norte.
     expect(cleaned.points.last.latitude, lessThan(cleaned.points.first.latitude));
+    svc.dispose();
+  });
+
+  test('cleanTrail não colapsa trilha longa em só início+fim', () {
+    final svc = MapMatchingService(client: MockClient((_) async {
+      return http.Response('{}', 500);
+    }));
+    // Pontos todos dentro do minStep (~accuracy) → filtro antigo virava [first,last].
+    final raw = <LatLng>[
+      const LatLng(-23.55000, -46.63000),
+      const LatLng(-23.55001, -46.63001),
+      const LatLng(-23.55002, -46.63002),
+      const LatLng(-23.55003, -46.63003),
+      const LatLng(-23.55004, -46.63004),
+      const LatLng(-23.55005, -46.63005),
+      const LatLng(-23.55006, -46.63006),
+      const LatLng(-23.55020, -46.63020), // ~25 m de progresso real
+    ];
+    final cleaned = svc.cleanTrail(
+      raw,
+      accuraciesMeters: List.filled(raw.length, 30.0),
+    );
+    expect(cleaned.points.length, greaterThan(2));
+    expect(cleaned.points.first.latitude, raw.first.latitude);
+    expect(cleaned.points.last.latitude, raw.last.latitude);
+    svc.dispose();
+  });
+
+  test('cleanTrail preserva formato em L (não vira corredor start→fim)', () {
+    final svc = MapMatchingService(client: MockClient((_) async {
+      return http.Response('{}', 500);
+    }));
+    // Caminho em L: norte e depois leste.
+    final raw = <LatLng>[
+      const LatLng(-23.55000, -46.63000),
+      const LatLng(-23.55010, -46.63000),
+      const LatLng(-23.55020, -46.63000),
+      const LatLng(-23.55020, -46.62990),
+      const LatLng(-23.55020, -46.62980),
+    ];
+    final cleaned = svc.cleanTrail(
+      raw,
+      accuraciesMeters: List.filled(raw.length, 10.0),
+    );
+    expect(cleaned.points.length, greaterThanOrEqualTo(3));
+    // Deve manter o joelho do L (mudança de direção), não só extremos.
+    final hasCorner = cleaned.points.any(
+      (p) =>
+          (p.latitude - (-23.55020)).abs() < 0.00005 &&
+          (p.longitude - (-46.63000)).abs() < 0.00005,
+    );
+    expect(hasCorner, isTrue);
     svc.dispose();
   });
 }
