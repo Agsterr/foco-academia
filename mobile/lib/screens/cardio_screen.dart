@@ -1331,9 +1331,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final phase = _currentPhase;
     final title = _workout?.title ?? 'Corrida/caminhada livre';
     final mapPoints = _mapRoutePoints;
-    final currentPace =
-        GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
+    final weakGps = _engine.weakGpsSignal;
+    // Com GPS fraco a vel. instantânea mente — não mostra número louco.
+    final currentSpeedLabel = (!_running ||
+            (weakGps && _engine.displaySpeedKmh < 1.2))
+        ? '--'
+        : (weakGps && _engine.displaySpeedKmh > 8.0)
+            ? '--'
+            : _engine.displaySpeedKmh.toStringAsFixed(1);
+    final currentPace = (!_running ||
+            (weakGps && _engine.displaySpeedKmh < 1.2) ||
+            (weakGps && _engine.displaySpeedKmh > 8.0))
+        ? '--'
+        : GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
     final avgPace = GpsTrackingEngine.formatPace(_engine.averagePaceSecPerKm);
+    final avgSpeedLabel = _avgSpeedKmh > 0
+        ? _avgSpeedKmh.toStringAsFixed(1)
+        : '--';
 
     if (_running && _mapExpanded) {
       return Scaffold(
@@ -1349,6 +1363,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           showLapLegend: false,
           liveLatitude: _engine.hasLiveFix ? _engine.liveLatitude : null,
           liveLongitude: _engine.hasLiveFix ? _engine.liveLongitude : null,
+          liveAccuracyMeters: _engine.lastRawAccuracy,
           onToggleExpand: () => setState(() => _mapExpanded = false),
           onToggleCompass: () => setState(() => _compassMode = !_compassMode),
           statusMessage: _gpsStatus,
@@ -1357,7 +1372,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
             distanceKm:
                 (_engine.distanceMeters / 1000).toStringAsFixed(2),
             pace: currentPace,
-            speed: _engine.displaySpeedKmh.toStringAsFixed(1),
+            speed: currentSpeedLabel,
             phaseLabel: phase == null
                 ? null
                 : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
@@ -1522,6 +1537,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                         _engine.liveLongitude)
                                     : _engine.liveLongitude)
                                 : null,
+                            liveAccuracyMeters: _running
+                                ? _engine.lastRawAccuracy
+                                : null,
                             points: mapPoints,
                             laps: _lapViews,
                             headingDegrees: _headingDegrees,
@@ -1574,13 +1592,17 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               Expanded(
                                 child: _Stat(
                                   'Vel. agora',
-                                  '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h',
+                                  currentSpeedLabel == '--'
+                                      ? '--'
+                                      : '$currentSpeedLabel km/h',
                                 ),
                               ),
                               Expanded(
                                 child: _Stat(
                                   'Vel. média',
-                                  '${_avgSpeedKmh.toStringAsFixed(1)} km/h',
+                                  avgSpeedLabel == '--'
+                                      ? '--'
+                                      : '$avgSpeedLabel km/h',
                                 ),
                               ),
                               Expanded(
@@ -1874,7 +1896,12 @@ class _MapHud extends StatelessWidget {
                 Expanded(child: _hudStat('Tempo', elapsed)),
                 Expanded(child: _hudStat('Distância', '$distanceKm km')),
                 Expanded(child: _hudStat('Ritmo', pace)),
-                Expanded(child: _hudStat('Vel.', '$speed km/h')),
+                Expanded(
+                  child: _hudStat(
+                    'Vel.',
+                    speed == '--' ? '--' : '$speed km/h',
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),

@@ -638,15 +638,28 @@ class GpsTrackingEngine {
 
   void toggleManualPause() => setManualPaused(!manualPaused);
 
-  void _pushSpeed(double sampleKmh) {
+  void _pushSpeed(double sampleKmh, {double accuracyMeters = 15}) {
     sampleKmh = sampleKmh.clamp(0, maxSpeedKmh);
     if (sampleKmh <= 0) {
       // Decai lento — entre fixes de 0,5s não zera a UI.
-      _smoothedSpeedKmh *= 0.92;
+      _smoothedSpeedKmh *= accuracyMeters > 28 ? 0.82 : 0.92;
       if (_smoothedSpeedKmh < 0.4) _smoothedSpeedKmh = 0;
       return;
     }
-    // Sobe quase na hora (tempo real).
+    // GPS fraco (±30 m+): nunca “pula” para pico — vira 16 km/h em caminhada.
+    if (accuracyMeters > 28) {
+      final capped = math.min(sampleKmh, 8.0);
+      if (_smoothedSpeedKmh < 1.0) {
+        _smoothedSpeedKmh = capped * 0.35;
+      } else if (capped > _smoothedSpeedKmh) {
+        _smoothedSpeedKmh = _smoothedSpeedKmh * 0.75 + capped * 0.25;
+      } else {
+        _smoothedSpeedKmh = _smoothedSpeedKmh * 0.55 + capped * 0.45;
+      }
+      if (_smoothedSpeedKmh > 8.0) _smoothedSpeedKmh = 8.0;
+      return;
+    }
+    // Sobe quase na hora (tempo real) com accuracy decente.
     if (_smoothedSpeedKmh < 2.0) {
       _smoothedSpeedKmh = sampleKmh;
     } else if (sampleKmh > _smoothedSpeedKmh) {
@@ -818,6 +831,8 @@ class GpsTrackingEngine {
     _lastRawAt = recordedAt;
 
     // Velocidade: chip do GPS responde rápido; deslocamento confirma.
+    // Com accuracy ruim, salto dentro do raio de erro NÃO é velocidade real
+    // (ex.: ±39 m → 4–5 m de jitter em 1 s ≈ 16 km/h fantasma na UI).
     double sampleSpeed = 0;
     double step = 0;
     double dt = 0;
@@ -830,7 +845,12 @@ class GpsTrackingEngine {
           pos.latitude,
           pos.longitude,
         );
-        if (step >= 0.25) {
+        final minStepForSpeed = accuracy <= 15
+            ? 0.8
+            : accuracy <= 28
+                ? math.max(1.5, accuracy * 0.18)
+                : math.max(4.0, math.min(accuracy * 0.35, 14.0));
+        if (step >= minStepForSpeed) {
           sampleSpeed = (step / dt) * 3.6;
         }
       }
@@ -838,7 +858,8 @@ class GpsTrackingEngine {
     final chip = chipSpeedKmh ?? 0;
     // No bolso, bestForNavigation/chip inventa velocidade via bússola.
     // Só confia no chip com deslocamento real ou accuracy boa + movimento.
-    if (sampleSpeed <= 0 && chip >= 0.8) {
+    // Com GPS fraco (±30 m+), o chip mente (ex.: 16 km/h parado) — ignora.
+    if (sampleSpeed <= 0 && chip >= 0.8 && accuracy <= 28) {
       if (step >= 0.8 || (_phoneMoving && step >= 0.35 && accuracy <= 20)) {
         sampleSpeed = chip;
       }
@@ -849,9 +870,12 @@ class GpsTrackingEngine {
       }
       // senão: mantém velocidade pelo deslocamento GPS.
     } else if (sampleSpeed <= 0 && _phoneMoving && _smoothedSpeedKmh > 0) {
-      sampleSpeed = _smoothedSpeedKmh * 0.7;
+      // Sem deslocamento confiável: só mantém se o sinal não estiver péssimo.
+      if (accuracy <= 28) {
+        sampleSpeed = _smoothedSpeedKmh * 0.7;
+      }
     }
-    _pushSpeed(sampleSpeed);
+    _pushSpeed(sampleSpeed, accuracyMeters: accuracy);
 
     if (!manualPaused) {
       if (prevAt != null &&
