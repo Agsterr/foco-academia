@@ -25,8 +25,7 @@ class RouteLapView {
   final double distanceMeters;
 }
 
-/// Mapa real (OpenStreetMap) com traço da rota, no estilo Strava/Google.
-/// Com várias voltas, cada lap ganha uma cor e legenda numerada.
+/// Mapa OpenStreetMap com traço da rota, bússola e modo tela cheia.
 class RouteMapView extends StatefulWidget {
   const RouteMapView({
     super.key,
@@ -38,18 +37,37 @@ class RouteMapView extends StatefulWidget {
     this.liveLatitude,
     this.liveLongitude,
     this.showLapLegend = true,
+    this.headingDegrees,
+    this.rotateWithHeading = false,
+    this.expanded = false,
+    this.onToggleExpand,
+    this.onToggleCompass,
+    this.hud,
   });
 
   final List<RoutePointView> points;
-  /// Quando preenchido (≥2 voltas), desenha uma polyline colorida por volta.
   final List<RouteLapView> laps;
   final double height;
   final String? statusMessage;
   final bool followUser;
-  /// Ponto azul ao vivo (último fix), mesmo antes de entrar na rota.
   final double? liveLatitude;
   final double? liveLongitude;
   final bool showLapLegend;
+
+  /// Direção atual (0–360). Gira o mapa no modo bússola.
+  final double? headingDegrees;
+
+  /// Mapa “para cima” = direção do celular (como na tela de bloqueio).
+  final bool rotateWithHeading;
+
+  /// Ocupa a tela inteira (esconde o resto do treino).
+  final bool expanded;
+
+  final VoidCallback? onToggleExpand;
+  final VoidCallback? onToggleCompass;
+
+  /// Painel flutuante (tempo, km, ritmo…) no modo expandido.
+  final Widget? hud;
 
   @override
   State<RouteMapView> createState() => _RouteMapViewState();
@@ -57,10 +75,11 @@ class RouteMapView extends StatefulWidget {
 
 class _RouteMapViewState extends State<RouteMapView> {
   static const _fallbackCenter = LatLng(-23.5505, -46.6333);
-  static const _trailColor = Color(0xFFFC4C02); // laranja Strava
+  static const _trailColor = Color(0xFFFC4C02);
 
   final _mapController = MapController();
   LatLng? _lastFollowed;
+  double? _lastRotation;
 
   LatLng? get _livePoint {
     final lat = widget.liveLatitude;
@@ -76,23 +95,40 @@ class _RouteMapViewState extends State<RouteMapView> {
   @override
   void didUpdateWidget(covariant RouteMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _syncCamera();
+  }
+
+  void _syncCamera() {
     if (!widget.followUser) return;
     final next = _livePoint ??
         (widget.points.isNotEmpty ? widget.points.last.latLng : null);
     if (next == null) return;
-    final prev = _lastFollowed;
-    if (prev == null ||
-        (prev.latitude - next.latitude).abs() > 0.0000003 ||
-        (prev.longitude - next.longitude).abs() > 0.0000003) {
-      _lastFollowed = next;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final zoom = widget.points.length <= 1
-            ? 18.0
-            : _mapController.camera.zoom;
-        _mapController.move(next, zoom.clamp(16.0, 19.0));
-      });
-    }
+
+    final heading = widget.headingDegrees;
+    final wantRot =
+        widget.rotateWithHeading && heading != null ? heading : 0.0;
+
+    final moved = _lastFollowed == null ||
+        (_lastFollowed!.latitude - next.latitude).abs() > 0.0000003 ||
+        (_lastFollowed!.longitude - next.longitude).abs() > 0.0000003;
+    final rotated = _lastRotation == null ||
+        (_lastRotation! - wantRot).abs() > 1.5;
+
+    if (!moved && !rotated) return;
+
+    _lastFollowed = next;
+    _lastRotation = wantRot;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final zoom = widget.points.length <= 1
+          ? 18.0
+          : _mapController.camera.zoom.clamp(16.0, 19.0);
+      try {
+        _mapController.moveAndRotate(next, zoom, -wantRot);
+      } catch (_) {
+        _mapController.move(next, zoom);
+      }
+    });
   }
 
   @override
@@ -141,6 +177,52 @@ class _RouteMapViewState extends State<RouteMapView> {
     return const [];
   }
 
+  Marker _buildLiveMarker(LatLng live) {
+    final heading = widget.headingDegrees;
+    return Marker(
+      point: live,
+      width: 48,
+      height: 48,
+      child: Transform.rotate(
+        // Seta aponta para frente do celular; no modo bússola o mapa já gira.
+        angle: widget.rotateWithHeading
+            ? 0
+            : ((heading ?? 0) * mathPi / 180.0),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: Color(0x334285F4),
+                shape: BoxShape.circle,
+              ),
+            ),
+            if (heading != null)
+              const Icon(
+                Icons.navigation,
+                color: Color(0xFF4285F4),
+                size: 28,
+              )
+            else
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4285F4),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2.5),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const mathPi = 3.141592653589793;
+
   @override
   Widget build(BuildContext context) {
     final latLngs = widget.points.map((p) => p.latLng).toList();
@@ -148,108 +230,89 @@ class _RouteMapViewState extends State<RouteMapView> {
     final center = live ?? (latLngs.isNotEmpty ? latLngs.last : _fallbackCenter);
     final status = widget.statusMessage;
     final polylines = _buildPolylines(latLngs);
+    final mapHeight =
+        widget.expanded ? MediaQuery.sizeOf(context).height : widget.height;
+
+    final map = FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: center,
+        initialZoom: latLngs.isEmpty && live == null ? 13 : 18,
+        initialRotation: widget.rotateWithHeading && widget.headingDegrees != null
+            ? -(widget.headingDegrees!)
+            : 0,
+        interactionOptions: InteractionOptions(
+          flags: widget.expanded
+              ? InteractiveFlag.all
+              : (InteractiveFlag.all & ~InteractiveFlag.rotate),
+        ),
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.focodev.academia.aluno',
+          maxNativeZoom: 19,
+        ),
+        if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+        MarkerLayer(
+          markers: [
+            if (latLngs.isNotEmpty && latLngs.length >= 2)
+              Marker(
+                point: latLngs.first,
+                width: 18,
+                height: 18,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF22C55E),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            if (live != null) _buildLiveMarker(live),
+            if (live == null && latLngs.isNotEmpty)
+              Marker(
+                point: latLngs.last,
+                width: 28,
+                height: 28,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _useLaps
+                        ? Color(
+                            LapDetectorService.colorForLap(
+                              widget.laps.last.lapNumber,
+                            ),
+                          )
+                        : _trailColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
 
     return Container(
-      height: widget.height,
+      height: widget.expanded ? mapHeight : widget.height,
       width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
+      decoration: widget.expanded
+          ? null
+          : BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white24),
+            ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: center,
-              initialZoom: latLngs.isEmpty && live == null ? 13 : 18,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-              ),
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: widget.expanded ? null : widget.onToggleExpand,
+              child: map,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.focodev.academia.aluno',
-                maxNativeZoom: 19,
-              ),
-              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-              MarkerLayer(
-                markers: [
-                  if (latLngs.isNotEmpty && latLngs.length >= 2)
-                    Marker(
-                      point: latLngs.first,
-                      width: 18,
-                      height: 18,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF22C55E),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                  // Ponto azul ao vivo (Google-style).
-                  if (live != null)
-                    Marker(
-                      point: live,
-                      width: 36,
-                      height: 36,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: const BoxDecoration(
-                              color: Color(0x334285F4),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF4285F4),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2.5),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x66000000),
-                                  blurRadius: 4,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (latLngs.isNotEmpty)
-                    Marker(
-                      point: latLngs.last,
-                      width: 28,
-                      height: 28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _useLaps
-                              ? Color(
-                                  LapDetectorService.colorForLap(
-                                    widget.laps.last.lapNumber,
-                                  ),
-                                )
-                              : _trailColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
           ),
-          if (widget.showLapLegend && _useLaps)
+          if (widget.showLapLegend && _useLaps && !widget.expanded)
             Positioned(
               top: 8,
               left: 8,
@@ -273,8 +336,9 @@ class _RouteMapViewState extends State<RouteMapView> {
                       ),
                       const SizedBox(height: 4),
                       ...widget.laps.map((lap) {
-                        final color =
-                            Color(LapDetectorService.colorForLap(lap.lapNumber));
+                        final color = Color(
+                          LapDetectorService.colorForLap(lap.lapNumber),
+                        );
                         final km = lap.distanceMeters / 1000.0;
                         return Padding(
                           padding: const EdgeInsets.only(top: 2),
@@ -308,7 +372,66 @@ class _RouteMapViewState extends State<RouteMapView> {
                 ),
               ),
             ),
-          if (status != null && status.isNotEmpty)
+          // Controles: bússola, centralizar, expandir/minimizar
+          Positioned(
+            top: widget.expanded ? MediaQuery.paddingOf(context).top + 8 : 8,
+            right: 8,
+            child: Column(
+              children: [
+                if (widget.onToggleExpand != null)
+                  _MapFab(
+                    tooltip: widget.expanded
+                        ? 'Minimizar mapa'
+                        : 'Mapa em tela cheia',
+                    icon: widget.expanded
+                        ? Icons.fullscreen_exit
+                        : Icons.fullscreen,
+                    onPressed: widget.onToggleExpand!,
+                  ),
+                if (widget.onToggleCompass != null) ...[
+                  const SizedBox(height: 8),
+                  _MapFab(
+                    tooltip: widget.rotateWithHeading
+                        ? 'Norte para cima'
+                        : 'Girar com o celular',
+                    icon: widget.rotateWithHeading
+                        ? Icons.explore
+                        : Icons.explore_outlined,
+                    active: widget.rotateWithHeading,
+                    onPressed: widget.onToggleCompass!,
+                  ),
+                ],
+                if (live != null || latLngs.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _MapFab(
+                    tooltip: 'Centralizar em mim',
+                    icon: Icons.my_location,
+                    onPressed: () {
+                      final target = live ?? latLngs.last;
+                      final zoom = 18.0;
+                      final rot = widget.rotateWithHeading &&
+                              widget.headingDegrees != null
+                          ? -(widget.headingDegrees!)
+                          : 0.0;
+                      try {
+                        _mapController.moveAndRotate(target, zoom, rot);
+                      } catch (_) {
+                        _mapController.move(target, zoom);
+                      }
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (widget.hud != null && widget.expanded)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: MediaQuery.paddingOf(context).bottom + 12,
+              child: widget.hud!,
+            )
+          else if (status != null && status.isNotEmpty && !widget.expanded)
             Positioned(
               left: 10,
               right: 10,
@@ -317,7 +440,8 @@ class _RouteMapViewState extends State<RouteMapView> {
                 color: const Color(0xCC0F172A),
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Text(
                     status,
                     textAlign: TextAlign.center,
@@ -326,27 +450,53 @@ class _RouteMapViewState extends State<RouteMapView> {
                 ),
               ),
             ),
-          if (live != null || latLngs.isNotEmpty)
+          if (!widget.expanded && widget.onToggleExpand != null)
             Positioned(
-              top: 8,
-              right: 8,
+              left: 10,
+              bottom: status != null && status.isNotEmpty ? 44 : 10,
               child: Material(
-                color: const Color(0xCC0F172A),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  tooltip: 'Centralizar em mim',
-                  iconSize: 20,
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    final target = live ?? latLngs.last;
-                    _mapController.move(target, 18);
-                  },
-                  icon: const Icon(Icons.my_location, color: Colors.white),
+                color: const Color(0x990F172A),
+                borderRadius: BorderRadius.circular(6),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Text(
+                    'Toque para mapa grande',
+                    style: TextStyle(color: Colors.white60, fontSize: 10),
+                  ),
                 ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapFab extends StatelessWidget {
+  const _MapFab({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? const Color(0xE02563EB) : const Color(0xCC0F172A),
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: tooltip,
+        iconSize: 22,
+        padding: const EdgeInsets.all(10),
+        constraints: const BoxConstraints(),
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white),
       ),
     );
   }

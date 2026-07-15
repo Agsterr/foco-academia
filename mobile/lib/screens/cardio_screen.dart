@@ -21,6 +21,7 @@ import '../services/gps_quality_service.dart';
 import '../services/gps_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/health_sync_service.dart';
+import '../services/compass_heading_service.dart';
 import '../services/lap_detector_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
@@ -67,6 +68,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _energyBannerDismissed = false;
   /// Pedimos para desligar a Economia no início → oferecer religar ao finalizar.
   bool _askedToDisablePowerSaver = false;
+  bool _mapExpanded = false;
+  bool _compassMode = true;
+  double? _headingDegrees;
+  StreamSubscription<double>? _compassSub;
   double _distance = 0;
   double _estimatedGap = 0;
   int _elapsed = 0;
@@ -254,9 +259,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       unawaited(_reacquireGps());
       // Rematch forçado: o traço acumulado com tela apagada precisa reencaixar.
       unawaited(_refreshMapMatching(force: true));
-    } else if ((state == AppLifecycleState.paused ||
-            state == AppLifecycleState.inactive) &&
-        _running) {
+    } else if (state == AppLifecycleState.paused && _running) {
+      // Só `paused` (tela apagada / app atrás). `inactive` (notificação) NÃO
+      // entra em modo bolso — senão o GPS endurece no meio do treino.
       _inBackground = true;
       _engine.setBackgroundMode(true);
       unawaited(_emitDiagnostic(
@@ -865,6 +870,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
+    // Heading do GPS quando está andando (mais estável na rua).
+    if (!pos.heading.isNaN && pos.heading >= 0 && _engine.displaySpeedKmh >= 1.2) {
+      _headingDegrees = pos.heading;
+    }
+
     _distance = _engine.distanceMeters;
     _estimatedGap = _engine.estimatedGapMeters;
 
@@ -924,13 +934,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _gpsStatus =
             'Retomado — ${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h';
       } else if (_engine.acceptedPoints.length < 2) {
-        _gpsStatus = 'GPS ok — pode apagar a tela';
+        _gpsStatus = _engine.weakGpsSignal
+            ? 'GPS fraco — vá para área aberta (dentro de casa quase não funciona)'
+            : 'GPS ok — pode apagar a tela';
       } else {
         final lapHint = _laps.lapCount >= 2 ? ' · ${_laps.lapCount} voltas' : '';
-        _gpsStatus =
-            '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
-            'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-            '${_engine.acceptedPoints.length} pts$lapHint';
+        if (_engine.weakGpsSignal) {
+          _gpsStatus =
+              'GPS fraco (±${(_engine.lastRawAccuracy ?? 0).toStringAsFixed(0)} m) — '
+              'km/rota só contam com sinal melhor$lapHint';
+        } else {
+          _gpsStatus =
+              '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
+              'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
+              '${_engine.acceptedPoints.length} pts$lapHint';
+        }
       }
     });
 
@@ -978,6 +996,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   void _startMotionSensor() {
     _accelSub?.cancel();
+    _compassSub?.cancel();
     try {
       _accelSub = accelerometerEventStream(
         samplingPeriod: const Duration(milliseconds: 200),
@@ -985,14 +1004,29 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         if (!_running || _finishing) return;
         _engine.notePhoneAcceleration(e.x, e.y, e.z);
       });
-    } catch (_) {
-      // Emulador / plataforma sem acelerômetro — GPS sozinho.
-    }
+    } catch (_) {}
+    try {
+      CompassHeadingService.instance.start();
+      _compassSub = CompassHeadingService.instance.stream.listen((h) {
+        if (!_running || _finishing) return;
+        // GPS heading manda quando há deslocamento; bússola quando vira o celular.
+        final gpsH = _engine.lastAccepted?.heading;
+        final moving = _engine.displaySpeedKmh >= 1.2;
+        final next = (moving && gpsH != null && gpsH >= 0) ? gpsH : h;
+        if (_headingDegrees == null ||
+            (_headingDegrees! - next).abs() > 1.5) {
+          if (mounted) setState(() => _headingDegrees = next);
+        }
+      });
+    } catch (_) {}
   }
 
   void _stopMotionSensor() {
     _accelSub?.cancel();
     _accelSub = null;
+    _compassSub?.cancel();
+    _compassSub = null;
+    CompassHeadingService.instance.stop();
   }
 
   Future<void> _export(String format) async {
@@ -1301,6 +1335,40 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm);
     final avgPace = GpsTrackingEngine.formatPace(_engine.averagePaceSecPerKm);
 
+    if (_running && _mapExpanded) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: RouteMapView(
+          points: mapPoints,
+          laps: _lapViews,
+          expanded: true,
+          height: MediaQuery.sizeOf(context).height,
+          followUser: true,
+          headingDegrees: _headingDegrees,
+          rotateWithHeading: _compassMode,
+          showLapLegend: false,
+          liveLatitude: _engine.hasLiveFix ? _engine.liveLatitude : null,
+          liveLongitude: _engine.hasLiveFix ? _engine.liveLongitude : null,
+          onToggleExpand: () => setState(() => _mapExpanded = false),
+          onToggleCompass: () => setState(() => _compassMode = !_compassMode),
+          statusMessage: _gpsStatus,
+          hud: _MapHud(
+            elapsed: _fmt(_elapsed),
+            distanceKm:
+                (_engine.distanceMeters / 1000).toStringAsFixed(2),
+            pace: currentPace,
+            speed: _engine.displaySpeedKmh.toStringAsFixed(1),
+            phaseLabel: phase == null
+                ? null
+                : (phase.isRun ? 'CORRIDA' : 'CAMINHADA'),
+            roundLabel: phase == null ? null : _roundLabel,
+            onPause: _toggleManualPause,
+            paused: _manualPaused,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Treino outdoor'),
@@ -1442,20 +1510,30 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running && _engine.liveTipReliable
-                                ? (_snappedLive?.latitude ??
-                                    _engine.liveLatitude)
-                                : (_running
-                                    ? _engine.lastAccepted?.latitude
-                                    : null),
-                            liveLongitude: _running && _engine.liveTipReliable
-                                ? (_snappedLive?.longitude ??
-                                    _engine.liveLongitude)
-                                : (_running
-                                    ? _engine.lastAccepted?.longitude
-                                    : null),
+                            liveLatitude: _running && _engine.hasLiveFix
+                                ? (_engine.liveTipReliable
+                                    ? (_snappedLive?.latitude ??
+                                        _engine.liveLatitude)
+                                    : _engine.liveLatitude)
+                                : null,
+                            liveLongitude: _running && _engine.hasLiveFix
+                                ? (_engine.liveTipReliable
+                                    ? (_snappedLive?.longitude ??
+                                        _engine.liveLongitude)
+                                    : _engine.liveLongitude)
+                                : null,
                             points: mapPoints,
                             laps: _lapViews,
+                            headingDegrees: _headingDegrees,
+                            rotateWithHeading: _running && _compassMode,
+                            onToggleExpand: _running
+                                ? () => setState(() => _mapExpanded = true)
+                                : null,
+                            onToggleCompass: _running
+                                ? () => setState(
+                                      () => _compassMode = !_compassMode,
+                                    )
+                                : null,
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -1740,3 +1818,104 @@ class _Stat extends StatelessWidget {
     );
   }
 }
+
+/// HUD flutuante no mapa tela cheia (estilo tela de bloqueio de corrida).
+class _MapHud extends StatelessWidget {
+  const _MapHud({
+    required this.elapsed,
+    required this.distanceKm,
+    required this.pace,
+    required this.speed,
+    required this.onPause,
+    required this.paused,
+    this.phaseLabel,
+    this.roundLabel,
+  });
+
+  final String elapsed;
+  final String distanceKm;
+  final String pace;
+  final String speed;
+  final VoidCallback onPause;
+  final bool paused;
+  final String? phaseLabel;
+  final String? roundLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xE00F172A),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (phaseLabel != null) ...[
+              Text(
+                phaseLabel!,
+                style: TextStyle(
+                  color: phaseLabel == 'CORRIDA'
+                      ? Colors.redAccent
+                      : Colors.lightGreenAccent,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.1,
+                ),
+              ),
+              if (roundLabel != null)
+                Text(
+                  roundLabel!,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              const SizedBox(height: 8),
+            ],
+            Row(
+              children: [
+                Expanded(child: _hudStat('Tempo', elapsed)),
+                Expanded(child: _hudStat('Distância', '$distanceKm km')),
+                Expanded(child: _hudStat('Ritmo', pace)),
+                Expanded(child: _hudStat('Vel.', '$speed km/h')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonal(
+                onPressed: onPause,
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      paused ? Colors.green.shade800 : Colors.orange.shade800,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(paused ? 'Retomar' : 'Pausar'),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Toque em ⊞ para voltar às estatísticas completas',
+              style: TextStyle(color: Colors.white38, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _hudStat(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
