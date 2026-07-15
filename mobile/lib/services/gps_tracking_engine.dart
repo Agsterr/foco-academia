@@ -345,7 +345,7 @@ class GpsTrackingEngine {
   bool get backgroundMode => _backgroundMode;
   double? get lastRawAccuracy => _lastRawAccuracy;
 
-  /// Ponta ao vivo só com fix confiável — senão o mapa “risca errado” no bolso.
+  /// Rota/polyline só usa ponta com accuracy boa — evita espaguete.
   bool get liveTipReliable {
     final acc = _lastRawAccuracy;
     if (acc == null) return _lastAccepted != null;
@@ -353,19 +353,26 @@ class GpsTrackingEngine {
     return acc <= 28;
   }
 
-  double? get liveLatitude {
-    if (!liveTipReliable) {
-      return _lastAccepted?.latitude ?? _lastRawLat;
-    }
-    return _lastRawLat ?? _lastAccepted?.latitude;
+  /// Há fix recente o suficiente para desenhar o ponto azul (mesmo fraco).
+  bool get hasLiveFix {
+    if (_lastRawLat == null || _lastRawLng == null) return false;
+    final last = lastRawFixAt;
+    if (last == null) return false;
+    return DateTime.now().difference(last) <= const Duration(seconds: 12);
   }
 
-  double? get liveLongitude {
-    if (!liveTipReliable) {
-      return _lastAccepted?.longitude ?? _lastRawLng;
-    }
-    return _lastRawLng ?? _lastAccepted?.longitude;
+  /// GPS fraco típico de indoor / canyon — km pode ficar zerado.
+  bool get weakGpsSignal {
+    final acc = _lastRawAccuracy;
+    if (acc == null) return !hasGpsSignal;
+    return acc > 35;
   }
+
+  /// Ponto azul: sempre o fix bruto recente (para o mapa não “travar”).
+  /// A trilha oficial continua só com pontos aceitos.
+  double? get liveLatitude => _lastRawLat ?? _lastAccepted?.latitude;
+
+  double? get liveLongitude => _lastRawLng ?? _lastAccepted?.longitude;
 
   double get displaySpeedKmh => _smoothedSpeedKmh;
 

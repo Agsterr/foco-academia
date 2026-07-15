@@ -455,7 +455,7 @@ void main() {
     expect(engine.distanceMeters, greaterThan(80));
   });
 
-  test('ponta ao vivo fica no último aceito com accuracy ruim', () {
+  test('ponta ao vivo usa fix bruto mesmo com accuracy ruim', () {
     final engine = GpsTrackingEngine();
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
     engine.process(
@@ -466,9 +466,11 @@ void main() {
       _pos(lat: -23.55020, lng: -46.63020, accuracy: 55, speed: 0),
       now: t0.add(const Duration(seconds: 3)),
     );
+    // Accuracy ruim: não entra na rota, mas o ponto azul acompanha o fix bruto.
     expect(engine.liveTipReliable, isFalse);
     expect(engine.acceptedPoints.length, 1);
-    expect(engine.liveLatitude, closeTo(-23.55000, 0.00001));
-    expect(engine.liveLongitude, closeTo(-46.63000, 0.00001));
+    expect(engine.liveLatitude, closeTo(-23.55020, 0.00001));
+    expect(engine.liveLongitude, closeTo(-46.63020, 0.00001));
+    expect(engine.weakGpsSignal, isTrue);
   });
 }

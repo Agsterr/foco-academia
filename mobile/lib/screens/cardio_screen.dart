@@ -254,9 +254,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       unawaited(_reacquireGps());
       // Rematch forçado: o traço acumulado com tela apagada precisa reencaixar.
       unawaited(_refreshMapMatching(force: true));
-    } else if ((state == AppLifecycleState.paused ||
-            state == AppLifecycleState.inactive) &&
-        _running) {
+    } else if (state == AppLifecycleState.paused && _running) {
+      // Só `paused` (tela apagada / app atrás). `inactive` (notificação) NÃO
+      // entra em modo bolso — senão o GPS endurece no meio do treino.
       _inBackground = true;
       _engine.setBackgroundMode(true);
       unawaited(_emitDiagnostic(
@@ -924,13 +924,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _gpsStatus =
             'Retomado — ${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h';
       } else if (_engine.acceptedPoints.length < 2) {
-        _gpsStatus = 'GPS ok — pode apagar a tela';
+        _gpsStatus = _engine.weakGpsSignal
+            ? 'GPS fraco — vá para área aberta (dentro de casa quase não funciona)'
+            : 'GPS ok — pode apagar a tela';
       } else {
         final lapHint = _laps.lapCount >= 2 ? ' · ${_laps.lapCount} voltas' : '';
-        _gpsStatus =
-            '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
-            'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
-            '${_engine.acceptedPoints.length} pts$lapHint';
+        if (_engine.weakGpsSignal) {
+          _gpsStatus =
+              'GPS fraco (±${(_engine.lastRawAccuracy ?? 0).toStringAsFixed(0)} m) — '
+              'km/rota só contam com sinal melhor$lapHint';
+        } else {
+          _gpsStatus =
+              '${_engine.displaySpeedKmh.toStringAsFixed(1)} km/h · '
+              'ritmo ${GpsTrackingEngine.formatPace(_engine.currentPaceSecPerKm)} · '
+              '${_engine.acceptedPoints.length} pts$lapHint';
+        }
       }
     });
 
@@ -1442,18 +1450,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             statusMessage: _running
                                 ? (_gpsStatus ?? 'Buscando sinal GPS...')
                                 : 'Inicie para começar o rastreio GPS',
-                            liveLatitude: _running && _engine.liveTipReliable
-                                ? (_snappedLive?.latitude ??
-                                    _engine.liveLatitude)
-                                : (_running
-                                    ? _engine.lastAccepted?.latitude
-                                    : null),
-                            liveLongitude: _running && _engine.liveTipReliable
-                                ? (_snappedLive?.longitude ??
-                                    _engine.liveLongitude)
-                                : (_running
-                                    ? _engine.lastAccepted?.longitude
-                                    : null),
+                            // Ponto azul segue o fix bruto para não parecer “travado”.
+                            // Só encaixa na rua (snap) quando a accuracy é boa.
+                            liveLatitude: _running && _engine.hasLiveFix
+                                ? (_engine.liveTipReliable
+                                    ? (_snappedLive?.latitude ??
+                                        _engine.liveLatitude)
+                                    : _engine.liveLatitude)
+                                : null,
+                            liveLongitude: _running && _engine.hasLiveFix
+                                ? (_engine.liveTipReliable
+                                    ? (_snappedLive?.longitude ??
+                                        _engine.liveLongitude)
+                                    : _engine.liveLongitude)
+                                : null,
                             points: mapPoints,
                             laps: _lapViews,
                           ),
