@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -36,6 +38,7 @@ class RouteMapView extends StatefulWidget {
     this.followUser = true,
     this.liveLatitude,
     this.liveLongitude,
+    this.liveAccuracyMeters,
     this.showLapLegend = true,
     this.headingDegrees,
     this.rotateWithHeading = false,
@@ -52,6 +55,9 @@ class RouteMapView extends StatefulWidget {
   final bool followUser;
   final double? liveLatitude;
   final double? liveLongitude;
+
+  /// Accuracy do fix ao vivo — com GPS fraco a câmera não persegue jitter.
+  final double? liveAccuracyMeters;
   final bool showLapLegend;
 
   /// Direção atual (0–360). Gira o mapa no modo bússola.
@@ -108,9 +114,22 @@ class _RouteMapViewState extends State<RouteMapView> {
     final wantRot =
         widget.rotateWithHeading && heading != null ? heading : 0.0;
 
+    // Deadband: com GPS fraco (±30 m+) o ponto azul salta e a tela “fica doida”.
+    // Só recentra a câmera com deslocamento real (não jitter do chip).
+    final acc = widget.liveAccuracyMeters;
+    final minMoveMeters = acc == null
+        ? 3.0
+        : acc > 35
+            ? math.max(14.0, acc * 0.45)
+            : acc > 25
+                ? 8.0
+                : 3.0;
+    // ~1° lat ≈ 111 km → metros ≈ delta * 111000
+    final minDeg = minMoveMeters / 111000.0;
+
     final moved = _lastFollowed == null ||
-        (_lastFollowed!.latitude - next.latitude).abs() > 0.0000003 ||
-        (_lastFollowed!.longitude - next.longitude).abs() > 0.0000003;
+        (_lastFollowed!.latitude - next.latitude).abs() > minDeg ||
+        (_lastFollowed!.longitude - next.longitude).abs() > minDeg;
     final rotated = _lastRotation == null ||
         (_lastRotation! - wantRot).abs() > 1.5;
 

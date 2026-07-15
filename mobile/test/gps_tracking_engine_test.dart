@@ -473,4 +473,61 @@ void main() {
     expect(engine.liveLongitude, closeTo(-46.63020, 0.00001));
     expect(engine.weakGpsSignal, isTrue);
   });
+
+  test('GPS fraco (±39 m) não inventa 16 km/h de jitter', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.markRunStarted(t0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 0, accuracy: 12),
+      now: t0,
+    );
+    // Jitter típico com ±39 m: ~4,5 m em 1 s ≈ 16 km/h fantasma.
+    engine.process(
+      _pos(
+        lat: -23.5500405, // ~4,5 m norte
+        lng: -46.63000,
+        speed: 4.5,
+        accuracy: 39,
+      ),
+      now: t0.add(const Duration(seconds: 1)),
+    );
+    expect(engine.weakGpsSignal, isTrue);
+    expect(engine.displaySpeedKmh, lessThan(5.0));
+    expect(engine.acceptedPoints.length, 1);
+
+    // Mais jitter ida-e-volta — velocidade continua baixa.
+    for (var i = 1; i <= 8; i++) {
+      final north = i.isEven ? 0.0 : 0.00004;
+      engine.process(
+        _pos(
+          lat: -23.55000 + north,
+          lng: -46.63000,
+          speed: 4.0,
+          accuracy: 39,
+        ),
+        now: t0.add(Duration(seconds: 1 + i)),
+      );
+    }
+    expect(engine.displaySpeedKmh, lessThan(6.0));
+    expect(engine.distanceMeters, lessThan(15));
+  });
+
+  test('caminhada com accuracy boa ainda mostra velocidade real', () {
+    final engine = GpsTrackingEngine(minDistanceMeters: 1);
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    for (var i = 0; i < 10; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000045), // ~5 m
+          lng: -46.63000,
+          speed: 1.4,
+          accuracy: 8,
+        ),
+        now: t0.add(Duration(seconds: i * 3)),
+      );
+    }
+    expect(engine.displaySpeedKmh, greaterThan(3.0));
+    expect(engine.displaySpeedKmh, lessThan(12.0));
+  });
 }
