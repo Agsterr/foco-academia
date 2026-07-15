@@ -40,6 +40,13 @@ class OutdoorMonthDay {
   final bool isToday;
 }
 
+class OutdoorYearKm {
+  const OutdoorYearKm({required this.year, required this.km});
+
+  final int year;
+  final double km;
+}
+
 /// Resumo de constância outdoor (só caminhada/corrida, sem musculação).
 class OutdoorConsistencySummary {
   const OutdoorConsistencySummary({
@@ -52,7 +59,13 @@ class OutdoorConsistencySummary {
     required this.bestStreakDays,
     required this.monthDays,
     required this.monthWalkedCount,
+    required this.monthKm,
     required this.monthLabel,
+    required this.focusMonth,
+    required this.earliestMonth,
+    required this.canGoPreviousMonth,
+    required this.canGoNextMonth,
+    required this.yearKm,
   });
 
   final Set<String> walkedDates;
@@ -64,7 +77,13 @@ class OutdoorConsistencySummary {
   final int bestStreakDays;
   final List<OutdoorMonthDay> monthDays;
   final int monthWalkedCount;
+  final double monthKm;
   final String monthLabel;
+  final DateTime focusMonth;
+  final DateTime? earliestMonth;
+  final bool canGoPreviousMonth;
+  final bool canGoNextMonth;
+  final List<OutdoorYearKm> yearKm;
 
   double get weekAdherence {
     final due = daysWalkedThisWeek + daysMissedThisWeek;
@@ -127,9 +146,13 @@ class OutdoorConsistency {
   static OutdoorConsistencySummary fromSessions(
     List<CardioSession> sessions, {
     DateTime? now,
+    DateTime? focusMonth,
     double minDistanceMeters = 50,
   }) {
     final today = dateOnly(now ?? DateTime.now());
+    final focus = focusMonth != null
+        ? DateTime(focusMonth.year, focusMonth.month, 1)
+        : DateTime(today.year, today.month, 1);
     final kmByDate = <String, double>{};
 
     for (final s in sessions) {
@@ -176,21 +199,25 @@ class OutdoorConsistency {
 
     final streak = _streaks(walked, today);
 
-    final monthStart = DateTime(today.year, today.month, 1);
-    final nextMonth = DateTime(today.year, today.month + 1, 1);
+    final monthStart = DateTime(focus.year, focus.month, 1);
+    final nextMonth = DateTime(focus.year, focus.month + 1, 1);
     final gridStart =
         monthStart.subtract(Duration(days: monthStart.weekday - 1));
     final lastOfMonth = nextMonth.subtract(const Duration(days: 1));
     final gridEnd = lastOfMonth.add(Duration(days: 7 - lastOfMonth.weekday));
     final monthDays = <OutdoorMonthDay>[];
     var monthWalked = 0;
+    var monthKm = 0.0;
     for (var day = gridStart;
         !day.isAfter(gridEnd);
         day = day.add(const Duration(days: 1))) {
       final key = dateKey(day);
-      final inMonth = day.month == today.month;
+      final inMonth = day.year == focus.year && day.month == focus.month;
       final has = walked.contains(key);
-      if (inMonth && has) monthWalked++;
+      if (inMonth && has) {
+        monthWalked++;
+        monthKm += kmByDate[key] ?? 0;
+      }
       monthDays.add(
         OutdoorMonthDay(
           date: day,
@@ -202,6 +229,24 @@ class OutdoorConsistency {
       );
     }
 
+    final kmByYear = <int, double>{};
+    for (final e in kmByDate.entries) {
+      final y = int.parse(e.key.substring(0, 4));
+      kmByYear[y] = (kmByYear[y] ?? 0) + e.value;
+    }
+    final yearKm = List<OutdoorYearKm>.from(
+      kmByYear.entries.map((e) => OutdoorYearKm(year: e.key, km: e.value)),
+    )..sort((a, b) => b.year.compareTo(a.year));
+
+    DateTime? earliestMonth;
+    if (walked.isNotEmpty) {
+      final first = walked.map(DateTime.parse).reduce(
+            (a, b) => a.isBefore(b) ? a : b,
+          );
+      earliestMonth = DateTime(first.year, first.month, 1);
+    }
+
+    final currentMonth = DateTime(today.year, today.month, 1);
     return OutdoorConsistencySummary(
       walkedDates: walked,
       kmByDate: kmByDate,
@@ -212,7 +257,14 @@ class OutdoorConsistency {
       bestStreakDays: streak.best,
       monthDays: monthDays,
       monthWalkedCount: monthWalked,
-      monthLabel: '${_monthNames[today.month - 1]} ${today.year}',
+      monthKm: monthKm,
+      monthLabel: '${_monthNames[focus.month - 1]} ${focus.year}',
+      focusMonth: monthStart,
+      earliestMonth: earliestMonth,
+      canGoPreviousMonth:
+          earliestMonth != null && monthStart.isAfter(earliestMonth),
+      canGoNextMonth: monthStart.isBefore(currentMonth),
+      yearKm: yearKm,
     );
   }
 

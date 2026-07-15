@@ -73,8 +73,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   /// Preserva o FlutterMap ao expandir (evita tela branca por remount).
   final GlobalKey _routeMapKey = GlobalKey();
   double? _headingDegrees;
-  /// Em movimento o rumo do GPS (course) manda na seta; parado = bússola.
-  bool _gpsCourseActive = false;
   StreamSubscription<double>? _compassSub;
   /// Ponta ao vivo máxima anexada ao match — acima disso = “corda” elástica.
   static const _maxMatchedTipMeters = 32.0;
@@ -905,21 +903,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final wasPaused = _engine.isPaused;
     final result = _engine.process(pos);
 
-    // Heading da seta: em movimento o rumo GPS (course over ground) é o que
-    // acompanha o traço. Bússola só quando quase parado (celular “à frente”
-    // na vertical costuma deixar a seta de lado se mandar sozinha).
-    final speedKmh = _engine.displaySpeedKmh;
+    // Heading: estilo Google Maps — a bússola (orientação do celular) manda.
+    // GPS course só preenche se a bússola ainda não entregou nada.
     final gpsHeading = pos.heading;
     final gpsHeadingOk =
         !gpsHeading.isNaN && gpsHeading >= 0 && gpsHeading <= 360;
-    if (gpsHeadingOk && speedKmh >= 1.2) {
-      _gpsCourseActive = true;
-      if (_headingDegrees == null ||
-          _headingDeltaAbs(_headingDegrees!, gpsHeading) > 0.8) {
-        _headingDegrees = gpsHeading;
-      }
-    } else if (speedKmh < 0.8) {
-      _gpsCourseActive = false;
+    if (gpsHeadingOk &&
+        _engine.displaySpeedKmh >= 1.2 &&
+        _headingDegrees == null) {
+      _headingDegrees = gpsHeading;
     }
 
     _distance = _engine.distanceMeters;
@@ -1056,9 +1048,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       CompassHeadingService.instance.start();
       _compassSub = CompassHeadingService.instance.stream.listen((h) {
         if (!_running || _finishing) return;
-        // Em movimento o GPS course já atualizou a seta — não sobrescrever
-        // com bússola (evita seta de lado com celular na vertical).
-        if (_gpsCourseActive) return;
+        // Bússola = virar o celular gira o mapa/seta (como no Google Maps).
         final next = h;
         if (_headingDegrees == null ||
             _headingDeltaAbs(_headingDegrees!, next) > 0.8) {
@@ -1079,7 +1069,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _accelSub = null;
     _compassSub?.cancel();
     _compassSub = null;
-    _gpsCourseActive = false;
     CompassHeadingService.instance.stop();
   }
 

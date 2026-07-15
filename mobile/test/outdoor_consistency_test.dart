@@ -72,6 +72,40 @@ void main() {
     expect(summary.monthWalkedCount, 3);
   });
 
+  test('focusMonth mostra mês/ano anteriores e evolução anual', () {
+    final now = DateTime(2026, 7, 15);
+    final summary = OutdoorConsistency.fromSessions(
+      [
+        _session(completedAt: DateTime(2025, 6, 10), meters: 3000),
+        _session(completedAt: DateTime(2025, 6, 12), meters: 2000),
+        _session(completedAt: DateTime(2026, 7, 14), meters: 4000),
+      ],
+      now: now,
+      focusMonth: DateTime(2025, 6),
+    );
+
+    expect(summary.monthLabel, 'Junho 2025');
+    expect(summary.monthWalkedCount, 2);
+    expect(summary.monthKm, closeTo(5.0, 0.01));
+    expect(summary.canGoNextMonth, isTrue);
+    expect(summary.canGoPreviousMonth, isFalse);
+    expect(summary.yearKm.length, 2);
+    expect(summary.yearKm.first.year, 2026);
+    expect(summary.yearKm.last.year, 2025);
+    expect(summary.yearKm.last.km, closeTo(5.0, 0.01));
+  });
+
+  test('mês atual não permite ir para o futuro', () {
+    final now = DateTime(2026, 7, 15);
+    final summary = OutdoorConsistency.fromSessions(
+      [_session(completedAt: DateTime(2026, 7, 14))],
+      now: now,
+      focusMonth: DateTime(2026, 7),
+    );
+    expect(summary.canGoNextMonth, isFalse);
+    expect(summary.canGoPreviousMonth, isFalse);
+  });
+
   test('ignora sessão sem distância e sem tempo relevante', () {
     final now = DateTime(2026, 7, 15);
     final summary = OutdoorConsistency.fromSessions(

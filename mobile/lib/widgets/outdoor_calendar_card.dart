@@ -2,11 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../services/outdoor_consistency.dart';
 
-/// Calendário outdoor: semana Seg–Dom + mês, com constância e falhas.
+/// Calendário outdoor: semana Seg–Dom + mês navegável + evolução por ano.
 class OutdoorCalendarCard extends StatelessWidget {
-  const OutdoorCalendarCard({super.key, required this.summary});
+  const OutdoorCalendarCard({
+    super.key,
+    required this.summary,
+    this.onPreviousMonth,
+    this.onNextMonth,
+    this.onSelectYear,
+  });
 
   final OutdoorConsistencySummary summary;
+  final VoidCallback? onPreviousMonth;
+  final VoidCallback? onNextMonth;
+  final ValueChanged<int>? onSelectYear;
 
   @override
   Widget build(BuildContext context) {
@@ -82,15 +91,104 @@ class OutdoorCalendarCard extends StatelessWidget {
               _LegendDot(color: Color(0xFF3F3F46), label: 'Ainda não'),
             ],
           ),
+          if (summary.yearKm.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Evolução por ano',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: summary.yearKm.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
+                  final y = summary.yearKm[i];
+                  final selected = y.year == summary.focusMonth.year;
+                  return GestureDetector(
+                    onTap: onSelectYear != null
+                        ? () => onSelectYear!(y.year)
+                        : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF1E3A5F)
+                            : const Color(0xFF121212),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected
+                              ? Colors.lightBlueAccent
+                              : Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Text(
+                        '${y.year} · ${y.km.toStringAsFixed(1)} km',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          color: selected
+                              ? Colors.lightBlueAccent
+                              : Colors.white70,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
-          Text(
-            summary.monthLabel,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            '${summary.monthWalkedCount} dia${summary.monthWalkedCount == 1 ? '' : 's'} com outdoor neste mês',
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Mês anterior',
+                onPressed:
+                    summary.canGoPreviousMonth ? onPreviousMonth : null,
+                icon: const Icon(Icons.chevron_left),
+                color: Colors.white70,
+                disabledColor: Colors.white24,
+                visualDensity: VisualDensity.compact,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      summary.monthLabel,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      '${summary.monthWalkedCount} dia'
+                      '${summary.monthWalkedCount == 1 ? '' : 's'} · '
+                      '${summary.monthKm.toStringAsFixed(1)} km',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Próximo mês',
+                onPressed: summary.canGoNextMonth ? onNextMonth : null,
+                icon: const Icon(Icons.chevron_right),
+                color: Colors.white70,
+                disabledColor: Colors.white24,
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           _MonthGrid(days: summary.monthDays),

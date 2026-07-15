@@ -100,6 +100,12 @@ class _RouteMapViewState extends State<RouteMapView> {
       widget.laps.length >= 2 &&
       widget.laps.any((l) => l.points.length >= 2);
 
+  static double _headingDeltaAbs(double a, double b) {
+    var d = (b - a).abs() % 360.0;
+    if (d > 180) d = 360 - d;
+    return d;
+  }
+
   @override
   void didUpdateWidget(covariant RouteMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -157,11 +163,11 @@ class _RouteMapViewState extends State<RouteMapView> {
         _lastFollowed == null ||
         (_lastFollowed!.latitude - next.latitude).abs() > minDeg ||
         (_lastFollowed!.longitude - next.longitude).abs() > minDeg;
-    // Bússola: deadband menor para o mapa acompanhar a virada do celular.
+    // Bússola: deadband menor + delta circular (359°→1° não “trava”).
     final rotDeadband = widget.rotateWithHeading ? 0.8 : 1.5;
     final rotated = force ||
         _lastRotation == null ||
-        (_lastRotation! - wantRot).abs() > rotDeadband;
+        _headingDeltaAbs(_lastRotation!, wantRot) > rotDeadband;
 
     if (!moved && !rotated) return;
 
