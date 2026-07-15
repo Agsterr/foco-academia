@@ -89,7 +89,10 @@ function summarizeIntervals(json?: string | null): string {
   const walkSec = intervals.find((i) => i.phase === "WALK")?.durationSec ?? 0;
   const runSec = intervals.find((i) => i.phase === "RUN")?.durationSec ?? 0;
   const rounds = Math.max(walk, run);
-  return `${rounds} rodadas · ${Math.round(walkSec / 60)} min caminhada / ${Math.round(runSec / 60)} min corrida`;
+  const totalMin = Math.round(
+    ((walk * walkSec) + (run * runSec)) / 60
+  );
+  return `${rounds} rodadas (caminhada ${Math.round(walkSec / 60)} min + corrida ${Math.round(runSec / 60)} min) · ~${totalMin} min no total`;
 }
 
 function formatDuration(ms?: number | null): string {
@@ -357,16 +360,57 @@ export default function CardioPage() {
           <div className="grid grid-cols-3 gap-2">
             <label className="text-xs text-slate-400">
               Caminhada (min)
-              <input type="number" min={1} value={walkMin} onChange={(e) => setWalkMin(Number(e.target.value))} className="form-input mt-1" />
+              <input
+                type="number"
+                min={1}
+                value={walkMin}
+                onChange={(e) => setWalkMin(Math.max(1, Number(e.target.value) || 1))}
+                className="form-input mt-1"
+              />
             </label>
             <label className="text-xs text-slate-400">
               Corrida (min)
-              <input type="number" min={1} value={runMin} onChange={(e) => setRunMin(Number(e.target.value))} className="form-input mt-1" />
+              <input
+                type="number"
+                min={1}
+                value={runMin}
+                onChange={(e) => setRunMin(Math.max(1, Number(e.target.value) || 1))}
+                className="form-input mt-1"
+              />
             </label>
             <label className="text-xs text-slate-400">
-              Rodadas
-              <input type="number" min={1} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} className="form-input mt-1" />
+              Quantas vezes repetir
+              <input
+                type="number"
+                min={1}
+                value={rounds}
+                onChange={(e) => setRounds(Math.max(1, Number(e.target.value) || 1))}
+                className="form-input mt-1"
+              />
             </label>
+          </div>
+          <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 text-xs text-slate-300">
+            <p className="font-medium text-slate-200">Como funciona</p>
+            <p className="mt-1 text-slate-400">
+              Cada repetição é <span className="text-white">1 caminhada + 1 corrida</span>.
+              O número do lado não é o total de minutos: é quantas vezes esse ciclo se repete.
+            </p>
+            <p className="mt-2 text-slate-200">
+              Ex.: {rounds}× ({walkMin} min caminhada + {runMin} min corrida) ={" "}
+              <span className="text-teal-300">
+                {rounds} caminhadas e {rounds} corridas
+              </span>{" "}
+              no app do aluno · duração ≈{" "}
+              <span className="text-teal-300">
+                {rounds * (walkMin + runMin)} min
+              </span>
+              .
+            </p>
+            <p className="mt-1 text-slate-500">
+              Para ~1 hora com 3 min caminhada + 1 min corrida, use{" "}
+              <span className="text-slate-300">15 repetições</span> (15×4 = 60 min).
+              No celular aparece “Rodada 1 de 15”, não “30 vezes a mesma coisa”.
+            </p>
           </div>
         </div>
         <button type="submit" disabled={saving} className="btn-primary mt-3 text-sm">
