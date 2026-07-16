@@ -17,6 +17,12 @@ class CalorieEstimationServiceTest {
     }
 
     @Test
+    void stationaryWithoutDistance_isZero() {
+        assertEquals(0, service.estimateCardioKcal(70, 0.0, 5 * 60_000L, 0L, 0.0));
+        assertEquals(0, service.estimateCardioKcal(70, 0.0, 10 * 60_000L, 0L, null));
+    }
+
+    @Test
     void walkMetAt5Kmh() {
         assertEquals(3.8, service.metForSpeedKmh(5.0), 0.01);
     }

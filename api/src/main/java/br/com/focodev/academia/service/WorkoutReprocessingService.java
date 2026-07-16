@@ -108,8 +108,9 @@ public class WorkoutReprocessingService {
         int kcal = calorieEstimationService.estimateCardioKcal(
                 calorieEstimationService.resolveWeightKg(null),
                 avgSpeed,
-                elapsedMs,
-                pausedMs
+                movingMs,
+                pausedMs,
+                distance
         );
 
         double avgConf = accepted > 0 ? confSum / Math.max(1, accepted) : 0.7;

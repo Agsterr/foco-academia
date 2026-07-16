@@ -1,10 +1,19 @@
 /// Estimativa de calorias via MET (Metabolic Equivalent of Task).
 /// kcal = MET × peso(kg) × tempo(horas)
 ///
-/// Com teto por km para não explodir quando GPS/tempo/velocidade falham
-/// (ex.: 0,6 km em 14 min não pode dar 105 kcal).
+/// Regras práticas (estilo apps de corrida):
+/// - Sem deslocamento real → **0 kcal** (não inventa gasto parado com o treino aberto).
+/// - Teto por km para não explodir quando GPS/tempo/velocidade falham
+///   (ex.: 0,6 km em 14 min não pode dar 105 kcal).
+/// - Piso por **km** (não por tempo), para não empurrar kcal enquanto o relógio anda parado.
 class CalorieEstimator {
   static const double defaultWeightKg = 70.0;
+
+  /// Abaixo disso (km/h) + sem distância → considerado parado.
+  static const double stationarySpeedKmh = 1.0;
+
+  /// Distância mínima para contar calorias só pelo tempo/MET.
+  static const double minDistanceMeters = 20.0;
 
   static const List<(double speed, double met)> _walk = [
     (2.0, 2.0),
@@ -37,12 +46,17 @@ class CalorieEstimator {
   }
 
   static double metForSpeedKmh(double speedKmh) {
-    if (speedKmh <= 0) return 2.0;
+    if (speedKmh <= 0.3) return 1.0; // em pé / parado — sem gasto de exercício
+    if (speedKmh < 2.0) {
+      // Sobe de 1.0 → 2.0 entre 0,3 e 2 km/h (evita salto MET 2.0 parado).
+      final t = ((speedKmh - 0.3) / (2.0 - 0.3)).clamp(0.0, 1.0);
+      return 1.0 + t * 1.0;
+    }
     if (speedKmh < 6.5) return _interpolate(_walk, speedKmh);
     return _interpolate(_run, speedKmh);
   }
 
-  /// [distanceMeters] opcional: recalcula velocidade e aplica teto por km.
+  /// [distanceMeters] opcional: recalcula velocidade e aplica teto/piso por km.
   static int cardioKcal({
     required double weightKg,
     required double avgSpeedKmh,
@@ -56,7 +70,7 @@ class CalorieEstimator {
 
     // Velocidade efetiva: prioriza distância/tempo (mais estável que média ruidosa).
     var speed = avgSpeedKmh.isFinite ? avgSpeedKmh : 0.0;
-    if (distanceMeters != null && distanceMeters >= 20 && hours > 0) {
+    if (distanceMeters != null && distanceMeters >= minDistanceMeters && hours > 0) {
       final fromDist = (distanceMeters / 1000.0) / hours;
       if (fromDist.isFinite && fromDist > 0) {
         speed = fromDist;
@@ -64,18 +78,33 @@ class CalorieEstimator {
     }
     speed = speed.clamp(0.0, 22.0);
 
+    final moved =
+        distanceMeters != null && distanceMeters >= minDistanceMeters;
+
+    // Parado com o treino aberto: não acumula kcal “fantasma”.
+    if (!moved && speed < stationarySpeedKmh) return 0;
+
+    // Quase parado com drift de GPS: só o que o km justifica (não o relógio).
+    if (moved && speed < 0.6) {
+      final km = distanceMeters! / 1000.0;
+      return (0.7 * w * km).round().clamp(0, 100000);
+    }
+
     final met = metForSpeedKmh(speed);
     var kcal = met * w * hours;
 
-    // Teto por km (ACSMs / regras práticas):
+    // Teto/piso por km (ACSMs / regras práticas):
     // caminhada ~0,6–0,9 kcal/kg/km; corrida ~1,0–1,2 kcal/kg/km.
+    // Piso por km — nunca por tempo — senão kcal sobe parado.
     if (distanceMeters != null && distanceMeters > 0) {
       final km = distanceMeters / 1000.0;
       final perKgPerKm = speed >= 6.5 ? 1.15 : 0.85;
       final cap = perKgPerKm * w * km * 1.2; // 20% folga
-      final floor = 1.3 * w * hours; // quase parado / muito lento
-      if (cap > floor) {
+      final floor = 0.55 * w * km;
+      if (cap >= floor) {
         kcal = kcal.clamp(floor, cap);
+      } else {
+        kcal = kcal.clamp(0.0, cap);
       }
     }
 

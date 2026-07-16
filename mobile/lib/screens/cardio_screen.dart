@@ -1048,10 +1048,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       CompassHeadingService.instance.start();
       _compassSub = CompassHeadingService.instance.stream.listen((h) {
         if (!_running || _finishing) return;
-        // Bússola = virar o celular gira o mapa/seta (como no Google Maps).
+        // Fusão gyro+mag já filtra tremor; deadband baixo só evita rebuilds.
         final next = h;
         if (_headingDegrees == null ||
-            _headingDeltaAbs(_headingDegrees!, next) > 0.8) {
+            _headingDeltaAbs(_headingDegrees!, next) > 0.4) {
           if (mounted) setState(() => _headingDegrees = next);
         }
       });
