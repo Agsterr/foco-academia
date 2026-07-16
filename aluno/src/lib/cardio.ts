@@ -85,15 +85,51 @@ export function completeCardioSession(
   });
 }
 
-/** Estimativa MET: kcal = MET × peso × horas */
-export function estimateCardioKcal(weightKg: number, avgSpeedKmh: number, elapsedMs: number): number {
+/** Estimativa MET: kcal = MET × peso × horas. Parado (sem km) → 0. */
+export function estimateCardioKcal(
+  weightKg: number,
+  avgSpeedKmh: number,
+  elapsedMs: number,
+  distanceMeters?: number,
+): number {
   if (elapsedMs <= 0) return 0;
-  const met = metForSpeed(avgSpeedKmh);
-  return Math.round(met * weightKg * (elapsedMs / 3_600_000));
+  const hours = elapsedMs / 3_600_000;
+  if (hours <= 0) return 0;
+
+  let speed = Number.isFinite(avgSpeedKmh) ? avgSpeedKmh : 0;
+  if (distanceMeters != null && distanceMeters >= 20 && hours > 0) {
+    const fromDist = distanceMeters / 1000 / hours;
+    if (Number.isFinite(fromDist) && fromDist > 0) speed = fromDist;
+  }
+  speed = Math.max(0, Math.min(22, speed));
+
+  const moved = distanceMeters != null && distanceMeters >= 20;
+  if (!moved && speed < 1) return 0;
+  if (moved && speed < 0.6) {
+    return Math.round(0.7 * weightKg * (distanceMeters! / 1000));
+  }
+
+  const met = metForSpeed(speed);
+  let kcal = met * weightKg * hours;
+
+  if (distanceMeters != null && distanceMeters > 0) {
+    const km = distanceMeters / 1000;
+    const perKgPerKm = speed >= 6.5 ? 1.15 : 0.85;
+    const cap = perKgPerKm * weightKg * km * 1.2;
+    const floor = 0.55 * weightKg * km;
+    if (cap >= floor) {
+      kcal = Math.max(floor, Math.min(cap, kcal));
+    } else {
+      kcal = Math.max(0, Math.min(cap, kcal));
+    }
+  }
+
+  return Math.round(Math.max(0, kcal));
 }
 
 function metForSpeed(speed: number): number {
-  if (speed <= 0) return 2.5;
+  if (speed <= 0.3) return 1.0;
+  if (speed < 2) return 1 + ((speed - 0.3) / 1.7);
   if (speed < 6.5) {
     if (speed <= 3) return 2.5;
     if (speed <= 4) return 3.0;

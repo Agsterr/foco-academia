@@ -132,7 +132,7 @@ export default function OutdoorPage() {
     if (!session) return;
     const elapsedMs = elapsed * 1000;
     const avgSpeedKmh = elapsed > 0 ? distance / 1000 / (elapsed / 3600) : 0;
-    const caloriesKcal = estimateCardioKcal(weightKg, avgSpeedKmh, elapsedMs);
+    const caloriesKcal = estimateCardioKcal(weightKg, avgSpeedKmh, elapsedMs, distance);
     await completeCardioSession(session.id, {
       distanceMeters: distance,
       avgSpeedKmh,
@@ -145,7 +145,7 @@ export default function OutdoorPage() {
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
   const liveSpeed = elapsed > 0 ? distance / 1000 / (elapsed / 3600) : 0;
-  const liveCalories = estimateCardioKcal(weightKg, liveSpeed, elapsed * 1000);
+  const liveCalories = estimateCardioKcal(weightKg, liveSpeed, elapsed * 1000, distance);
 
   return (
     <AppShell>

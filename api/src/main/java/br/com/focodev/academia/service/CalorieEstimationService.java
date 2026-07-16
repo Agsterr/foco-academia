@@ -7,13 +7,18 @@ import org.springframework.stereotype.Service;
  * Estimativa de gasto calórico via MET (Metabolic Equivalent of Task).
  * Fórmula: kcal = MET × peso(kg) × tempo(horas).
  * Valores aproximados — sem frequência cardíaca ou sensores biométricos.
+ *
+ * Sem deslocamento real (parado com o treino aberto) → 0 kcal de exercício.
  */
 @Service
 public class CalorieEstimationService {
 
     public static final double DEFAULT_WEIGHT_KG = 70.0;
+    public static final double STATIONARY_SPEED_KMH = 1.0;
+    public static final double MIN_DISTANCE_METERS = 20.0;
 
     private static final double[][] WALK_MET = {
+            {2.0, 2.0},
             {3.0, 2.5},
             {4.0, 3.0},
             {5.0, 3.8},
@@ -39,8 +44,12 @@ public class CalorieEstimationService {
 
     /** MET por velocidade média (km/h). Abaixo de 6,5 km/h usa tabela de caminhada. */
     public double metForSpeedKmh(double speedKmh) {
-        if (speedKmh <= 0) {
-            return 2.5;
+        if (speedKmh <= 0.3) {
+            return 1.0;
+        }
+        if (speedKmh < 2.0) {
+            double t = Math.max(0, Math.min(1.0, (speedKmh - 0.3) / (2.0 - 0.3)));
+            return 1.0 + t;
         }
         if (speedKmh < 6.5) {
             return interpolate(WALK_MET, speedKmh, 2.0, 5.5);
@@ -61,15 +70,62 @@ public class CalorieEstimationService {
     }
 
     public int estimateCardioKcal(double weightKg, Double avgSpeedKmh, Long elapsedMs, Long pausedMs) {
+        return estimateCardioKcal(weightKg, avgSpeedKmh, elapsedMs, pausedMs, null);
+    }
+
+    public int estimateCardioKcal(
+            double weightKg,
+            Double avgSpeedKmh,
+            Long elapsedMs,
+            Long pausedMs,
+            Double distanceMeters
+    ) {
         // elapsedMs = tempo em movimento (pausas já excluídas no cliente). pausedMs ignorado.
         long movementMs = elapsedMs != null ? Math.max(0, elapsedMs) : 0;
         if (movementMs <= 0) {
             return 0;
         }
-        double speed = avgSpeedKmh != null && avgSpeedKmh > 0 ? avgSpeedKmh : 0;
-        double met = metForSpeedKmh(speed);
         double hours = movementMs / 3_600_000.0;
-        return roundKcal(met * weightKg * hours);
+        if (hours <= 0) {
+            return 0;
+        }
+
+        double speed = avgSpeedKmh != null && avgSpeedKmh > 0 ? avgSpeedKmh : 0;
+        if ((speed <= 0 || !Double.isFinite(speed))
+                && distanceMeters != null
+                && distanceMeters >= MIN_DISTANCE_METERS) {
+            speed = (distanceMeters / 1000.0) / hours;
+        }
+        if (!Double.isFinite(speed) || speed < 0) {
+            speed = 0;
+        }
+        speed = Math.min(22.0, speed);
+
+        boolean moved = distanceMeters != null && distanceMeters >= MIN_DISTANCE_METERS;
+        if (!moved && speed < STATIONARY_SPEED_KMH) {
+            return 0;
+        }
+        if (moved && speed < 0.6) {
+            double km = distanceMeters / 1000.0;
+            return roundKcal(0.7 * weightKg * km);
+        }
+
+        double met = metForSpeedKmh(speed);
+        double kcal = met * weightKg * hours;
+
+        if (distanceMeters != null && distanceMeters > 0) {
+            double km = distanceMeters / 1000.0;
+            double perKgPerKm = speed >= 6.5 ? 1.15 : 0.85;
+            double cap = perKgPerKm * weightKg * km * 1.2;
+            double floor = 0.55 * weightKg * km;
+            if (cap >= floor) {
+                kcal = Math.max(floor, Math.min(cap, kcal));
+            } else {
+                kcal = Math.max(0, Math.min(cap, kcal));
+            }
+        }
+
+        return roundKcal(kcal);
     }
 
     public int estimateStrengthKcal(double weightKg, long durationSeconds, WorkoutIntensity intensity) {

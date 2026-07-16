@@ -34,4 +34,33 @@ void main() {
     expect(kcal, greaterThan(250));
     expect(kcal, lessThan(450));
   });
+
+  test('parado sem distância → 0 kcal (não inventa gasto)', () {
+    final kcal = CalorieEstimator.cardioKcal(
+      weightKg: 70,
+      avgSpeedKmh: 0,
+      elapsedMs: 5 * 60 * 1000,
+      distanceMeters: 0,
+    );
+    expect(kcal, 0);
+  });
+
+  test('parado sem distanceMeters → 0 kcal', () {
+    final kcal = CalorieEstimator.cardioKcal(
+      weightKg: 70,
+      avgSpeedKmh: 0,
+      elapsedMs: 10 * 60 * 1000,
+    );
+    expect(kcal, 0);
+  });
+
+  test('drift GPS minúsculo parado não gera dezenas de kcal', () {
+    final kcal = CalorieEstimator.cardioKcal(
+      weightKg: 70,
+      avgSpeedKmh: 0.2,
+      elapsedMs: 5 * 60 * 1000,
+      distanceMeters: 12,
+    );
+    expect(kcal, 0);
+  });
 }

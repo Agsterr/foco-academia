@@ -479,7 +479,8 @@ public class CardioService {
                 calorieEstimationService.resolveWeightKg(weight),
                 speed,
                 elapsedMs,
-                pausedMs
+                pausedMs,
+                distanceMeters
         );
     }
 
