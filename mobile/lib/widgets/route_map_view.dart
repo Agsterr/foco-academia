@@ -163,8 +163,8 @@ class _RouteMapViewState extends State<RouteMapView> {
         _lastFollowed == null ||
         (_lastFollowed!.latitude - next.latitude).abs() > minDeg ||
         (_lastFollowed!.longitude - next.longitude).abs() > minDeg;
-    // Bússola: deadband menor + delta circular (359°→1° não “trava”).
-    final rotDeadband = widget.rotateWithHeading ? 0.8 : 1.5;
+    // Bússola: deadband baixo — heading já vem suavizado (gyro+mag).
+    final rotDeadband = widget.rotateWithHeading ? 0.35 : 1.5;
     final rotated = force ||
         _lastRotation == null ||
         _headingDeltaAbs(_lastRotation!, wantRot) > rotDeadband;

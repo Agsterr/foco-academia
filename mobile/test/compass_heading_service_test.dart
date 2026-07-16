@@ -63,10 +63,6 @@ void main() {
     });
 
     test('frente (−Z) ao leste → heading ~90°', () {
-      // Frente = leste (−Z = leste) → mag horizontal em −Z? 
-      // X = norte quando frente = leste? 
-      // Device: X=right=south when facing east? Facing east: X→south, Y→up, −Z→east.
-      // Mag north = −X direction → mx negative; dip −Y.
       final h = CompassHeadingService.computeHeadingDegrees(
         ax: 0,
         ay: 9.8,
@@ -104,5 +100,65 @@ void main() {
       mz: 50,
     );
     expect(h, isNull);
+  });
+
+  group('fusão gyro + mag (estilo Maps)', () {
+    test('parado: ruído do mag quase não mexe o heading', () {
+      // Mag “treme” ±8° mas yawRate ≈ 0 → heading quase congelado.
+      var h = 90.0;
+      for (var i = 0; i < 40; i++) {
+        final noisyMag = 90.0 + (i.isEven ? 8.0 : -8.0);
+        h = CompassHeadingService.fuseGyroMagHeading(
+          currentHeading: h,
+          yawRateDegPerSec: 0.3,
+          magHeading: noisyMag,
+          dtSeconds: 0.04,
+        );
+      }
+      expect(h, closeTo(90, 3));
+    });
+
+    test('giro real do celular: heading acompanha o gyro', () {
+      // 90°/s por 0.5 s = +45°; mag fica no valor antigo (atrasado).
+      var h = 0.0;
+      for (var i = 0; i < 12; i++) {
+        h = CompassHeadingService.fuseGyroMagHeading(
+          currentHeading: h,
+          yawRateDegPerSec: 90.0,
+          magHeading: 0.0,
+          dtSeconds: 0.04,
+        );
+      }
+      // ~43° (gyro) com leve puxão do mag → ainda bem perto de 45°.
+      expect(h, greaterThan(35));
+      expect(h, lessThan(50));
+    });
+
+    test('cruzando 0°/360° sem salto', () {
+      final h = CompassHeadingService.fuseGyroMagHeading(
+        currentHeading: 358.0,
+        yawRateDegPerSec: 50.0,
+        magHeading: 5.0,
+        dtSeconds: 0.04,
+      );
+      // 358 + 2 = 360 → 0, com blend leve pro mag em 5°.
+      expect(h, lessThan(12));
+      expect(h, greaterThanOrEqualTo(0));
+    });
+  });
+
+  test('inclinação intermediária: blend flat/upright contínuo', () {
+    // ~45°: ay ≈ az — não deve explodir / retornar null.
+    final h = CompassHeadingService.computeHeadingDegrees(
+      ax: 0,
+      ay: 6.9,
+      az: 6.9,
+      mx: 0,
+      my: 20,
+      mz: -30,
+    );
+    expect(h, isNotNull);
+    expect(h!, greaterThanOrEqualTo(0));
+    expect(h, lessThan(360));
   });
 }
