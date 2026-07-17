@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/calorie_estimator.dart';
-import '../services/profile_service.dart';
+import '../services/calories_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/exercise_media_view.dart';
 import 'login_screen.dart';
@@ -75,8 +75,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
       final day = await WorkoutService.instance.getDay(widget.dayId);
       final session = await WorkoutService.instance.startOrResumeSession(widget.dayId);
       try {
-        final profile = await ProfileService.instance.getProfile();
-        _weightKg = CalorieEstimator.resolveWeight(profile.currentWeightKg);
+        _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
       } catch (_) {}
       if (!mounted) return;
       setState(() {

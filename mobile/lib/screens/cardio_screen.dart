@@ -25,7 +25,6 @@ import '../services/compass_heading_service.dart';
 import '../services/lap_detector_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
-import '../services/profile_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
 import '../services/outdoor_workout_service.dart';
@@ -374,8 +373,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     try {
       final workout = await CardioService.instance.getActiveWorkout();
       try {
-        final profile = await ProfileService.instance.getProfile();
-        _weightKg = CalorieEstimator.resolveWeight(profile.currentWeightKg);
+        _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
       } catch (_) {}
       _gpsConfig = await GpsConfigStore.instance.load();
       _autoPauseEnabled = _gpsConfig.autoPauseEnabled;
@@ -1648,10 +1646,12 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             ],
                           ),
                           const SizedBox(height: 4),
-                          const Text(
-                            '*Estimativa MET (peso × intensidade × tempo)',
+                          Text(
+                            _weightKg == CalorieEstimator.defaultWeightKg
+                                ? '*Estimativa MET com ${_weightKg.toStringAsFixed(0)} kg (padrão) — atualize o peso no perfil'
+                                : '*Estimativa MET com ${_weightKg.toStringAsFixed(0)} kg (peso × ritmo × tempo)',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white38, fontSize: 11),
+                            style: const TextStyle(color: Colors.white38, fontSize: 11),
                           ),
                           if (_lastSplitToast != null) ...[
                             const SizedBox(height: 8),
