@@ -35,6 +35,40 @@ void main() {
     expect(kcal, lessThan(450));
   });
 
+  test('caminhada 5 km com 80 kg fica ~250–350 kcal (não subestima absurdo)', () {
+    // ~5 km/h → 1 h; MET caminhada × 80 kg ≈ 280–320 kcal.
+    final kcal = CalorieEstimator.cardioKcal(
+      weightKg: 80,
+      avgSpeedKmh: 5,
+      elapsedMs: 60 * 60 * 1000,
+      distanceMeters: 5000,
+    );
+    expect(kcal, greaterThanOrEqualTo(240));
+    expect(kcal, lessThanOrEqualTo(360));
+  });
+
+  test('5,2 km a 5 km/h com 80 kg ≈ 310–330 kcal (não 279 do peso padrão 70)', () {
+    // 5 km/h é ritmo normal de caminhada — não é “muito lento”.
+    final with80 = CalorieEstimator.cardioKcal(
+      weightKg: 80,
+      avgSpeedKmh: 5,
+      elapsedMs: (5.2 / 5.0 * 3600 * 1000).round(),
+      distanceMeters: 5200,
+    );
+    final with70 = CalorieEstimator.cardioKcal(
+      weightKg: 70,
+      avgSpeedKmh: 5,
+      elapsedMs: (5.2 / 5.0 * 3600 * 1000).round(),
+      distanceMeters: 5200,
+    );
+    expect(with80, greaterThanOrEqualTo(300));
+    expect(with80, lessThanOrEqualTo(340));
+    expect(with70, greaterThanOrEqualTo(260));
+    expect(with70, lessThanOrEqualTo(290));
+    // Os 279 relatados batem com ~70 kg, não com 80 kg.
+    expect(with70, closeTo(279, 5));
+  });
+
   test('parado sem distância → 0 kcal (não inventa gasto)', () {
     final kcal = CalorieEstimator.cardioKcal(
       weightKg: 70,

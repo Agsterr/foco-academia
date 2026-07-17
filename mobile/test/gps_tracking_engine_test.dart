@@ -310,7 +310,7 @@ void main() {
     expect(engine.autoPaused, isFalse);
   });
 
-  test('após gap longo reancora sem somar teleporte na distância', () {
+  test('após gap longo com teleporte não soma distância fantasma', () {
     final engine = GpsTrackingEngine(minDistanceMeters: 1);
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
     engine.process(
@@ -318,13 +318,52 @@ void main() {
       now: t0,
     );
     final before = engine.distanceMeters;
+    // ~550 m em 30 s ≈ 66 km/h — teleporte, não caminhada.
     final second = engine.process(
-      _pos(lat: -23.55100, lng: -46.63000, speed: 2, accuracy: 10),
-      now: t0.add(const Duration(seconds: 40)),
+      _pos(lat: -23.55500, lng: -46.63000, speed: 2, accuracy: 10),
+      now: t0.add(const Duration(seconds: 30)),
     );
     expect(second.accepted, isTrue);
     expect(engine.acceptedPoints.length, 2);
     expect(engine.distanceMeters, before);
+  });
+
+  test('após gap longo com caminhada real soma o trecho', () {
+    final engine = GpsTrackingEngine(minDistanceMeters: 1);
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    engine.process(
+      _pos(lat: -23.55000, lng: -46.63000, speed: 1.4, accuracy: 10),
+      now: t0,
+    );
+    // ~33 m em 25 s ≈ 4,8 km/h — deslocamento crível após tela apagada.
+    engine.process(
+      _pos(lat: -23.55030, lng: -46.63000, speed: 1.4, accuracy: 10),
+      now: t0.add(const Duration(seconds: 25)),
+    );
+    expect(engine.distanceMeters, greaterThan(25));
+    expect(engine.distanceMeters, lessThan(45));
+  });
+
+  test('caminhada lenta com passos curtos não perde km', () {
+    final engine = GpsTrackingEngine();
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    // ~3 m a cada 3 s ≈ 3,6 km/h (passo lento).
+    // Antigo limiar 3,5–7,5 m + peso 0,88 subcontava forte.
+    for (var i = 0; i < 40; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000027), // ~3 m
+          lng: -46.63000,
+          speed: 1.0,
+          accuracy: 12,
+        ),
+        now: t0.add(Duration(seconds: i * 3)),
+      );
+    }
+    // 39 segmentos × ~3 m ≈ 117 m; aceita ≥ 90 m (≥ ~75% do real).
+    expect(engine.acceptedPoints.length, greaterThan(25));
+    expect(engine.distanceMeters, greaterThan(90));
+    expect(engine.distanceMeters, lessThan(140));
   });
 
   test('parado com drift do GPS não alonga a rota nem marca correndo', () {
