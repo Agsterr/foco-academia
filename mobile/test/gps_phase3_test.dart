@@ -11,7 +11,7 @@ void main() {
       expect(c.kalmanEnabled, isTrue);
       expect(c.gpsAlgorithmVersion, '2');
       expect(c.versionSnapshot()['filterVersion'], '3');
-      expect(c.versionSnapshot()['distanceVersion'], '2');
+      expect(c.versionSnapshot()['distanceVersion'], '3');
     });
 
     test('copyWith preserva versões', () {

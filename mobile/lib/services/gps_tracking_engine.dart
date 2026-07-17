@@ -238,8 +238,9 @@ class GpsTrackingEngine {
     this.maxJumpMeters = 90,
     /// Ponto no mapa: a partir deste deslocamento.
     this.minDistanceMeters = 2.5,
-    /// Só conta km se o passo for maior que o erro típico do GPS.
-    this.minDistanceForKm = 3.5,
+    /// Piso de ruído para km (não um segundo filtro agressivo).
+    /// Valores altos (3,5–7,5 m) faziam caminhada lenta marcar menos km.
+    this.minDistanceForKm = 2.0,
     this.bufferSize = 40,
     this.smoothWindow = 3,
     this.gpsLossTimeout = const Duration(seconds: 45),
@@ -1024,16 +1025,38 @@ class GpsTrackingEngine {
         estimatedGapMeters += surplus;
       }
 
-      // Conta km só com deslocamento maior que o ruído típico do chip.
-      // Cap no limiar: accuracy ruim no bolso não pode exigir 15+ m por passo
-      // (senão a caminhada real some e o ritmo/kcal ficam absurdos).
+      // Conta km nos segmentos já aceitos pelo filtro.
+      // Antes: limiar 3,5–7,5 m + peso 0,88 → caminhada lenta perdia km
+      // (ponto entrava no mapa, mas o deslocamento não somava).
       final conf = decision.confidenceScore;
-      final kmThreshold = math.min(
-        math.max(minDistanceForKm, accuracy * 0.30),
-        7.5,
+      final kmNoiseFloor = math.min(
+        math.max(minDistanceForKm, minDistanceMeters * 0.8),
+        math.min(math.max(1.5, accuracy * 0.12), 3.5),
       );
-      if (!recovering && delta >= kmThreshold && delta <= maxJumpMeters) {
-        final weight = 0.88 + 0.12 * conf; // 0.88–1.0
+      final impliedKmh = dtSec > 0 ? (delta / dtSec) * 3.6 : 0.0;
+      final maxPlausibleGapDelta = math.min(
+        (maxSpeedKmh / 3.6) * dtSec * 1.2,
+        250.0,
+      );
+
+      var countSegment = false;
+      if (!recovering) {
+        // Passo normal: filtro já barrou duplicate/jitter.
+        countSegment = delta >= kmNoiseFloor && delta <= maxJumpMeters;
+      } else if (delta >= kmNoiseFloor &&
+          delta <= maxPlausibleGapDelta &&
+          accuracy <= 40 &&
+          impliedKmh >= 0.6 &&
+          impliedKmh <= maxSpeedKmh * 1.15) {
+        // Gap longo com deslocamento crível (tela apagada / fix esparso):
+        // soma o haversine real — não inventa km, só não joga fora o trecho.
+        countSegment = true;
+      }
+
+      if (countSegment) {
+        // Sem desconto sistemático (subcontava ~5–12% em todo treino).
+        // Só reduz levemente com confidence muito baixa.
+        final weight = conf >= 0.45 ? 1.0 : (0.94 + 0.06 * conf);
         distanceMeters += delta * weight;
       }
 
