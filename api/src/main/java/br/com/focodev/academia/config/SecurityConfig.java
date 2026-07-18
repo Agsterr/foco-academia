@@ -2,6 +2,7 @@ package br.com.focodev.academia.config;
 
 import br.com.focodev.academia.security.CustomUserDetailsService;
 import br.com.focodev.academia.security.JwtAuthFilter;
+import br.com.focodev.academia.security.OfflineAccessFilter;
 import br.com.focodev.academia.security.TenantActiveFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final TenantActiveFilter tenantActiveFilter;
+    private final OfflineAccessFilter offlineAccessFilter;
     private final CustomUserDetailsService userDetailsService;
 
     @Value("${app.cors.allowed-origins}")
@@ -54,7 +56,8 @@ public class SecurityConfig {
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(tenantActiveFilter, JwtAuthFilter.class);
+                .addFilterAfter(tenantActiveFilter, JwtAuthFilter.class)
+                .addFilterAfter(offlineAccessFilter, TenantActiveFilter.class);
 
         return http.build();
     }

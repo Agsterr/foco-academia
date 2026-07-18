@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../core/config/app_version.dart';
 import '../data/services/app_update_service.dart';
+import 'online_auth_gate.dart';
 
 class SessionExpiredException implements Exception {
   SessionExpiredException([this.message = 'Sessão expirada. Faça login novamente.']);
@@ -60,6 +61,7 @@ class AuthService {
         final newToken = data['token'] as String?;
         if (newToken != null && newToken.isNotEmpty) {
           await _persistToken(newToken);
+          await OnlineAuthGate.instance.markOnlineAuthSuccess();
           return true;
         }
       }
@@ -81,6 +83,53 @@ class AuthService {
   Future<void> ensureSession() async {
     await refreshSession();
     await heartbeat();
+  }
+
+  /// Exige rede: refresh + heartbeat e marca validação online (janela de 48h).
+  Future<bool> ensureOnlineSession() async {
+    if (token == null || token!.isEmpty) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBase/api/auth/refresh'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final newToken = data['token'] as String?;
+        if (newToken != null && newToken.isNotEmpty) {
+          await _persistToken(newToken);
+        }
+      } else if (response.statusCode == 401) {
+        await logout();
+        return false;
+      } else if (response.statusCode != 200) {
+        return false;
+      }
+
+      final hb = await http.post(
+        Uri.parse('$apiBase/api/auth/heartbeat'),
+        headers: _headers(),
+        body: jsonEncode({
+          'deviceId': deviceId,
+          'appVersion': AppVersion.value,
+          'appClient': 'MOBILE',
+        }),
+      );
+      if (_isLikelyAuthFailure(hb)) {
+        await logout();
+        return false;
+      }
+      if (hb.statusCode == 200) {
+        await OnlineAuthGate.instance.markOnlineAuthSuccess();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> login(String email, String password, String slug) async {
@@ -106,6 +155,7 @@ class AuthService {
     academySlug = slug;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('academy_slug', slug);
+    await OnlineAuthGate.instance.markOnlineAuthSuccess();
   }
 
   Future<void> logout() async {
@@ -127,6 +177,9 @@ class AuthService {
         }),
       );
       await _handleAuthResponse(response);
+      if (response.statusCode == 200) {
+        await OnlineAuthGate.instance.markOnlineAuthSuccess();
+      }
     } catch (e) {
       if (e is SessionExpiredException) rethrow;
       // Heartbeat é best-effort.

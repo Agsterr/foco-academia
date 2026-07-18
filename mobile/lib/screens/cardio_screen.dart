@@ -28,10 +28,14 @@ import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
+import '../services/cardio_workout_library.dart';
+import '../services/online_auth_gate.dart';
 import '../services/outdoor_goal.dart';
 import '../services/outdoor_workout_service.dart';
+import '../widgets/coach_workout_picker.dart';
 import '../widgets/outdoor_goal_planner.dart';
 import '../widgets/route_map_view.dart';
+import '../screens/online_reconnect_screen.dart';
 
 class CardioScreen extends StatefulWidget {
   const CardioScreen({super.key, this.autoResume = false});
@@ -97,6 +101,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _usingDefaultWeight = true;
   OutdoorGoal _outdoorGoal = const OutdoorGoal();
   bool _goalReachedNotified = false;
+  List<CardioWorkout> _coachWorkouts = [];
   String? _gpsStatus;
 
   bool get _useCoachIntervals =>
@@ -470,6 +475,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         await _reloadAthleteMetrics();
       } catch (_) {}
       _outdoorGoal = await OutdoorGoalStore.instance.load();
+      try {
+        _coachWorkouts = await CardioService.instance.listWorkouts();
+      } catch (_) {
+        _coachWorkouts = await CardioWorkoutLibrary.instance.listAll();
+      }
       if (workout != null &&
           workout.intervals.isNotEmpty &&
           _outdoorGoal.mode == OutdoorGoalMode.free) {
@@ -951,8 +961,28 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     }
   }
 
+  void _selectCoachWorkout(CardioWorkout workout) {
+    setState(() {
+      _applyWorkout(workout);
+      _outdoorGoal = _outdoorGoal.copyWith(mode: OutdoorGoalMode.coach);
+    });
+    unawaited(CardioWorkoutLibrary.instance.saveOne(workout));
+  }
+
+  Future<bool> _ensureOnlineIfRequired() async {
+    if (!await OnlineAuthGate.instance.requiresOnlineReconnect()) {
+      return true;
+    }
+    if (!mounted) return false;
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const OnlineReconnectScreen()),
+    );
+    return result == true || !(await OnlineAuthGate.instance.requiresOnlineReconnect());
+  }
+
   Future<void> _start() async {
     if (_running || _finishing) return;
+    if (!await _ensureOnlineIfRequired()) return;
     await _reloadAthleteMetrics();
     await OutdoorGoalStore.instance.save(_outdoorGoal);
     _goalReachedNotified = false;
@@ -1710,6 +1740,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     if (_useCoachIntervals && !_running) ...[
                       const SizedBox(height: 10),
                       _IntervalPlanCard(intervals: _intervals),
+                    ],
+                    if (_outdoorGoal.mode == OutdoorGoalMode.coach && !_running) ...[
+                      const SizedBox(height: 10),
+                      CoachWorkoutPicker(
+                        workouts: _coachWorkouts,
+                        selectedId: _workout?.id,
+                        onSelected: _selectCoachWorkout,
+                      ),
                     ],
                     if (_workoutNotice != null) ...[
                       const SizedBox(height: 6),

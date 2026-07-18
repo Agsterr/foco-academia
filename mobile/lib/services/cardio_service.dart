@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'auth_service.dart';
 import 'cardio_workout_cache.dart';
+import 'cardio_workout_library.dart';
 import 'gps_tracking_engine.dart';
 
 class CardioInterval {
@@ -26,12 +27,16 @@ class CardioWorkout {
     required this.title,
     required this.type,
     this.intervals = const [],
-  });
+    this.active = false,
+    DateTime? createdAt,
+  })  : createdAt = createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   final String id;
   final String title;
   final String type;
   final List<CardioInterval> intervals;
+  final bool active;
+  final DateTime createdAt;
 
   factory CardioWorkout.fromJson(Map<String, dynamic> json) {
     final intervals = parseIntervals(json['intervals'] ?? json['intervalsJson']);
@@ -40,8 +45,37 @@ class CardioWorkout {
       title: json['title'] as String? ?? 'Treino outdoor',
       type: json['type'] as String? ?? 'RUN',
       intervals: intervals,
+      active: json['active'] as bool? ?? false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
+
+  factory CardioWorkout.fromCacheJson(Map<String, dynamic> json) {
+    final intervals = parseIntervals(json['intervals']);
+    return CardioWorkout(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? 'Treino outdoor',
+      type: json['type'] as String? ?? 'INTERVAL',
+      intervals: intervals,
+      active: json['active'] as bool? ?? false,
+      createdAt: json['createdAt'] != null
+          ? DateTime.tryParse(json['createdAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toCacheJson() => {
+        'id': id,
+        'title': title,
+        'type': type,
+        'active': active,
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'intervals': intervals
+            .map((i) => {'phase': i.phase, 'durationSec': i.durationSec})
+            .toList(),
+      };
 
   /// Ex.: "2 min caminhada + 3 min corrida · 15 rodadas"
   String get intervalsSummary => summarizeIntervals(intervals);
@@ -167,12 +201,12 @@ class CardioService {
       final data =
           await AuthService.instance.getOptional('/api/student/cardio-workouts/active');
       if (data == null) {
-        await CardioWorkoutCache.instance.clear();
         return null;
       }
       final workout = CardioWorkout.fromJson(data);
       if (workout.intervals.isNotEmpty) {
         await CardioWorkoutCache.instance.save(workout);
+        await CardioWorkoutLibrary.instance.saveOne(workout);
       }
       return workout;
     } on SessionExpiredException {
@@ -182,10 +216,31 @@ class CardioService {
     }
   }
 
+  /// Todos os treinos prescritos pelo coach (ativos e anteriores).
+  Future<List<CardioWorkout>> listWorkouts() async {
+    try {
+      final raw =
+          await AuthService.instance.getList('/api/student/cardio-workouts');
+      final workouts = raw
+          .whereType<Map>()
+          .map((e) => CardioWorkout.fromJson(Map<String, dynamic>.from(e)))
+          .where((w) => w.intervals.isNotEmpty)
+          .toList();
+      await CardioWorkoutLibrary.instance.mergeFromRemote(workouts);
+      return workouts;
+    } on SessionExpiredException {
+      rethrow;
+    } catch (_) {
+      return CardioWorkoutLibrary.instance.listAll();
+    }
+  }
+
   /// Carrega treino ativo ou cache local (intervalos do coach).
   Future<CardioWorkout?> getActiveWorkoutWithCache() async {
     final remote = await getActiveWorkout();
     if (remote != null && remote.intervals.isNotEmpty) return remote;
+    final library = await CardioWorkoutLibrary.instance.listAll();
+    if (library.isNotEmpty) return library.first;
     final cached = await CardioWorkoutCache.instance.load();
     if (cached != null) return cached;
     return remote;

@@ -125,6 +125,14 @@ public class CardioService {
         return toWorkoutResponse(workout);
     }
 
+    @Transactional(readOnly = true)
+    public List<CardioDtos.CardioWorkoutResponse> listStudentWorkouts(AuthUser student) {
+        User user = requireStudent(student);
+        return workoutRepository.findByStudentIdOrderByCreatedAtDesc(user.getId()).stream()
+                .map(this::toWorkoutResponse)
+                .toList();
+    }
+
     @Transactional
     public CardioDtos.CardioSessionResponse startSession(AuthUser student, CardioDtos.StartCardioSessionRequest request) {
         User user = requireStudent(student);
