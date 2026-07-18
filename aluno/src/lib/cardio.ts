@@ -49,10 +49,23 @@ export interface CardioSession {
   routePoints: RoutePoint[];
 }
 
-export function parseIntervals(json?: string): CardioInterval[] {
+export function parseIntervals(json?: string | CardioInterval[] | null): CardioInterval[] {
   if (!json) return [];
   try {
-    return JSON.parse(json) as CardioInterval[];
+    const list = typeof json === "string" ? (JSON.parse(json) as unknown) : json;
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((i): i is CardioInterval =>
+        !!i &&
+        typeof i === "object" &&
+        typeof (i as CardioInterval).phase === "string" &&
+        typeof (i as CardioInterval).durationSec === "number" &&
+        (i as CardioInterval).durationSec > 0
+      )
+      .map((i) => ({
+        phase: i.phase === "RUN" ? "RUN" : "WALK",
+        durationSec: i.durationSec,
+      }));
   } catch {
     return [];
   }

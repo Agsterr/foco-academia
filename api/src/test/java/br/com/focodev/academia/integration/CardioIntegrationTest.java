@@ -75,7 +75,11 @@ class CardioIntegrationTest {
         mockMvc.perform(get("/api/student/cardio-workouts/active")
                         .header("Authorization", "Bearer " + fixture.studentToken()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(workoutId.toString()));
+                .andExpect(jsonPath("$.id").value(workoutId.toString()))
+                .andExpect(jsonPath("$.intervalsJson").isString())
+                .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("WALK")))
+                .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("120")))
+                .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("RUN")));
 
         String sessionJson = mockMvc.perform(post("/api/student/cardio-sessions/start")
                         .header("Authorization", "Bearer " + fixture.studentToken())

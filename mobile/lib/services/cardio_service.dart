@@ -37,9 +37,12 @@ class CardioWorkout {
       id: json['id'] as String,
       title: json['title'] as String? ?? 'Treino outdoor',
       type: json['type'] as String? ?? 'RUN',
-      intervals: parseIntervals(json['intervalsJson'] as String?),
+      intervals: parseIntervals(json['intervalsJson'] ?? json['intervals']),
     );
   }
+
+  /// Ex.: "2 min caminhada + 3 min corrida · 15 rodadas"
+  String get intervalsSummary => summarizeIntervals(intervals);
 }
 
 class CardioSession {
@@ -96,16 +99,61 @@ class CardioSession {
   }
 }
 
-List<CardioInterval> parseIntervals(String? json) {
-  if (json == null || json.isEmpty) return [];
+/// Aceita `intervalsJson` (String JSON) ou lista já decodificada da API.
+List<CardioInterval> parseIntervals(Object? raw) {
+  if (raw == null) return [];
   try {
-    final list = jsonDecode(json) as List<dynamic>;
+    final List<dynamic> list;
+    if (raw is String) {
+      if (raw.isEmpty) return [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      list = decoded;
+    } else if (raw is List) {
+      list = raw;
+    } else {
+      return [];
+    }
     return list
-        .map((e) => CardioInterval.fromJson(e as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((e) => CardioInterval.fromJson(Map<String, dynamic>.from(e)))
+        .where((i) => i.durationSec > 0)
         .toList();
   } catch (_) {
     return [];
   }
+}
+
+/// Resumo legível da sequência prescrita pelo coach.
+String summarizeIntervals(List<CardioInterval> intervals) {
+  if (intervals.isEmpty) return '';
+  final walk = intervals.where((i) => !i.isRun).toList();
+  final run = intervals.where((i) => i.isRun).toList();
+  final walkSec = walk.isNotEmpty ? walk.first.durationSec : 0;
+  final runSec = run.isNotEmpty ? run.first.durationSec : 0;
+  final rounds = (intervals.length + 1) ~/ 2;
+  final parts = <String>[];
+  if (walkSec > 0) {
+    parts.add('${_formatMinutes(walkSec)} caminhada');
+  }
+  if (runSec > 0) {
+    parts.add('${_formatMinutes(runSec)} corrida');
+  }
+  if (parts.isEmpty) {
+    return '$rounds fases';
+  }
+  final cycle = parts.join(' + ');
+  if (rounds <= 1) return cycle;
+  return '$cycle · $rounds rodadas';
+}
+
+String _formatMinutes(int sec) {
+  if (sec <= 0) return '0 min';
+  if (sec % 60 == 0) return '${sec ~/ 60} min';
+  final m = sec ~/ 60;
+  final s = sec % 60;
+  if (m == 0) return '${s}s';
+  return '$m:${s.toString().padLeft(2, '0')} min';
 }
 
 class CardioService {
