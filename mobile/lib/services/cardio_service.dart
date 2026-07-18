@@ -22,14 +22,14 @@ class CardioInterval {
 }
 
 class CardioWorkout {
-  const CardioWorkout({
+  CardioWorkout({
     required this.id,
     required this.title,
     required this.type,
     this.intervals = const [],
     this.active = false,
     DateTime? createdAt,
-  })  : createdAt = createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }) : createdAt = createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   final String id;
   final String title;
