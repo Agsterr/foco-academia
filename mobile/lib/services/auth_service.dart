@@ -25,6 +25,7 @@ class AuthService {
   String? token;
   String? academySlug;
   String? deviceId;
+  bool _refreshing = false;
 
   Future<bool> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -33,6 +34,53 @@ class AuthService {
     deviceId = prefs.getString('device_id') ?? const Uuid().v4();
     await prefs.setString('device_id', deviceId!);
     return token != null;
+  }
+
+  Future<void> _persistToken(String newToken) async {
+    token = newToken;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('token', newToken);
+  }
+
+  /// Renova o JWT ao abrir o app (aceita token expirado dentro da janela da API).
+  Future<bool> refreshSession() async {
+    if (token == null || token!.isEmpty) return false;
+    if (_refreshing) return token != null;
+    _refreshing = true;
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBase/api/auth/refresh'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final newToken = data['token'] as String?;
+        if (newToken != null && newToken.isNotEmpty) {
+          await _persistToken(newToken);
+          return true;
+        }
+      }
+      if (response.statusCode == 401) {
+        await logout();
+        return false;
+      }
+      // 403 academia bloqueada etc. — mantém token; usuário verá mensagem na próxima chamada.
+      return response.statusCode == 200;
+    } catch (_) {
+      // Sem rede: mantém token local para tentar depois.
+      return token != null;
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// Renova token + heartbeat (ao abrir ou voltar ao app).
+  Future<void> ensureSession() async {
+    await refreshSession();
+    await heartbeat();
   }
 
   Future<void> login(String email, String password, String slug) async {
@@ -54,10 +102,9 @@ class AuthService {
       throw Exception(body['message'] ?? 'Erro no login');
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    token = data['token'] as String;
+    await _persistToken(data['token'] as String);
     academySlug = slug;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('token', token!);
     await prefs.setString('academy_slug', slug);
   }
 
@@ -72,65 +119,90 @@ class AuthService {
     try {
       final response = await http.post(
         Uri.parse('$apiBase/api/auth/heartbeat'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: _headers(),
         body: jsonEncode({
           'deviceId': deviceId,
           'appVersion': AppVersion.value,
           'appClient': 'MOBILE',
         }),
       );
-      if (response.statusCode == 401) {
-        await logout();
-        throw SessionExpiredException();
-      }
+      await _handleAuthResponse(response);
     } catch (e) {
       if (e is SessionExpiredException) rethrow;
       // Heartbeat é best-effort.
     }
   }
 
-  Future<Map<String, dynamic>> get(String path) async {
-    final response = await http.get(
-      Uri.parse('$apiBase$path'),
-      headers: {
+  Map<String, String> _headers() => {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
-      },
-    );
-    if (response.statusCode == 401) {
+      };
+
+  bool _isLikelyAuthFailure(http.Response response) {
+    if (response.statusCode == 401) return true;
+    if (response.statusCode != 403) return false;
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        final msg = (body['message'] as String?) ?? '';
+        if (msg.contains('Academia') ||
+            msg.contains('bloqueado') ||
+            msg.contains('desativada')) {
+          return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  Future<void> _handleAuthResponse(http.Response response) async {
+    if (_isLikelyAuthFailure(response)) {
       await logout();
       throw SessionExpiredException();
     }
+  }
+
+  String _errorMessage(http.Response response, String fallback) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['message'] != null) {
+        return body['message'] as String;
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
+  Future<http.Response> _send(
+    Future<http.Response> Function() request, {
+    bool retryOnAuth = true,
+  }) async {
+    var response = await request();
+    if (retryOnAuth && _isLikelyAuthFailure(response)) {
+      final renewed = await refreshSession();
+      if (renewed) {
+        response = await request();
+      }
+    }
+    await _handleAuthResponse(response);
+    return response;
+  }
+
+  Future<Map<String, dynamic>> get(String path) async {
+    final response = await _send(
+      () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
+    );
     if (response.statusCode != 200) {
-      String message = 'Erro ${response.statusCode}';
-      try {
-        final body = jsonDecode(response.body);
-        if (body is Map && body['message'] != null) {
-          message = body['message'] as String;
-        }
-      } catch (_) {}
-      throw Exception(message);
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<List<dynamic>> getList(String path) async {
-    final response = await http.get(
-      Uri.parse('$apiBase$path'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+    final response = await _send(
+      () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
     );
-    if (response.statusCode == 401) {
-      await logout();
-      throw SessionExpiredException();
-    }
     if (response.statusCode != 200) {
-      throw Exception('Erro ${response.statusCode}');
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
     final decoded = jsonDecode(response.body);
     if (decoded is List) return decoded;
@@ -139,73 +211,41 @@ class AuthService {
 
   /// Retorna null em 404 (ex.: sem treino outdoor ativo).
   Future<Map<String, dynamic>?> getOptional(String path) async {
-    final response = await http.get(
-      Uri.parse('$apiBase$path'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+    final response = await _send(
+      () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
     );
-    if (response.statusCode == 401) {
-      await logout();
-      throw SessionExpiredException();
-    }
     if (response.statusCode == 404) return null;
     if (response.statusCode != 200) {
-      throw Exception('Erro ${response.statusCode}');
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
-    final response = await http.post(
-      Uri.parse('$apiBase$path'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
+    final response = await _send(
+      () => http.post(
+        Uri.parse('$apiBase$path'),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
     );
-    if (response.statusCode == 401) {
-      await logout();
-      throw SessionExpiredException();
-    }
     if (response.statusCode != 200 && response.statusCode != 204) {
-      String message = 'Erro ${response.statusCode}';
-      try {
-        final parsed = jsonDecode(response.body);
-        if (parsed is Map && parsed['message'] != null) {
-          message = parsed['message'] as String;
-        }
-      } catch (_) {}
-      throw Exception(message);
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
-    final response = await http.put(
-      Uri.parse('$apiBase$path'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(body),
+    final response = await _send(
+      () => http.put(
+        Uri.parse('$apiBase$path'),
+        headers: _headers(),
+        body: jsonEncode(body),
+      ),
     );
-    if (response.statusCode == 401) {
-      await logout();
-      throw SessionExpiredException();
-    }
     if (response.statusCode != 200 && response.statusCode != 204) {
-      String message = 'Erro ${response.statusCode}';
-      try {
-        final parsed = jsonDecode(response.body);
-        if (parsed is Map && parsed['message'] != null) {
-          message = parsed['message'] as String;
-        }
-      } catch (_) {}
-      throw Exception(message);
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
