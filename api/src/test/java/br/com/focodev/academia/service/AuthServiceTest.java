@@ -12,6 +12,7 @@ import br.com.focodev.academia.exception.ApiException;
 import br.com.focodev.academia.repository.UserRepository;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.security.JwtService;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +21,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,6 +50,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(authService, "refreshGraceDays", 30L);
         academy = new Academy();
         academy.setId(UUID.randomUUID());
         academy.setSlug("academia-demo");
@@ -190,5 +194,20 @@ class AuthServiceTest {
     void me_notFound() {
         when(userRepository.findById(any())).thenReturn(Optional.empty());
         assertThrows(ApiException.class, () -> authService.me(new AuthUser(admin)));
+    }
+
+    @Test
+    void refreshSession_issuesNewTokenWithinGrace() {
+        Claims claims = mock(Claims.class);
+        when(claims.getSubject()).thenReturn(student.getId().toString());
+        when(jwtService.parseClaimsLenient("old-token")).thenReturn(Optional.of(claims));
+        when(jwtService.isWithinRefreshGrace(claims, 30L)).thenReturn(true);
+        when(userRepository.findByIdWithAcademy(student.getId())).thenReturn(Optional.of(student));
+        when(jwtService.generateToken(any(AuthUser.class))).thenReturn("new-token");
+
+        var response = authService.refreshSession("old-token");
+
+        assertEquals("new-token", response.token());
+        verify(tenantService).requireActiveAcademy(student);
     }
 }

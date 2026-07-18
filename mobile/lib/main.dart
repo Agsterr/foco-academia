@@ -38,11 +38,19 @@ class _BootstrapState extends State<_Bootstrap> {
   @override
   void initState() {
     super.initState();
-    AuthService.instance.load().then((ok) {
-      setState(() {
-        _loggedIn = ok;
-        _loading = false;
-      });
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final hasToken = await AuthService.instance.load();
+    var loggedIn = hasToken;
+    if (hasToken) {
+      loggedIn = await AuthService.instance.refreshSession();
+    }
+    if (!mounted) return;
+    setState(() {
+      _loggedIn = loggedIn;
+      _loading = false;
     });
   }
 

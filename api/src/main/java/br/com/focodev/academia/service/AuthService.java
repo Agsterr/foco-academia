@@ -10,13 +10,18 @@ import br.com.focodev.academia.repository.UserRepository;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import io.jsonwebtoken.Claims;
+
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +33,9 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final DeviceService deviceService;
     private final TenantService tenantService;
+
+    @Value("${app.jwt.refresh-grace-days:30}")
+    private long refreshGraceDays;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -82,6 +90,42 @@ public class AuthService {
 
         AuthUser authUser = new AuthUser(user);
         return new AuthResponse(jwtService.generateToken(authUser), UserResponse.from(user));
+    }
+
+    /**
+     * Renova o JWT usando o token atual (válido ou expirado dentro da janela de graça).
+     * Usado pelo app mobile ao abrir/voltar para manter a sessão sem novo login.
+     */
+    @Transactional
+    public TokenRefreshResponse refreshSession(String rawToken) {
+        Claims claims = jwtService.parseClaimsLenient(rawToken)
+                .orElseThrow(() -> new ApiException("Token inválido", HttpStatus.UNAUTHORIZED));
+        if (!jwtService.isWithinRefreshGrace(claims, refreshGraceDays)) {
+            throw new ApiException("Sessão expirada. Faça login novamente.", HttpStatus.UNAUTHORIZED);
+        }
+
+        UUID userId = UUID.fromString(claims.getSubject());
+        User user = userRepository.findByIdWithAcademy(userId)
+                .orElseThrow(() -> new ApiException("Usuário não encontrado", HttpStatus.UNAUTHORIZED));
+        if (!user.isActive()) {
+            throw new ApiException("Conta desativada", HttpStatus.UNAUTHORIZED);
+        }
+        tenantService.requireActiveAcademy(user);
+
+        AuthUser authUser = new AuthUser(user);
+        if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)
+                && (authUser.getAcademyId() == null || !authUser.isAcademyActive())) {
+            throw new ApiException("Academia desativada ou não vinculada", HttpStatus.FORBIDDEN);
+        }
+        if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)
+                && authUser.isAcademyAppBlocked()) {
+            throw new ApiException("Aplicativo bloqueado para esta academia", HttpStatus.FORBIDDEN);
+        }
+
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
+
+        return new TokenRefreshResponse(jwtService.generateToken(authUser));
     }
 
     public UserResponse me(AuthUser authUser) {

@@ -61,6 +61,19 @@ public class ApiControllers {
         return authService.login(request);
     }
 
+    @PostMapping("/auth/refresh")
+    public TokenRefreshResponse refresh(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new br.com.focodev.academia.exception.ApiException(
+                    "Token ausente",
+                    HttpStatus.UNAUTHORIZED
+            );
+        }
+        return authService.refreshSession(authorization.substring(7).trim());
+    }
+
     @GetMapping("/auth/me")
     public UserResponse me(@AuthenticationPrincipal AuthUser user) {
         return authService.me(user);

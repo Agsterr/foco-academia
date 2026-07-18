@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _sendHeartbeat() async {
     try {
-      await AuthService.instance.heartbeat();
+      await AuthService.instance.ensureSession();
     } on SessionExpiredException {
       if (!mounted) return;
       await _goToLogin();

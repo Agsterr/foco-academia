@@ -1,6 +1,7 @@
 package br.com.focodev.academia.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -50,5 +52,25 @@ public class JwtService {
 
     public UUID extractUserId(String token) {
         return UUID.fromString(parseClaims(token).getSubject());
+    }
+
+    /** Aceita token expirado (para renovação silenciosa no app). */
+    public Optional<Claims> parseClaimsLenient(String token) {
+        try {
+            return Optional.of(parseClaims(token));
+        } catch (ExpiredJwtException e) {
+            return Optional.of(e.getClaims());
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    public boolean isWithinRefreshGrace(Claims claims, long graceDays) {
+        Date expiration = claims.getExpiration();
+        if (expiration == null) {
+            return false;
+        }
+        Instant limit = expiration.toInstant().plus(graceDays, ChronoUnit.DAYS);
+        return Instant.now().isBefore(limit);
     }
 }
