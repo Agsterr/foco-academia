@@ -10,6 +10,8 @@ import java.util.UUID;
 public interface CardioWorkoutRepository extends JpaRepository<CardioWorkout, UUID> {
     List<CardioWorkout> findByStudentIdAndActiveTrueOrderByCreatedAtDesc(UUID studentId);
 
+    List<CardioWorkout> findByStudentIdOrderByCreatedAtDesc(UUID studentId);
+
     List<CardioWorkout> findByInstructorIdOrderByCreatedAtDesc(UUID instructorId);
 
     Optional<CardioWorkout> findFirstByStudentIdAndActiveTrueOrderByCreatedAtDesc(UUID studentId);

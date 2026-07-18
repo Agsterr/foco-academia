@@ -6,6 +6,7 @@ import '../data/services/app_update_service.dart';
 import '../presentation/widgets/app_update_prompt.dart';
 import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
+import '../services/online_auth_gate.dart';
 import '../services/profile_service.dart';
 import '../services/sync_service.dart';
 import 'calorie_stats_screen.dart';
@@ -13,6 +14,7 @@ import 'cardio_history_screen.dart';
 import 'cardio_screen.dart';
 import 'gps_debug_screen.dart';
 import 'login_screen.dart';
+import 'online_reconnect_screen.dart';
 import 'profile_screen.dart';
 import 'weight_screen.dart';
 import 'workouts_screen.dart';
@@ -96,7 +98,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _sendHeartbeat() async {
     try {
+      if (await OnlineAuthGate.instance.requiresOnlineReconnect()) {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const OnlineReconnectScreen()),
+        );
+        return;
+      }
       await AuthService.instance.ensureSession();
+      try {
+        await SyncService.instance.syncAll();
+      } catch (_) {}
     } on SessionExpiredException {
       if (!mounted) return;
       await _goToLogin();

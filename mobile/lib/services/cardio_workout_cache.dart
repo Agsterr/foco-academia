@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'cardio_service.dart';
+import 'cardio_workout_library.dart';
 
 /// Cache local do último treino outdoor ativo (intervalos do coach).
 class CardioWorkoutCache {
@@ -20,11 +21,14 @@ class CardioWorkoutCache {
         'id': workout.id,
         'title': workout.title,
         'type': workout.type,
+        'active': workout.active,
+        'createdAt': workout.createdAt.toUtc().toIso8601String(),
         'intervals': workout.intervals
             .map((i) => {'phase': i.phase, 'durationSec': i.durationSec})
             .toList(),
       }),
     );
+    await CardioWorkoutLibrary.instance.saveOne(workout);
   }
 
   Future<CardioWorkout?> load() async {

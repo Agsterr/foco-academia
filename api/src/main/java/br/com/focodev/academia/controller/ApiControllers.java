@@ -337,6 +337,11 @@ public class ApiControllers {
         return cardioService.getActiveStudentWorkout(user);
     }
 
+    @GetMapping("/student/cardio-workouts")
+    public List<CardioDtos.CardioWorkoutResponse> listStudentCardioWorkouts(@AuthenticationPrincipal AuthUser user) {
+        return cardioService.listStudentWorkouts(user);
+    }
+
     @PostMapping("/student/cardio-sessions/start")
     public CardioDtos.CardioSessionResponse startCardioSession(
             @AuthenticationPrincipal AuthUser user,

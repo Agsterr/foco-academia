@@ -297,4 +297,45 @@ class CardioIntegrationTest {
                 .andExpect(jsonPath("$.intervals[0].durationSec").value(120))
                 .andExpect(jsonPath("$.intervals[1].durationSec").value(180));
     }
+
+    @Test
+    void studentListsAllPrescribedWorkoutsIncludingInactive() throws Exception {
+        Map<String, Object> first = Map.of(
+                "studentId", fixture.student().getId().toString(),
+                "title", "Plano antigo",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 120),
+                        Map.of("phase", "RUN", "durationSec", 60)
+                )
+        );
+        mockMvc.perform(post("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(first)))
+                .andExpect(status().isOk());
+
+        Map<String, Object> second = Map.of(
+                "studentId", fixture.student().getId().toString(),
+                "title", "Plano novo",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 180),
+                        Map.of("phase", "RUN", "durationSec", 90)
+                )
+        );
+        mockMvc.perform(post("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(second)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/student/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Plano novo"))
+                .andExpect(jsonPath("$[0].active").value(true))
+                .andExpect(jsonPath("$[1].title").value("Plano antigo"))
+                .andExpect(jsonPath("$[1].active").value(false));
+    }
 }
