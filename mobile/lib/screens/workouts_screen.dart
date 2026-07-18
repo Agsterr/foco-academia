@@ -68,6 +68,9 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Garante espaço acima da barra de navegação / botão do teclado no Android.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Musculação'),
@@ -83,7 +86,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + bottomInset),
                 children: [
                   Text(
                     _program?.title ?? 'Minha ficha semanal',
