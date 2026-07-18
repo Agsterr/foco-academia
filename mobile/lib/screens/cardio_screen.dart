@@ -28,7 +28,9 @@ import '../services/location_permission_helper.dart';
 import '../services/map_matching_service.dart';
 import '../services/run_export_service.dart';
 import '../services/sync_service.dart';
+import '../services/outdoor_goal.dart';
 import '../services/outdoor_workout_service.dart';
+import '../widgets/outdoor_goal_planner.dart';
 import '../widgets/route_map_view.dart';
 
 class CardioScreen extends StatefulWidget {
@@ -91,7 +93,77 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   String? _workoutNotice;
   String? _clientSessionId;
   double _weightKg = CalorieEstimator.defaultWeightKg;
+  double? _heightCm;
+  bool _usingDefaultWeight = true;
+  OutdoorGoal _outdoorGoal = const OutdoorGoal();
+  bool _goalReachedNotified = false;
   String? _gpsStatus;
+
+  bool get _useCoachIntervals =>
+      _outdoorGoal.mode == OutdoorGoalMode.coach && _intervals.isNotEmpty;
+
+  double? get _goalTargetKm {
+    switch (_outdoorGoal.mode) {
+      case OutdoorGoalMode.distanceKm:
+        final km = _outdoorGoal.targetKm;
+        return km != null && km > 0 ? km : null;
+      case OutdoorGoalMode.caloriesKcal:
+        final kcal = _outdoorGoal.targetKcal;
+        if (kcal == null || kcal <= 0) return null;
+        return CalorieEstimator.kmForTargetCalories(
+          weightKg: _weightKg,
+          targetKcal: kcal,
+          assumedSpeedKmh: _outdoorGoal.assumedSpeedKmh,
+        );
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _reloadAthleteMetrics() async {
+    try {
+      final metrics = await CaloriesService.instance.loadAthleteMetrics();
+      if (!mounted) return;
+      setState(() {
+        _weightKg = metrics.weightKg;
+        _heightCm = metrics.heightCm;
+        _usingDefaultWeight = metrics.usingDefaultWeight;
+      });
+    } catch (_) {}
+  }
+
+  void _checkPersonalGoal() {
+    if (!_running || _goalReachedNotified || !_outdoorGoal.hasNumericTarget) {
+      return;
+    }
+    var reached = false;
+    String message = '';
+    switch (_outdoorGoal.mode) {
+      case OutdoorGoalMode.distanceKm:
+        final targetM = (_outdoorGoal.targetKm ?? 0) * 1000;
+        if (targetM > 0 && _distance >= targetM) {
+          reached = true;
+          message =
+              'Meta de ${_outdoorGoal.targetKm!.toStringAsFixed(1)} km atingida!';
+        }
+        break;
+      case OutdoorGoalMode.caloriesKcal:
+        final target = _outdoorGoal.targetKcal ?? 0;
+        if (target > 0 && _liveCalories >= target) {
+          reached = true;
+          message = 'Meta de $target kcal atingida!';
+        }
+        break;
+      default:
+        break;
+    }
+    if (!reached || !mounted) return;
+    _goalReachedNotified = true;
+    unawaited(CardioFeedback.playBeeps(3));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
+  }
   DateTime? _startedAt;
   bool _gpsLost = false;
   int _lastCloudSeq = 0;
@@ -278,6 +350,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_reloadAthleteMetrics());
+    }
     if (state == AppLifecycleState.resumed && _running) {
       _inBackground = false;
       _stopBackgroundKeepalive();
@@ -392,8 +467,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         }
       }
       try {
-        _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
+        await _reloadAthleteMetrics();
       } catch (_) {}
+      _outdoorGoal = await OutdoorGoalStore.instance.load();
+      if (workout != null &&
+          workout.intervals.isNotEmpty &&
+          _outdoorGoal.mode == OutdoorGoalMode.free) {
+        _outdoorGoal = _outdoorGoal.copyWith(mode: OutdoorGoalMode.coach);
+      }
       _gpsConfig = await GpsConfigStore.instance.load();
       _autoPauseEnabled = _gpsConfig.autoPauseEnabled;
       _engine.applyConfig(_gpsConfig);
@@ -763,7 +844,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     var phaseRemaining = _phaseRemaining;
     var phaseChanged = false;
 
-    if (_intervals.isNotEmpty && !_engine.isPaused) {
+    if (_useCoachIntervals && !_engine.isPaused) {
       var cursor = elapsed;
       var finished = true;
       for (var i = 0; i < _intervals.length; i++) {
@@ -802,6 +883,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     if (phaseChanged) {
       unawaited(CardioFeedback.playPhase(_intervals[phaseIndex].phase));
     }
+    _checkPersonalGoal();
     if (elapsed > 0 &&
         elapsed % 10 == 0 &&
         _lastPersistElapsedSec != elapsed) {
@@ -871,6 +953,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   Future<void> _start() async {
     if (_running || _finishing) return;
+    await _reloadAthleteMetrics();
+    await OutdoorGoalStore.instance.save(_outdoorGoal);
+    _goalReachedNotified = false;
     if (!await LocationPermissionHelper.ensureTrackingPermissions(context)) {
       return;
     }
@@ -913,7 +998,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _manualPaused = false;
       });
 
-      if (_intervals.isNotEmpty) {
+      if (_useCoachIntervals) {
         await CardioFeedback.playPhase(_intervals.first.phase);
       } else {
         await CardioFeedback.playBeeps(1);
@@ -954,7 +1039,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _autoPaused = false;
         _manualPaused = false;
       });
-      if (_intervals.isNotEmpty) {
+      if (_useCoachIntervals) {
         await CardioFeedback.playPhase(_intervals.first.phase);
       } else {
         await CardioFeedback.playBeeps(1);
@@ -1414,9 +1499,81 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   }
 
   CardioInterval? get _currentPhase =>
-      _intervals.isNotEmpty && _phaseIndex < _intervals.length
+      _useCoachIntervals && _phaseIndex < _intervals.length
           ? _intervals[_phaseIndex]
           : null;
+
+  String _subtitleForGoal() {
+    return switch (_outdoorGoal.mode) {
+      OutdoorGoalMode.coach => _intervals.isNotEmpty
+          ? (_workout?.intervalsSummary.isNotEmpty == true
+              ? _workout!.intervalsSummary
+              : '${_intervals.length} fases · plano do coach')
+          : 'Plano do coach indisponível — escolha distância ou calorias',
+      OutdoorGoalMode.distanceKm =>
+        'Meta: ${_outdoorGoal.targetKm?.toStringAsFixed(1) ?? '?'} km',
+      OutdoorGoalMode.caloriesKcal => () {
+          final kcal = _outdoorGoal.targetKcal;
+          final km = kcal != null
+              ? CalorieEstimator.kmForTargetCalories(
+                  weightKg: _weightKg,
+                  targetKcal: kcal,
+                  assumedSpeedKmh: _outdoorGoal.assumedSpeedKmh,
+                )
+              : null;
+          return 'Meta: $kcal kcal'
+              '${km != null ? ' (≈ ${km.toStringAsFixed(1)} km caminhando)' : ''}';
+        }(),
+      OutdoorGoalMode.free => _workout == null
+          ? 'Modo livre — sem plano do coach'
+          : (_intervals.isEmpty
+              ? 'Treino do coach — modo contínuo'
+              : 'Plano do coach disponível — escolha "Coach" ou defina sua meta'),
+    };
+  }
+
+  Widget? _goalProgressCard() {
+    if (!_running || !_outdoorGoal.hasNumericTarget) return null;
+    final targetKm = _goalTargetKm;
+  final progressKm = targetKm != null && targetKm > 0
+        ? (_distance / 1000 / targetKm).clamp(0.0, 1.0)
+        : null;
+    final targetKcal = _outdoorGoal.mode == OutdoorGoalMode.caloriesKcal
+        ? _outdoorGoal.targetKcal
+        : null;
+    final progressKcal = targetKcal != null && targetKcal > 0
+        ? (_liveCalories / targetKcal).clamp(0.0, 1.0)
+        : null;
+    final progress = progressKcal ?? progressKm;
+    if (progress == null) return null;
+
+    final label = _outdoorGoal.mode == OutdoorGoalMode.caloriesKcal
+        ? '$_liveCalories / $targetKcal kcal'
+        : '${(_distance / 1000).toStringAsFixed(2)} / ${targetKm!.toStringAsFixed(1)} km';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Meta: $label',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.white12,
+              color: progress >= 1 ? Colors.greenAccent : Colors.blueAccent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Cada rodada prescrita = 1 caminhada + 1 corrida (2 fases no app).
   String get _roundLabel {
@@ -1533,19 +1690,24 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _workout == null
-                          ? 'Sem treino prescrito — modo livre'
-                          : _intervals.isEmpty
-                              ? 'Treino sem intervalos — modo contínuo'
-                              : (_workout!.intervalsSummary.isNotEmpty
-                                  ? _workout!.intervalsSummary
-                                  : '${_intervals.length} fases · ${_workout!.type}'),
+                      _subtitleForGoal(),
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13,
                       ),
                     ),
-                    if (_intervals.isNotEmpty && !_running) ...[
+                    if (!_running) ...[
+                      const SizedBox(height: 10),
+                      OutdoorGoalPlanner(
+                        weightKg: _weightKg,
+                        heightCm: _heightCm,
+                        usingDefaultWeight: _usingDefaultWeight,
+                        hasCoachPlan: _intervals.isNotEmpty,
+                        goal: _outdoorGoal,
+                        onChanged: (g) => setState(() => _outdoorGoal = g),
+                      ),
+                    ],
+                    if (_useCoachIntervals && !_running) ...[
                       const SizedBox(height: 10),
                       _IntervalPlanCard(intervals: _intervals),
                     ],
@@ -1561,6 +1723,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     ],
                     if (_running) ...[
                       const SizedBox(height: 6),
+                      if (_goalProgressCard() != null) _goalProgressCard()!,
                       Text(
                         _manualPaused
                             ? 'Pausado — o tempo em movimento está congelado'
@@ -1819,9 +1982,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _weightKg == CalorieEstimator.defaultWeightKg
-                                ? '*Estimativa MET com ${_weightKg.toStringAsFixed(0)} kg (padrão) — atualize o peso no perfil'
-                                : '*Estimativa MET com ${_weightKg.toStringAsFixed(0)} kg (peso × ritmo × tempo)',
+                            _weightKg == CalorieEstimator.defaultWeightKg && _usingDefaultWeight
+                                ? '*Estimativa MET com ${_weightKg.toStringAsFixed(0)} kg (padrão) — atualize o peso no perfil ou na balança'
+                                : '*Estimativa MET com ${_weightKg.toStringAsFixed(1)} kg (peso × ritmo × tempo)',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white38, fontSize: 11),
                           ),
