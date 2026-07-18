@@ -13,6 +13,7 @@ import '../services/calorie_estimator.dart';
 import '../services/calories_service.dart';
 import '../services/cardio_feedback.dart';
 import '../services/cardio_service.dart';
+import '../services/cardio_workout_cache.dart';
 import '../services/activity_share_service.dart';
 import '../services/gps_config.dart';
 import '../services/gps_diagnostic.dart';
@@ -87,6 +88,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _autoPaused = false;
   bool _manualPaused = false;
   String? _error;
+  String? _workoutNotice;
   String? _clientSessionId;
   double _weightKg = CalorieEstimator.defaultWeightKg;
   String? _gpsStatus;
@@ -369,9 +371,26 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     setState(() {
       _loading = true;
       _error = null;
+      _workoutNotice = null;
     });
     try {
-      final workout = await CardioService.instance.getActiveWorkout();
+      CardioWorkout? workout;
+      String? notice;
+      try {
+        workout = await CardioService.instance.getActiveWorkout();
+      } catch (_) {
+        workout = await CardioWorkoutCache.instance.load();
+        if (workout != null) {
+          notice = 'Plano do coach carregado localmente (sem conexão com o servidor)';
+        }
+      }
+      if (workout == null || workout.intervals.isEmpty) {
+        final cached = await CardioWorkoutCache.instance.load();
+        if (cached != null && cached.intervals.isNotEmpty) {
+          workout = cached;
+          notice ??= 'Usando último plano salvo neste aparelho';
+        }
+      }
       try {
         _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
       } catch (_) {}
@@ -386,13 +405,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         _engine.applyConfig(_gpsConfig);
       } catch (_) {}
       if (!mounted) return;
-      final intervals = workout?.intervals ?? [];
       setState(() {
-        _workout = workout;
-        _intervals = intervals;
-        _phaseIndex = 0;
-        _phaseRemaining =
-            intervals.isNotEmpty ? intervals.first.durationSec : 0;
+        _applyWorkout(workout, notice: notice);
         _loading = false;
       });
       await _offerResumeIfNeeded();
@@ -407,6 +421,52 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
       await _offerResumeIfNeeded();
     }
+  }
+
+  void _applyWorkout(CardioWorkout? workout, {String? notice}) {
+    final intervals = workout?.intervals ?? [];
+    _workout = workout;
+    _intervals = intervals;
+    _phaseIndex = 0;
+    _phaseRemaining = intervals.isNotEmpty ? intervals.first.durationSec : 0;
+    _workoutNotice = notice;
+  }
+
+  void _restoreIntervalsFromSnapshot(ActiveRunSnapshot snapshot) {
+    if (snapshot.intervalsJson == null || snapshot.intervalsJson!.isEmpty) {
+      return;
+    }
+    final intervals = parseIntervals(snapshot.intervalsJson);
+    if (intervals.isEmpty) return;
+    _intervals = intervals;
+    if (_workout == null && snapshot.workoutId != null) {
+      _workout = CardioWorkout(
+        id: snapshot.workoutId!,
+        title: 'Treino outdoor',
+        type: 'INTERVAL',
+        intervals: intervals,
+      );
+    }
+    _phaseIndex = snapshot.phaseIndex.clamp(0, intervals.length - 1);
+  }
+
+  String? _intervalsJsonForSnapshot() {
+    if (_intervals.isEmpty) return null;
+    return jsonEncode(
+      _intervals
+          .map((i) => {'phase': i.phase, 'durationSec': i.durationSec})
+          .toList(),
+    );
+  }
+
+  bool _looksLikeNetworkError(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('socket') ||
+        lower.contains('timed out') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('network is unreachable') ||
+        lower.contains('connection refused') ||
+        lower.contains('clientexception');
   }
 
   Future<void> _emitDiagnostic(
@@ -546,6 +606,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           .toList(),
     );
     _lastLapToast = _laps.completedLaps.length;
+
+    _restoreIntervalsFromSnapshot(snapshot);
 
     setState(() {
       _clientSessionId = snapshot.clientSessionId;
@@ -761,6 +823,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         clientSessionId: _clientSessionId!,
         serverSessionId: _session?.id,
         workoutId: _workout?.id,
+        intervalsJson: _intervalsJsonForSnapshot(),
         startedAt: _startedAt!,
         distanceMeters: _distance,
         estimatedGapMeters: _estimatedGap,
@@ -870,6 +933,17 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() => _error = 'Sessão expirada. Faça login novamente.');
     } catch (e) {
+      final msg = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : '$e';
+      if (!_looksLikeNetworkError(msg)) {
+        if (!mounted) return;
+        setState(() => _error = msg);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _session = null;
@@ -892,7 +966,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Modo offline — GPS em segundo plano; sincroniza ao finalizar',
+            'Sem conexão com o servidor — GPS ativo; sincroniza ao finalizar',
           ),
         ),
       );
@@ -1474,6 +1548,16 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                     if (_intervals.isNotEmpty && !_running) ...[
                       const SizedBox(height: 10),
                       _IntervalPlanCard(intervals: _intervals),
+                    ],
+                    if (_workoutNotice != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _workoutNotice!,
+                        style: const TextStyle(
+                          color: Colors.amberAccent,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                     if (_running) ...[
                       const SizedBox(height: 6),

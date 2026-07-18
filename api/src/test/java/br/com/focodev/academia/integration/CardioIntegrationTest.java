@@ -79,7 +79,11 @@ class CardioIntegrationTest {
                 .andExpect(jsonPath("$.intervalsJson").isString())
                 .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("WALK")))
                 .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("120")))
-                .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("RUN")));
+                .andExpect(jsonPath("$.intervalsJson").value(org.hamcrest.Matchers.containsString("RUN")))
+                .andExpect(jsonPath("$.intervals[0].phase").value("WALK"))
+                .andExpect(jsonPath("$.intervals[0].durationSec").value(120))
+                .andExpect(jsonPath("$.intervals[1].phase").value("RUN"))
+                .andExpect(jsonPath("$.intervals[1].durationSec").value(60));
 
         String sessionJson = mockMvc.perform(post("/api/student/cardio-sessions/start")
                         .header("Authorization", "Bearer " + fixture.studentToken())
@@ -145,6 +149,57 @@ class CardioIntegrationTest {
     }
 
     @Test
+    void activeWorkoutReturns404WhenNone() throws Exception {
+        mockMvc.perform(get("/api/student/cardio-workouts/active")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void startSessionResumesSameClientSessionId() throws Exception {
+        Map<String, Object> workoutBody = Map.of(
+                "studentId", fixture.student().getId().toString(),
+                "title", "Intervalado",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 120),
+                        Map.of("phase", "RUN", "durationSec", 60)
+                )
+        );
+
+        String workoutJson = mockMvc.perform(post("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(workoutBody)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID workoutId = UUID.fromString(
+                workoutJson.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1"));
+
+        String firstStart = mockMvc.perform(post("/api/student/cardio-sessions/start")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"workoutId\":\"" + workoutId + "\",\"clientSessionId\":\"resume-client-1\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID sessionId = UUID.fromString(
+                firstStart.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1"));
+
+        mockMvc.perform(post("/api/student/cardio-sessions/start")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"workoutId\":\"" + workoutId + "\",\"clientSessionId\":\"resume-client-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId.toString()));
+    }
+
+    @Test
     void instructorCanUpdateAndDeleteCardioWorkout() throws Exception {
         Map<String, Object> workoutBody = Map.of(
                 "studentId", fixture.student().getId().toString(),
@@ -199,5 +254,47 @@ class CardioIntegrationTest {
                         .header("Authorization", "Bearer " + fixture.instructorToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void updateWithoutIntervalsKeepsExistingPlan() throws Exception {
+        Map<String, Object> workoutBody = Map.of(
+                "studentId", fixture.student().getId().toString(),
+                "title", "Plano original",
+                "type", "INTERVAL",
+                "intervals", List.of(
+                        Map.of("phase", "WALK", "durationSec", 120),
+                        Map.of("phase", "RUN", "durationSec", 180)
+                )
+        );
+
+        String workoutJson = mockMvc.perform(post("/api/instructor/cardio-workouts")
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(workoutBody)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID workoutId = UUID.fromString(
+                workoutJson.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1"));
+
+        mockMvc.perform(put("/api/instructor/cardio-workouts/" + workoutId)
+                        .header("Authorization", "Bearer " + fixture.instructorToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", "Plano reativado",
+                                "type", "INTERVAL",
+                                "active", true
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Plano reativado"));
+
+        mockMvc.perform(get("/api/student/cardio-workouts/active")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intervals[0].durationSec").value(120))
+                .andExpect(jsonPath("$.intervals[1].durationSec").value(180));
     }
 }

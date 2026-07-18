@@ -252,14 +252,18 @@ export default function CardioPage() {
   async function toggleActive(w: CardioWorkout) {
     setError("");
     try {
+      const intervals = parseIntervals(w.intervalsJson);
+      const body: Record<string, unknown> = {
+        title: w.title,
+        type: w.type,
+        active: !w.active,
+      };
+      if (intervals.length > 0) {
+        body.intervals = intervals;
+      }
       await api(`/api/instructor/cardio-workouts/${w.id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          title: w.title,
-          type: w.type,
-          intervals: parseIntervals(w.intervalsJson),
-          active: !w.active,
-        }),
+        body: JSON.stringify(body),
       });
       setMessage(w.active ? "Treino desativado." : "Treino reativado para o aluno.");
       await refreshWorkouts();

@@ -56,4 +56,18 @@ void main() {
     expect(workout.intervals, hasLength(2));
     expect(workout.intervalsSummary, '2 min caminhada + 3 min corrida');
   });
+
+  test('CardioWorkout.fromJson aceita intervals já parseados da API', () {
+    final workout = CardioWorkout.fromJson({
+      'id': 'w2',
+      'title': 'Intervalado',
+      'type': 'INTERVAL',
+      'intervals': [
+        {'phase': 'WALK', 'durationSec': 120},
+        {'phase': 'RUN', 'durationSec': 180},
+      ],
+    });
+    expect(workout.intervals, hasLength(2));
+    expect(workout.intervals.first.phase, 'WALK');
+  });
 }

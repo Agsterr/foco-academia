@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'auth_service.dart';
+import 'cardio_workout_cache.dart';
 import 'gps_tracking_engine.dart';
 
 class CardioInterval {
@@ -33,11 +34,12 @@ class CardioWorkout {
   final List<CardioInterval> intervals;
 
   factory CardioWorkout.fromJson(Map<String, dynamic> json) {
+    final intervals = parseIntervals(json['intervals'] ?? json['intervalsJson']);
     return CardioWorkout(
       id: json['id'] as String,
       title: json['title'] as String? ?? 'Treino outdoor',
       type: json['type'] as String? ?? 'RUN',
-      intervals: parseIntervals(json['intervalsJson'] ?? json['intervals']),
+      intervals: intervals,
     );
   }
 
@@ -162,14 +164,31 @@ class CardioService {
 
   Future<CardioWorkout?> getActiveWorkout() async {
     try {
-      final data = await AuthService.instance.get('/api/student/cardio-workouts/active');
-      return CardioWorkout.fromJson(data);
+      final data =
+          await AuthService.instance.getOptional('/api/student/cardio-workouts/active');
+      if (data == null) {
+        await CardioWorkoutCache.instance.clear();
+        return null;
+      }
+      final workout = CardioWorkout.fromJson(data);
+      if (workout.intervals.isNotEmpty) {
+        await CardioWorkoutCache.instance.save(workout);
+      }
+      return workout;
     } on SessionExpiredException {
       rethrow;
     } catch (_) {
-      // Sem treino ativo (400) ou rede — modo livre.
-      return null;
+      return CardioWorkoutCache.instance.load();
     }
+  }
+
+  /// Carrega treino ativo ou cache local (intervalos do coach).
+  Future<CardioWorkout?> getActiveWorkoutWithCache() async {
+    final remote = await getActiveWorkout();
+    if (remote != null && remote.intervals.isNotEmpty) return remote;
+    final cached = await CardioWorkoutCache.instance.load();
+    if (cached != null) return cached;
+    return remote;
   }
 
   Future<CardioSession> startSession({String? workoutId, required String clientSessionId}) async {
