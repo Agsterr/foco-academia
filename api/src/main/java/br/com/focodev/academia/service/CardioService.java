@@ -10,16 +10,19 @@ import br.com.focodev.academia.security.AuthUser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -77,13 +80,9 @@ public class CardioService {
         CardioWorkout workout = requireInstructorWorkout(instructor, workoutId);
         workout.setTitle(request.title().trim());
         workout.setType(request.type());
-        if (request.intervals() != null) {
+        if (request.intervals() != null && !request.intervals().isEmpty()) {
             try {
-                workout.setIntervalsJson(
-                        request.intervals().isEmpty()
-                                ? null
-                                : objectMapper.writeValueAsString(request.intervals())
-                );
+                workout.setIntervalsJson(objectMapper.writeValueAsString(request.intervals()));
             } catch (JsonProcessingException e) {
                 throw new ApiException("Intervalos inválidos");
             }
@@ -122,17 +121,28 @@ public class CardioService {
     public CardioDtos.CardioWorkoutResponse getActiveStudentWorkout(AuthUser student) {
         User user = requireStudent(student);
         CardioWorkout workout = workoutRepository.findFirstByStudentIdAndActiveTrueOrderByCreatedAtDesc(user.getId())
-                .orElseThrow(() -> new ApiException("Nenhum treino outdoor ativo"));
+                .orElseThrow(() -> new ApiException("Nenhum treino outdoor ativo", HttpStatus.NOT_FOUND));
         return toWorkoutResponse(workout);
     }
 
     @Transactional
     public CardioDtos.CardioSessionResponse startSession(AuthUser student, CardioDtos.StartCardioSessionRequest request) {
         User user = requireStudent(student);
-        sessionRepository.findByStudentIdAndCompletedAtIsNull(user.getId())
-                .ifPresent(s -> {
-                    throw new ApiException("Já existe uma sessão em andamento");
-                });
+        Optional<CardioSession> openSession = sessionRepository.findByStudentIdAndCompletedAtIsNull(user.getId());
+        if (openSession.isPresent()) {
+            CardioSession existing = openSession.get();
+            if (isStaleCardioSession(existing)) {
+                abandonStaleSession(existing);
+            } else if (request.clientSessionId() != null
+                    && request.clientSessionId().equals(existing.getClientSessionId())) {
+                return toSessionResponse(existing);
+            } else if (existing.getRoutePoints().isEmpty()
+                    && existing.getStartedAt().isBefore(Instant.now().minus(30, ChronoUnit.MINUTES))) {
+                abandonStaleSession(existing);
+            } else {
+                throw new ApiException("Já existe uma sessão em andamento");
+            }
+        }
 
         CardioWorkout workout = null;
         if (request.workoutId() != null) {
@@ -406,9 +416,40 @@ public class CardioService {
                 w.getTitle(),
                 w.getType(),
                 w.getIntervalsJson(),
+                parseIntervals(w.getIntervalsJson()),
                 w.isActive(),
                 ISO.format(w.getCreatedAt())
         );
+    }
+
+    private List<CardioDtos.CardioIntervalDto> parseIntervals(String intervalsJson) {
+        if (intervalsJson == null || intervalsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            CardioDtos.CardioIntervalDto[] parsed = objectMapper.readValue(
+                    intervalsJson,
+                    CardioDtos.CardioIntervalDto[].class
+            );
+            return List.of(parsed);
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
+    }
+
+    private boolean isStaleCardioSession(CardioSession session) {
+        return session.getStartedAt().isBefore(Instant.now().minus(12, ChronoUnit.HOURS));
+    }
+
+    private void abandonStaleSession(CardioSession session) {
+        session.setCompletedAt(Instant.now());
+        if (session.getDistanceMeters() == null) {
+            session.setDistanceMeters(0.0);
+        }
+        if (session.getElapsedMs() == null) {
+            session.setElapsedMs(0L);
+        }
+        sessionRepository.save(session);
     }
 
     private CardioDtos.CardioSessionResponse toSessionResponse(CardioSession s) {

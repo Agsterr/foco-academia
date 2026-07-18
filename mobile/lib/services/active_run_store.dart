@@ -16,6 +16,7 @@ class ActiveRunSnapshot {
     required this.points,
     this.serverSessionId,
     this.workoutId,
+    this.intervalsJson,
     this.estimatedGapMeters = 0,
     this.elevationGainMeters = 0,
     this.movingElapsedSec = 0,
@@ -30,6 +31,7 @@ class ActiveRunSnapshot {
   final String clientSessionId;
   final String? serverSessionId;
   final String? workoutId;
+  final String? intervalsJson;
   final DateTime startedAt;
   final double distanceMeters;
   final double estimatedGapMeters;
@@ -48,6 +50,7 @@ class ActiveRunSnapshot {
         'clientSessionId': clientSessionId,
         'serverSessionId': serverSessionId,
         'workoutId': workoutId,
+        'intervalsJson': intervalsJson,
         'startedAt': startedAt.toUtc().toIso8601String(),
         'distanceMeters': distanceMeters,
         'estimatedGapMeters': estimatedGapMeters,
@@ -74,6 +77,7 @@ class ActiveRunSnapshot {
       clientSessionId: json['clientSessionId'] as String,
       serverSessionId: json['serverSessionId'] as String?,
       workoutId: json['workoutId'] as String?,
+      intervalsJson: json['intervalsJson'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       distanceMeters: (json['distanceMeters'] as num?)?.toDouble() ?? 0,
       estimatedGapMeters: (json['estimatedGapMeters'] as num?)?.toDouble() ?? 0,

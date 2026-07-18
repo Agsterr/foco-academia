@@ -13,6 +13,7 @@ import '../services/calorie_estimator.dart';
 import '../services/calories_service.dart';
 import '../services/cardio_feedback.dart';
 import '../services/cardio_service.dart';
+import '../services/cardio_workout_cache.dart';
 import '../services/activity_share_service.dart';
 import '../services/gps_config.dart';
 import '../services/gps_diagnostic.dart';
@@ -87,6 +88,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool _autoPaused = false;
   bool _manualPaused = false;
   String? _error;
+  String? _workoutNotice;
   String? _clientSessionId;
   double _weightKg = CalorieEstimator.defaultWeightKg;
   String? _gpsStatus;
@@ -369,9 +371,26 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     setState(() {
       _loading = true;
       _error = null;
+      _workoutNotice = null;
     });
     try {
-      final workout = await CardioService.instance.getActiveWorkout();
+      CardioWorkout? workout;
+      String? notice;
+      try {
+        workout = await CardioService.instance.getActiveWorkout();
+      } catch (_) {
+        workout = await CardioWorkoutCache.instance.load();
+        if (workout != null) {
+          notice = 'Plano do coach carregado localmente (sem conexão com o servidor)';
+        }
+      }
+      if (workout == null || workout.intervals.isEmpty) {
+        final cached = await CardioWorkoutCache.instance.load();
+        if (cached != null && cached.intervals.isNotEmpty) {
+          workout = cached;
+          notice ??= 'Usando último plano salvo neste aparelho';
+        }
+      }
       try {
         _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
       } catch (_) {}
@@ -387,8 +406,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       } catch (_) {}
       if (!mounted) return;
       setState(() {
-        _workout = workout;
-        _intervals = workout?.intervals ?? [];
+        _applyWorkout(workout, notice: notice);
         _loading = false;
       });
       await _offerResumeIfNeeded();
@@ -403,6 +421,52 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       });
       await _offerResumeIfNeeded();
     }
+  }
+
+  void _applyWorkout(CardioWorkout? workout, {String? notice}) {
+    final intervals = workout?.intervals ?? [];
+    _workout = workout;
+    _intervals = intervals;
+    _phaseIndex = 0;
+    _phaseRemaining = intervals.isNotEmpty ? intervals.first.durationSec : 0;
+    _workoutNotice = notice;
+  }
+
+  void _restoreIntervalsFromSnapshot(ActiveRunSnapshot snapshot) {
+    if (snapshot.intervalsJson == null || snapshot.intervalsJson!.isEmpty) {
+      return;
+    }
+    final intervals = parseIntervals(snapshot.intervalsJson);
+    if (intervals.isEmpty) return;
+    _intervals = intervals;
+    if (_workout == null && snapshot.workoutId != null) {
+      _workout = CardioWorkout(
+        id: snapshot.workoutId!,
+        title: 'Treino outdoor',
+        type: 'INTERVAL',
+        intervals: intervals,
+      );
+    }
+    _phaseIndex = snapshot.phaseIndex.clamp(0, intervals.length - 1);
+  }
+
+  String? _intervalsJsonForSnapshot() {
+    if (_intervals.isEmpty) return null;
+    return jsonEncode(
+      _intervals
+          .map((i) => {'phase': i.phase, 'durationSec': i.durationSec})
+          .toList(),
+    );
+  }
+
+  bool _looksLikeNetworkError(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('socket') ||
+        lower.contains('timed out') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('network is unreachable') ||
+        lower.contains('connection refused') ||
+        lower.contains('clientexception');
   }
 
   Future<void> _emitDiagnostic(
@@ -542,6 +606,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           .toList(),
     );
     _lastLapToast = _laps.completedLaps.length;
+
+    _restoreIntervalsFromSnapshot(snapshot);
 
     setState(() {
       _clientSessionId = snapshot.clientSessionId;
@@ -757,6 +823,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         clientSessionId: _clientSessionId!,
         serverSessionId: _session?.id,
         workoutId: _workout?.id,
+        intervalsJson: _intervalsJsonForSnapshot(),
         startedAt: _startedAt!,
         distanceMeters: _distance,
         estimatedGapMeters: _estimatedGap,
@@ -866,6 +933,17 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() => _error = 'Sessão expirada. Faça login novamente.');
     } catch (e) {
+      final msg = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : '$e';
+      if (!_looksLikeNetworkError(msg)) {
+        if (!mounted) return;
+        setState(() => _error = msg);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _session = null;
@@ -888,7 +966,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Modo offline — GPS em segundo plano; sincroniza ao finalizar',
+            'Sem conexão com o servidor — GPS ativo; sincroniza ao finalizar',
           ),
         ),
       );
@@ -1453,6 +1531,34 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _workout == null
+                          ? 'Sem treino prescrito — modo livre'
+                          : _intervals.isEmpty
+                              ? 'Treino sem intervalos — modo contínuo'
+                              : (_workout!.intervalsSummary.isNotEmpty
+                                  ? _workout!.intervalsSummary
+                                  : '${_intervals.length} fases · ${_workout!.type}'),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                    if (_intervals.isNotEmpty && !_running) ...[
+                      const SizedBox(height: 10),
+                      _IntervalPlanCard(intervals: _intervals),
+                    ],
+                    if (_workoutNotice != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _workoutNotice!,
+                        style: const TextStyle(
+                          color: Colors.amberAccent,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                     if (_running) ...[
                       const SizedBox(height: 6),
                       Text(
@@ -1580,6 +1686,72 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           else
                             const SizedBox(height: 220),
                           const SizedBox(height: 12),
+                          if (phase != null && _running)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: phase.isRun
+                                    ? const Color(0xFF7F1D1D)
+                                    : const Color(0xFF14532D),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: phase.isRun
+                                      ? Colors.redAccent
+                                      : Colors.greenAccent,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    phase.isRun ? 'CORRIDA' : 'CAMINHADA',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _fmt(_phaseRemaining),
+                                    style: const TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    _roundLabel,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else if (_intervals.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Text(
+                                _running
+                                    ? (_gpsStatus ??
+                                        'GPS ativo · ${_engine.acceptedPoints.length} pontos')
+                                    : 'Inicie para começar o rastreio GPS',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: Colors.redAccent),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
                           Row(
                             children: [
                               Expanded(child: _Stat('Tempo', _fmt(_elapsed))),
@@ -1706,81 +1878,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   ),
                                 ),
                           ],
-                          const SizedBox(height: 12),
-                          if (phase != null)
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: phase.isRun
-                                    ? const Color(0xFF7F1D1D)
-                                    : const Color(0xFF14532D),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: phase.isRun
-                                      ? Colors.redAccent
-                                      : Colors.greenAccent,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    phase.isRun ? 'CORRIDA' : 'CAMINHADA',
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.2,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _fmt(_phaseRemaining),
-                                    style: const TextStyle(
-                                      fontSize: 36,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  Text(
-                                    () {
-                                      // Cada rodada = caminhada + corrida (2 fases).
-                                      final totalRounds =
-                                          (_intervals.length + 1) ~/ 2;
-                                      final roundNum = (_phaseIndex ~/ 2) + 1;
-                                      final paused = _manualPaused || _autoPaused
-                                          ? ' · pausado'
-                                          : '';
-                                      return 'Rodada $roundNum de $totalRounds$paused';
-                                    }(),
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: Text(
-                                _running
-                                    ? (_gpsStatus ??
-                                        'GPS ativo · ${_engine.acceptedPoints.length} pontos')
-                                    : 'Inicie para começar o rastreio GPS',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                            ),
-                          if (_error != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _error!,
-                              style: const TextStyle(color: Colors.redAccent),
-                            ),
-                          ],
                           const SizedBox(height: 16),
                         ],
                       ),
@@ -1906,6 +2003,139 @@ class _Stat extends StatelessWidget {
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
       ],
+    );
+  }
+}
+
+/// Plano da sequência prescrita (visível ao entrar, antes de iniciar).
+class _IntervalPlanCard extends StatelessWidget {
+  const _IntervalPlanCard({required this.intervals});
+
+  final List<CardioInterval> intervals;
+
+  @override
+  Widget build(BuildContext context) {
+    final walk = intervals.where((i) => !i.isRun).toList();
+    final run = intervals.where((i) => i.isRun).toList();
+    final walkSec = walk.isNotEmpty ? walk.first.durationSec : 0;
+    final runSec = run.isNotEmpty ? run.first.durationSec : 0;
+    final rounds = (intervals.length + 1) ~/ 2;
+    final first = intervals.first;
+
+    String fmt(int sec) {
+      final m = sec ~/ 60;
+      final s = (sec % 60).toString().padLeft(2, '0');
+      return '$m:$s';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: first.isRun
+            ? const Color(0xFF7F1D1D)
+            : const Color(0xFF14532D),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: first.isRun ? Colors.redAccent : Colors.greenAccent,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Sequência do coach',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (walkSec > 0)
+                Expanded(
+                  child: _PlanPhaseChip(
+                    label: 'CAMINHADA',
+                    duration: fmt(walkSec),
+                    accent: Colors.lightGreenAccent,
+                  ),
+                ),
+              if (walkSec > 0 && runSec > 0)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(
+                    '→',
+                    style: TextStyle(color: Colors.white54, fontSize: 18),
+                  ),
+                ),
+              if (runSec > 0)
+                Expanded(
+                  child: _PlanPhaseChip(
+                    label: 'CORRIDA',
+                    duration: fmt(runSec),
+                    accent: Colors.redAccent,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            rounds <= 1
+                ? 'Começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}'
+                : 'Repete $rounds vezes · começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanPhaseChip extends StatelessWidget {
+  const _PlanPhaseChip({
+    required this.label,
+    required this.duration,
+    required this.accent,
+  });
+
+  final String label;
+  final String duration;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            duration,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

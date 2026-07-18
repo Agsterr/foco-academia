@@ -21,6 +21,19 @@ import {
 import { getProfile } from "@/lib/profile";
 import { getToken } from "@/lib/api";
 
+function summarizeIntervals(intervals: CardioInterval[]): string {
+  if (intervals.length === 0) return "";
+  const walk = intervals.find((i) => i.phase === "WALK");
+  const run = intervals.find((i) => i.phase === "RUN");
+  const rounds = Math.ceil(intervals.length / 2);
+  const parts: string[] = [];
+  if (walk) parts.push(`${Math.round(walk.durationSec / 60)} min caminhada`);
+  if (run) parts.push(`${Math.round(run.durationSec / 60)} min corrida`);
+  if (parts.length === 0) return `${intervals.length} fases`;
+  const cycle = parts.join(" + ");
+  return rounds <= 1 ? cycle : `${cycle} · ${rounds} rodadas`;
+}
+
 export default function OutdoorPage() {
   const router = useRouter();
   const [workout, setWorkout] = useState<CardioWorkout | null>(null);
@@ -153,6 +166,32 @@ export default function OutdoorPage() {
       <p className="mt-1 text-sm text-slate-400">
         {workout ? workout.title : "Corrida/caminhada livre"}
       </p>
+      {intervals.length > 0 && (
+        <p className="mt-1 text-sm text-teal-300">
+          {summarizeIntervals(intervals)}
+        </p>
+      )}
+
+      {intervals.length > 0 && !running && (
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-center text-sm">
+          {intervals.find((i) => i.phase === "WALK") && (
+            <div>
+              <p className="text-xs text-green-400">CAMINHADA</p>
+              <p className="text-lg font-semibold">
+                {Math.round((intervals.find((i) => i.phase === "WALK")!.durationSec) / 60)} min
+              </p>
+            </div>
+          )}
+          {intervals.find((i) => i.phase === "RUN") && (
+            <div>
+              <p className="text-xs text-red-400">CORRIDA</p>
+              <p className="text-lg font-semibold">
+                {Math.round((intervals.find((i) => i.phase === "RUN")!.durationSec) / 60)} min
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <RouteMap points={points} />
 

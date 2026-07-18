@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'auth_service.dart';
+import 'cardio_workout_cache.dart';
 import 'gps_tracking_engine.dart';
 
 class CardioInterval {
@@ -33,13 +34,17 @@ class CardioWorkout {
   final List<CardioInterval> intervals;
 
   factory CardioWorkout.fromJson(Map<String, dynamic> json) {
+    final intervals = parseIntervals(json['intervals'] ?? json['intervalsJson']);
     return CardioWorkout(
       id: json['id'] as String,
       title: json['title'] as String? ?? 'Treino outdoor',
       type: json['type'] as String? ?? 'RUN',
-      intervals: parseIntervals(json['intervalsJson'] as String?),
+      intervals: intervals,
     );
   }
+
+  /// Ex.: "2 min caminhada + 3 min corrida · 15 rodadas"
+  String get intervalsSummary => summarizeIntervals(intervals);
 }
 
 class CardioSession {
@@ -96,16 +101,61 @@ class CardioSession {
   }
 }
 
-List<CardioInterval> parseIntervals(String? json) {
-  if (json == null || json.isEmpty) return [];
+/// Aceita `intervalsJson` (String JSON) ou lista já decodificada da API.
+List<CardioInterval> parseIntervals(Object? raw) {
+  if (raw == null) return [];
   try {
-    final list = jsonDecode(json) as List<dynamic>;
+    final List<dynamic> list;
+    if (raw is String) {
+      if (raw.isEmpty) return [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      list = decoded;
+    } else if (raw is List) {
+      list = raw;
+    } else {
+      return [];
+    }
     return list
-        .map((e) => CardioInterval.fromJson(e as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((e) => CardioInterval.fromJson(Map<String, dynamic>.from(e)))
+        .where((i) => i.durationSec > 0)
         .toList();
   } catch (_) {
     return [];
   }
+}
+
+/// Resumo legível da sequência prescrita pelo coach.
+String summarizeIntervals(List<CardioInterval> intervals) {
+  if (intervals.isEmpty) return '';
+  final walk = intervals.where((i) => !i.isRun).toList();
+  final run = intervals.where((i) => i.isRun).toList();
+  final walkSec = walk.isNotEmpty ? walk.first.durationSec : 0;
+  final runSec = run.isNotEmpty ? run.first.durationSec : 0;
+  final rounds = (intervals.length + 1) ~/ 2;
+  final parts = <String>[];
+  if (walkSec > 0) {
+    parts.add('${_formatMinutes(walkSec)} caminhada');
+  }
+  if (runSec > 0) {
+    parts.add('${_formatMinutes(runSec)} corrida');
+  }
+  if (parts.isEmpty) {
+    return '$rounds fases';
+  }
+  final cycle = parts.join(' + ');
+  if (rounds <= 1) return cycle;
+  return '$cycle · $rounds rodadas';
+}
+
+String _formatMinutes(int sec) {
+  if (sec <= 0) return '0 min';
+  if (sec % 60 == 0) return '${sec ~/ 60} min';
+  final m = sec ~/ 60;
+  final s = sec % 60;
+  if (m == 0) return '${s}s';
+  return '$m:${s.toString().padLeft(2, '0')} min';
 }
 
 class CardioService {
@@ -114,14 +164,31 @@ class CardioService {
 
   Future<CardioWorkout?> getActiveWorkout() async {
     try {
-      final data = await AuthService.instance.get('/api/student/cardio-workouts/active');
-      return CardioWorkout.fromJson(data);
+      final data =
+          await AuthService.instance.getOptional('/api/student/cardio-workouts/active');
+      if (data == null) {
+        await CardioWorkoutCache.instance.clear();
+        return null;
+      }
+      final workout = CardioWorkout.fromJson(data);
+      if (workout.intervals.isNotEmpty) {
+        await CardioWorkoutCache.instance.save(workout);
+      }
+      return workout;
     } on SessionExpiredException {
       rethrow;
     } catch (_) {
-      // Sem treino ativo (400) ou rede — modo livre.
-      return null;
+      return CardioWorkoutCache.instance.load();
     }
+  }
+
+  /// Carrega treino ativo ou cache local (intervalos do coach).
+  Future<CardioWorkout?> getActiveWorkoutWithCache() async {
+    final remote = await getActiveWorkout();
+    if (remote != null && remote.intervals.isNotEmpty) return remote;
+    final cached = await CardioWorkoutCache.instance.load();
+    if (cached != null) return cached;
+    return remote;
   }
 
   Future<CardioSession> startSession({String? workoutId, required String clientSessionId}) async {

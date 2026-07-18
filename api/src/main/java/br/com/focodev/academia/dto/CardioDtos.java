@@ -37,6 +37,7 @@ public final class CardioDtos {
             String title,
             CardioType type,
             String intervalsJson,
+            List<CardioIntervalDto> intervals,
             boolean active,
             String createdAt
     ) {}
