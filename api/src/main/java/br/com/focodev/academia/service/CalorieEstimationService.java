@@ -1,6 +1,10 @@
 package br.com.focodev.academia.service;
 
+import br.com.focodev.academia.domain.BodyMeasurement;
+import br.com.focodev.academia.domain.StudentProfile;
 import br.com.focodev.academia.domain.WorkoutIntensity;
+import br.com.focodev.academia.repository.BodyMeasurementRepository;
+import br.com.focodev.academia.repository.StudentProfileRepository;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,6 +44,27 @@ public class CalorieEstimationService {
             return DEFAULT_WEIGHT_KG;
         }
         return profileWeightKg;
+    }
+
+    /**
+     * Peso do aluno: perfil → última pesagem → 70 kg padrão.
+     */
+    public double resolveStudentWeightKg(
+            java.util.UUID studentId,
+            StudentProfileRepository profileRepository,
+            BodyMeasurementRepository measurementRepository
+    ) {
+        Double fromProfile = profileRepository.findByUserId(studentId)
+                .map(StudentProfile::getCurrentWeightKg)
+                .orElse(null);
+        if (fromProfile != null && fromProfile >= 20 && fromProfile <= 500) {
+            return fromProfile;
+        }
+        return measurementRepository.findByStudentIdOrderByRecordedAtDesc(studentId).stream()
+                .findFirst()
+                .map(BodyMeasurement::getWeightKg)
+                .filter(w -> w >= 20 && w <= 500)
+                .orElse(DEFAULT_WEIGHT_KG);
     }
 
     /** MET por velocidade média (km/h). Abaixo de 6,5 km/h usa tabela de caminhada. */

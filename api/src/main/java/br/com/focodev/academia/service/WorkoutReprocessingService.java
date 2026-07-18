@@ -4,7 +4,9 @@ import br.com.focodev.academia.domain.CardioSession;
 import br.com.focodev.academia.domain.RoutePoint;
 import br.com.focodev.academia.dto.CardioDtos;
 import br.com.focodev.academia.exception.ApiException;
+import br.com.focodev.academia.repository.BodyMeasurementRepository;
 import br.com.focodev.academia.repository.CardioSessionRepository;
+import br.com.focodev.academia.repository.StudentProfileRepository;
 import br.com.focodev.academia.security.AuthUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,15 +27,21 @@ public class WorkoutReprocessingService {
     private final CardioSessionRepository sessionRepository;
     private final CalorieEstimationService calorieEstimationService;
     private final TenantService tenantService;
+    private final StudentProfileRepository profileRepository;
+    private final BodyMeasurementRepository measurementRepository;
 
     public WorkoutReprocessingService(
             CardioSessionRepository sessionRepository,
             CalorieEstimationService calorieEstimationService,
-            TenantService tenantService
+            TenantService tenantService,
+            StudentProfileRepository profileRepository,
+            BodyMeasurementRepository measurementRepository
     ) {
         this.sessionRepository = sessionRepository;
         this.calorieEstimationService = calorieEstimationService;
         this.tenantService = tenantService;
+        this.profileRepository = profileRepository;
+        this.measurementRepository = measurementRepository;
     }
 
     @Transactional
@@ -106,7 +114,8 @@ public class WorkoutReprocessingService {
         }
 
         int kcal = calorieEstimationService.estimateCardioKcal(
-                calorieEstimationService.resolveWeightKg(null),
+                calorieEstimationService.resolveStudentWeightKg(
+                        session.getStudent().getId(), profileRepository, measurementRepository),
                 avgSpeed,
                 movingMs,
                 pausedMs,

@@ -278,6 +278,11 @@ public class CardioService {
                 bm.setRecordedAt(parseInstant(m.recordedAt()));
                 bm.setSource(MeasurementSource.STUDENT);
                 measurementRepository.save(bm);
+                profileRepository.findByUserId(user.getId()).ifPresent(profile -> {
+                    profile.setCurrentWeightKg(m.weightKg());
+                    profile.setUpdatedAt(java.time.Instant.now());
+                    profileRepository.save(profile);
+                });
                 measurementsSynced++;
             }
         }
@@ -509,15 +514,14 @@ public class CardioService {
         if (clientCalories != null && clientCalories >= 0) {
             return clientCalories;
         }
-        Double weight = profileRepository.findByUserId(studentId)
-                .map(StudentProfile::getCurrentWeightKg)
-                .orElse(null);
+        double weight = calorieEstimationService.resolveStudentWeightKg(
+                studentId, profileRepository, measurementRepository);
         double speed = avgSpeedKmh != null ? avgSpeedKmh : 0;
         if (speed <= 0 && distanceMeters != null && elapsedMs != null && elapsedMs > 0) {
             speed = (distanceMeters / 1000.0) / (elapsedMs / 3_600_000.0);
         }
         return calorieEstimationService.estimateCardioKcal(
-                calorieEstimationService.resolveWeightKg(weight),
+                weight,
                 speed,
                 elapsedMs,
                 pausedMs,

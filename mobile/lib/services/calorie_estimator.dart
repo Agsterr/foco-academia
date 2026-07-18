@@ -122,6 +122,33 @@ class CalorieEstimator {
     return (met * resolveWeight(weightKg) * hours).round().clamp(0, 100000);
   }
 
+  /// kcal gastos por 1 km a [assumedSpeedKmh] (caminhada/corrida leve).
+  static double kcalPerKm({
+    required double weightKg,
+    double assumedSpeedKmh = 5.0,
+  }) {
+    final hoursPerKm = 1.0 / assumedSpeedKmh.clamp(2.0, 14.0);
+    final kcal = cardioKcal(
+      weightKg: weightKg,
+      avgSpeedKmh: assumedSpeedKmh,
+      elapsedMs: (hoursPerKm * 3600000).round(),
+      distanceMeters: 1000,
+    );
+    return kcal > 0 ? kcal.toDouble() : 0.7 * resolveWeight(weightKg);
+  }
+
+  /// Estima km necessários para queimar [targetKcal] a ritmo de caminhada.
+  static double kmForTargetCalories({
+    required double weightKg,
+    required int targetKcal,
+    double assumedSpeedKmh = 5.0,
+  }) {
+    if (targetKcal <= 0) return 0;
+    final perKm = kcalPerKm(weightKg: weightKg, assumedSpeedKmh: assumedSpeedKmh);
+    if (perKm <= 0) return 0;
+    return (targetKcal / perKm).clamp(0.1, 200.0);
+  }
+
   static double _interpolate(List<(double speed, double met)> table, double speed) {
     if (speed <= table.first.$1) return table.first.$2;
     for (var i = 1; i < table.length; i++) {
