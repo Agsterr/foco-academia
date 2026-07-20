@@ -1,6 +1,8 @@
 package com.focodev.academia.foco_academia_mobile
 
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -9,11 +11,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "com.focodev.academia/energy_settings"
+    private val energyChannelName = "com.focodev.academia/energy_settings"
+    private val audioRouteChannelName = "com.focodev.academia/audio_route"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, energyChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "openBatterySaverSettings" -> {
@@ -25,6 +28,31 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, audioRouteChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "prepareMediaPlaybackRoute" -> {
+                        result.success(prepareMediaPlaybackRoute())
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /**
+     * Garante que voz/toques do outdoor usem a rota de mídia atual
+     * (fone BT/cabo quando conectado), e não o alto-falante do aparelho.
+     */
+    private fun prepareMediaPlaybackRoute(): Boolean {
+        return try {
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.mode = AudioManager.MODE_NORMAL
+            @Suppress("DEPRECATION")
+            am.isSpeakerphoneOn = false
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** Abre a tela do sistema com o interruptor de Economia de energia. */
