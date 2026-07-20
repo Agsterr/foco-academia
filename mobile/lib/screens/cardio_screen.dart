@@ -1656,6 +1656,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         : '--';
 
     final expanded = _running && _mapExpanded;
+    // Edge-to-edge no Android zera MediaQuery.padding; viewPadding mantém a
+    // altura da barra de navegação para os botões Iniciar/Pausar/Finalizar.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final liveLat = _running && _engine.hasLiveFix
         ? (_engine.liveTipReliable
             ? (_snappedLive?.latitude ?? _engine.liveLatitude)
@@ -1706,8 +1709,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
               children: [
                 SafeArea(
               top: false,
+              bottom: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 8 + bottomInset),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
