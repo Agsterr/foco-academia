@@ -469,7 +469,7 @@ class _RouteMapViewState extends State<RouteMapView> {
           Positioned(
             left: 12,
             right: 12,
-            bottom: MediaQuery.paddingOf(context).bottom + 12,
+            bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
             child: widget.hud!,
           )
         else if (status != null && status.isNotEmpty && !widget.expanded)
