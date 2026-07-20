@@ -1,26 +1,36 @@
-import 'dart:io' show Platform;
+import 'dart:async';
+import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:vibration/vibration.dart';
 
 /// Feedback sonoro/tátil para troca de fase no outdoor.
 /// Caminhada = 1 vibração longa + voz "Caminhada" + 1 bipe grave.
 /// Corrida = 2 vibrações espaçadas + voz "Corrida" + 2 bipes agudos.
-/// Áudio usa rota de mídia (fone quando conectado) e só abaixa a música.
+///
+/// Voz e toques tocam pela rota de mídia (mesmo caminho da música/fone).
+/// A voz é sintetizada em arquivo e reproduzida no AudioPlayer — assim não
+/// usa o modo "navegação" do TTS, que manda áudio para o alto-falante.
 class CardioFeedback {
   CardioFeedback._();
+
+  static const _audioRouteChannel =
+      MethodChannel('com.focodev.academia/audio_route');
 
   /// [pausa, vibrar, pausa, vibrar, ...] em milissegundos.
   static const List<int> walkVibrationPattern = [0, 550];
   static const List<int> runVibrationPattern = [0, 500, 550, 500];
 
-  static final AudioPlayer _player = AudioPlayer();
+  static final AudioPlayer _tonePlayer = AudioPlayer();
+  static final AudioPlayer _voicePlayer = AudioPlayer();
   static final FlutterTts _tts = FlutterTts();
-  static bool _playerReady = false;
+  static bool _toneReady = false;
+  static bool _voiceReady = false;
   static bool _ttsReady = false;
 
   static String phaseSpeechLabel(String phase) =>
@@ -29,18 +39,20 @@ class CardioFeedback {
   static List<int> phaseVibrationPattern(String phase) =>
       phase.toUpperCase() == 'RUN' ? runVibrationPattern : walkVibrationPattern;
 
-  static Future<void> _ensurePlayer() async {
-    if (_playerReady) return;
-    await _player.setReleaseMode(ReleaseMode.stop);
-    await _player.setVolume(1);
-    await _player.setAudioContext(
-      AudioContext(
-        android: AudioContextAndroid(
-          // false = segue a rota atual (fone BT/cabo); true força alto-falante.
+  /// Força MODE_NORMAL + speakerphone off para voz/toque seguirem o fone.
+  static Future<void> _prepareHeadsetRoute() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _audioRouteChannel.invokeMethod<void>('prepareMediaPlaybackRoute');
+    } catch (_) {}
+  }
+
+  static AudioContext get _mediaHeadsetContext => AudioContext(
+        android: const AudioContextAndroid(
           isSpeakerphoneOn: false,
+          audioMode: AndroidAudioMode.normal,
           stayAwake: true,
-          contentType: AndroidContentType.sonification,
-          // media (não alarm/navigation): bipe no mesmo caminho da música/fone.
+          contentType: AndroidContentType.music,
           usageType: AndroidUsageType.media,
           audioFocus: AndroidAudioFocus.gainTransientMayDuck,
         ),
@@ -51,9 +63,24 @@ class CardioFeedback {
             AVAudioSessionOptions.mixWithOthers,
           },
         ),
-      ),
-    );
-    _playerReady = true;
+      );
+
+  static Future<void> _ensureTonePlayer() async {
+    if (_toneReady) return;
+    await _tonePlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    await _tonePlayer.setReleaseMode(ReleaseMode.stop);
+    await _tonePlayer.setVolume(1);
+    await _tonePlayer.setAudioContext(_mediaHeadsetContext);
+    _toneReady = true;
+  }
+
+  static Future<void> _ensureVoicePlayer() async {
+    if (_voiceReady) return;
+    await _voicePlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    await _voicePlayer.setReleaseMode(ReleaseMode.stop);
+    await _voicePlayer.setVolume(1);
+    await _voicePlayer.setAudioContext(_mediaHeadsetContext);
+    _voiceReady = true;
   }
 
   static Future<void> _ensureTts() async {
@@ -62,10 +89,8 @@ class CardioFeedback {
     await _tts.setSpeechRate(0.48);
     await _tts.setVolume(1.0);
     await _tts.setPitch(1.05);
-    await _tts.awaitSpeakCompletion(true);
-    // Não usar setAudioAttributesForNavigation(): no Android isso manda a voz
-    // para o alto-falante do aparelho enquanto a música continua no fone.
-    // Sem isso, o TTS usa a rota de mídia (fone quando conectado).
+    await _tts.awaitSynthCompletion(true);
+    // Só sintetiza arquivo; não fala direto no engine (evita alto-falante).
     if (Platform.isIOS) {
       await _tts.setIosAudioCategory(
         IosTextToSpeechAudioCategory.playback,
@@ -121,9 +146,10 @@ class CardioFeedback {
       final env = i < 250
           ? i / 250
           : (i > numSamples - 500 ? math.max(0, (numSamples - i) / 500) : 1.0);
-      final sample = (math.sin(2 * math.pi * frequencyHz * t) * 0.55 * env * 32767)
-          .round()
-          .clamp(-32768, 32767);
+      final sample =
+          (math.sin(2 * math.pi * frequencyHz * t) * 0.55 * env * 32767)
+              .round()
+              .clamp(-32768, 32767);
       pcm.setInt16(i * 2, sample, Endian.little);
     }
 
@@ -133,27 +159,68 @@ class CardioFeedback {
     return out.toBytes();
   }
 
-  static Future<void> _playTone(int frequencyHz, {int durationMs = 320}) async {
+  static Future<void> _waitPlayerDone(
+    AudioPlayer player, {
+    required int fallbackMs,
+  }) async {
+    final done = Completer<void>();
+    StreamSubscription<void>? sub;
+    sub = player.onPlayerComplete.listen((_) {
+      if (!done.isCompleted) done.complete();
+    });
     try {
-      await _ensurePlayer();
-      final wav = _beepWav(frequencyHz: frequencyHz, durationMs: durationMs);
-      await _player.stop();
-      await _player.play(BytesSource(wav, mimeType: 'audio/wav'));
-      await Future<void>.delayed(Duration(milliseconds: durationMs + 80));
-    } catch (_) {
-      try {
-        await SystemSound.play(SystemSoundType.alert);
-      } catch (_) {}
+      await done.future.timeout(
+        Duration(milliseconds: fallbackMs),
+        onTimeout: () {},
+      );
+    } finally {
+      await sub.cancel();
     }
   }
 
+  static Future<void> _playTone(int frequencyHz, {int durationMs = 320}) async {
+    try {
+      await _prepareHeadsetRoute();
+      await _ensureTonePlayer();
+      final wav = _beepWav(frequencyHz: frequencyHz, durationMs: durationMs);
+      await _tonePlayer.stop();
+      await _tonePlayer.play(BytesSource(wav, mimeType: 'audio/wav'));
+      await _waitPlayerDone(_tonePlayer, fallbackMs: durationMs + 200);
+    } catch (_) {
+      // Sem SystemSound: ele costuma ir para o alto-falante do aparelho.
+    }
+  }
+
+  /// Sintetiza a frase e toca no player de mídia (fone + música).
   static Future<void> _speak(String text) async {
     try {
+      await _prepareHeadsetRoute();
       await _ensureTts();
-      await _tts.stop();
-      // focus:true no Android pede AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
-      // a música abaixa durante a fala e volta depois (não para).
-      await _tts.speak(text, focus: true);
+      await _ensureVoicePlayer();
+
+      final dir = await getTemporaryDirectory();
+      final ext = Platform.isIOS ? 'caf' : 'wav';
+      final path =
+          '${dir.path}/cardio_tts_${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+      final synth = await _tts.synthesizeToFile(text, path, true);
+      final file = File(path);
+      // flutter_tts devolve 1 em sucesso; 0/ausência de arquivo = falha.
+      final ok = synth == 1 || synth == true;
+      if (!ok || !await file.exists() || await file.length() < 32) {
+        // Fallback raro: speak direto ainda sem modo navegação.
+        await _tts.awaitSpeakCompletion(true);
+        await _tts.speak(text, focus: true);
+        return;
+      }
+
+      await _voicePlayer.stop();
+      await _voicePlayer.play(DeviceFileSource(path));
+      await _waitPlayerDone(_voicePlayer, fallbackMs: 3500);
+
+      try {
+        await file.delete();
+      } catch (_) {}
     } catch (_) {}
   }
 
@@ -213,7 +280,7 @@ class CardioFeedback {
     }
   }
 
-  /// Troca de fase: vibração longa e espaçada, depois voz + bipes sobre a música.
+  /// Troca de fase: vibração, depois toque + voz no fone (sobre a música).
   static Future<void> playPhase(String phase) async {
     final isRun = phase.toUpperCase() == 'RUN';
     final label = phaseSpeechLabel(phase);
@@ -221,6 +288,7 @@ class CardioFeedback {
 
     await _vibratePattern(pattern);
     await Future<void>.delayed(Duration(milliseconds: isRun ? 450 : 350));
+    await _prepareHeadsetRoute();
     await Future.wait([
       _speak(label),
       _playPhaseTones(isRun),
