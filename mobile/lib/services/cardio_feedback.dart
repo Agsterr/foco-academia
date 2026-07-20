@@ -10,6 +10,7 @@ import 'package:vibration/vibration.dart';
 /// Feedback sonoro/tátil para troca de fase no outdoor.
 /// Caminhada = 1 vibração longa + voz "Caminhada" + 1 bipe grave.
 /// Corrida = 2 vibrações espaçadas + voz "Corrida" + 2 bipes agudos.
+/// Áudio usa rota de mídia (fone quando conectado) e só abaixa a música.
 class CardioFeedback {
   CardioFeedback._();
 
