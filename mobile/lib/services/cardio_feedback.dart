@@ -35,18 +35,19 @@ class CardioFeedback {
     await _player.setAudioContext(
       AudioContext(
         android: AudioContextAndroid(
+          // false = segue a rota atual (fone BT/cabo); true força alto-falante.
           isSpeakerphoneOn: false,
           stayAwake: true,
           contentType: AndroidContentType.sonification,
-          // Alarm toca mesmo com volume baixo / alguns modos silenciosos.
-          usageType: AndroidUsageType.alarm,
-          audioFocus: AndroidAudioFocus.gain,
+          // media (não alarm/navigation): bipe no mesmo caminho da música/fone.
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
           options: {
             AVAudioSessionOptions.duckOthers,
-            AVAudioSessionOptions.interruptSpokenAudioAndMixWithOthers,
+            AVAudioSessionOptions.mixWithOthers,
           },
         ),
       ),
@@ -61,17 +62,17 @@ class CardioFeedback {
     await _tts.setVolume(1.0);
     await _tts.setPitch(1.05);
     await _tts.awaitSpeakCompletion(true);
-    if (Platform.isAndroid) {
-      await _tts.setAudioAttributesForNavigation();
-    }
+    // Não usar setAudioAttributesForNavigation(): no Android isso manda a voz
+    // para o alto-falante do aparelho enquanto a música continua no fone.
+    // Sem isso, o TTS usa a rota de mídia (fone quando conectado).
     if (Platform.isIOS) {
       await _tts.setIosAudioCategory(
         IosTextToSpeechAudioCategory.playback,
         [
           IosTextToSpeechAudioCategoryOptions.duckOthers,
-          IosTextToSpeechAudioCategoryOptions.interruptSpokenAudioAndMixWithOthers,
+          IosTextToSpeechAudioCategoryOptions.mixWithOthers,
         ],
-        IosTextToSpeechAudioMode.voicePrompt,
+        IosTextToSpeechAudioMode.spokenAudio,
       );
     }
     _ttsReady = true;
@@ -149,6 +150,8 @@ class CardioFeedback {
     try {
       await _ensureTts();
       await _tts.stop();
+      // focus:true no Android pede AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
+      // a música abaixa durante a fala e volta depois (não para).
       await _tts.speak(text, focus: true);
     } catch (_) {}
   }
