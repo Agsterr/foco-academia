@@ -35,12 +35,12 @@ class CardioFeedback {
     await _player.setAudioContext(
       AudioContext(
         android: AudioContextAndroid(
+          // false = segue a rota atual (fone BT/cabo); true força alto-falante.
           isSpeakerphoneOn: false,
           stayAwake: true,
           contentType: AndroidContentType.sonification,
-          // Sonificação + duck: baixa a música por um instante, sem pausar.
-          // (gain/alarm pedia foco exclusivo e cortava Spotify/YouTube Music.)
-          usageType: AndroidUsageType.assistanceSonification,
+          // media (não alarm/navigation): bipe no mesmo caminho da música/fone.
+          usageType: AndroidUsageType.media,
           audioFocus: AndroidAudioFocus.gainTransientMayDuck,
         ),
         iOS: AudioContextIOS(
@@ -62,17 +62,17 @@ class CardioFeedback {
     await _tts.setVolume(1.0);
     await _tts.setPitch(1.05);
     await _tts.awaitSpeakCompletion(true);
-    if (Platform.isAndroid) {
-      await _tts.setAudioAttributesForNavigation();
-    }
+    // Não usar setAudioAttributesForNavigation(): no Android isso manda a voz
+    // para o alto-falante do aparelho enquanto a música continua no fone.
+    // Sem isso, o TTS usa a rota de mídia (fone quando conectado).
     if (Platform.isIOS) {
       await _tts.setIosAudioCategory(
         IosTextToSpeechAudioCategory.playback,
         [
           IosTextToSpeechAudioCategoryOptions.duckOthers,
-          IosTextToSpeechAudioCategoryOptions.interruptSpokenAudioAndMixWithOthers,
+          IosTextToSpeechAudioCategoryOptions.mixWithOthers,
         ],
-        IosTextToSpeechAudioMode.voicePrompt,
+        IosTextToSpeechAudioMode.spokenAudio,
       );
     }
     _ttsReady = true;
