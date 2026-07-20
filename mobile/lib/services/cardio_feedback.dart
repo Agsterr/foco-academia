@@ -38,15 +38,16 @@ class CardioFeedback {
           isSpeakerphoneOn: false,
           stayAwake: true,
           contentType: AndroidContentType.sonification,
-          // Alarm toca mesmo com volume baixo / alguns modos silenciosos.
-          usageType: AndroidUsageType.alarm,
-          audioFocus: AndroidAudioFocus.gain,
+          // Sonificação + duck: baixa a música por um instante, sem pausar.
+          // (gain/alarm pedia foco exclusivo e cortava Spotify/YouTube Music.)
+          usageType: AndroidUsageType.assistanceSonification,
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
           options: {
             AVAudioSessionOptions.duckOthers,
-            AVAudioSessionOptions.interruptSpokenAudioAndMixWithOthers,
+            AVAudioSessionOptions.mixWithOthers,
           },
         ),
       ),
@@ -149,6 +150,8 @@ class CardioFeedback {
     try {
       await _ensureTts();
       await _tts.stop();
+      // focus:true no Android pede AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK:
+      // a música abaixa durante a fala e volta depois (não para).
       await _tts.speak(text, focus: true);
     } catch (_) {}
   }
