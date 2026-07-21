@@ -147,11 +147,11 @@ class GpsFilterService {
       }
 
       // Min distance sobe com accuracy ruim (bolso / canyon urbano).
-      // Em background o passo precisa superar o ruído típico do chip (~accuracy).
+      // Em background o OS já filtra ~8 m; aqui só evita micro-jitter.
       final dynMin = backgroundMode
           ? math.max(
-              math.max(minDistanceMeters, 8.0),
-              math.min(accuracyMeters * 0.55, 18.0),
+              math.max(minDistanceMeters, 5.0),
+              math.min(accuracyMeters * 0.40, 12.0),
             )
           : math.max(
               minDistanceMeters,
@@ -206,10 +206,17 @@ class GpsFilterService {
             latitude,
             longitude,
           );
-          // Ida/volta na calçada: curva fechada OU quase retorna ao ponto anterior.
-          final turnLimit = backgroundMode ? 75.0 : 95.0;
+          // Ida/volta na calçada / deriva no bolso — NÃO confundir com esquina.
+          // Esquina 90°: backToBefore ≈ hypot(leg1, leg2) > leg1 (há progresso).
+          // Antes: turn >= 75° sozinho rejeitava curva de quarteirão com tela
+          // apagada e o odômetro virava corda (até ~1 km a menos no treino).
+          final turnLimit = backgroundMode ? 100.0 : 110.0;
           final backLimit = backgroundMode ? 0.85 : 0.7;
-          if (turn >= turnLimit || backToBefore < noiseRadius * backLimit) {
+          final returnedNearStart =
+              backToBefore < noiseRadius * backLimit;
+          final undoesProgress =
+              turn >= turnLimit && backToBefore < prevSeg * 0.75;
+          if (returnedNearStart || undoesProgress) {
             return GpsFilterDecision.reject(
               FilterReason.stationaryJitter,
               confidenceScore: confidence,

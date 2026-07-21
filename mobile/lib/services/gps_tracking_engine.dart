@@ -320,6 +320,10 @@ class GpsTrackingEngine {
   double? _lastRawLng;
   double? _lastRawAccuracy;
   DateTime? _lastRawAt;
+  /// Âncora bruta do odômetro (sem Kalman) — evita subcontar por lag.
+  double? _odoLat;
+  double? _odoLng;
+  DateTime? _odoAt;
   double? _pauseAnchorLat;
   double? _pauseAnchorLng;
   int _recoveryFixesLeft = 0;
@@ -547,6 +551,9 @@ class GpsTrackingEngine {
       _lastRawLng = last.longitude;
       _lastRawAccuracy = last.accuracyMeters;
       _lastRawAt = last.recordedAt;
+      _odoLat = last.latitude;
+      _odoLng = last.longitude;
+      _odoAt = last.recordedAt;
       if (this.autoPaused || manualPaused) {
         _pauseAnchorLat = last.latitude;
         _pauseAnchorLng = last.longitude;
@@ -585,6 +592,9 @@ class GpsTrackingEngine {
     _lastRawLng = null;
     _lastRawAccuracy = null;
     _lastRawAt = null;
+    _odoLat = null;
+    _odoLng = null;
+    _odoAt = null;
     _pauseAnchorLat = null;
     _pauseAnchorLng = null;
     _recoveryFixesLeft = 0;
@@ -908,8 +918,11 @@ class GpsTrackingEngine {
         : relaxedAccuracyMeters;
     filter.maxJumpMeters =
         _backgroundMode ? math.min(maxJumpMeters, 55) : maxJumpMeters;
-    filter.minDistanceMeters =
-        _backgroundMode ? math.max(minDistanceMeters, 8.0) : minDistanceMeters;
+    // Background: OS já usa distanceFilter=8. Não exigir 8–18 m de novo
+    // (passos reais caíam como duplicate e a corda cortava a rota).
+    filter.minDistanceMeters = _backgroundMode
+        ? math.max(minDistanceMeters, 5.0)
+        : minDistanceMeters;
     filter.maxSpeedKmh = math.min(
       maxSpeedKmh,
       GpsFilterService.maxSpeedForActivity(
@@ -1004,14 +1017,20 @@ class GpsTrackingEngine {
     }
 
     if (previous != null) {
+      // Odômetro em coordenadas brutas (não Kalman): lag do filtro encurtava
+      // cada segmento e acumulava déficit ao longo do treino.
+      final odoLat0 = _odoLat ?? previous.latitude;
+      final odoLng0 = _odoLng ?? previous.longitude;
       final delta = Geolocator.distanceBetween(
-        previous.latitude,
-        previous.longitude,
+        odoLat0,
+        odoLng0,
         pos.latitude,
         pos.longitude,
       );
-      final dtSec =
-          recordedAt.difference(previous.recordedAt).inMilliseconds / 1000.0;
+      final dtSec = _odoAt != null
+          ? recordedAt.difference(_odoAt!).inMilliseconds / 1000.0
+          : recordedAt.difference(previous.recordedAt).inMilliseconds /
+              1000.0;
       final recovering = dtSec >= 20;
 
       // Gap estimado desligado: inventava km e quebrava média/ritmo.
@@ -1067,6 +1086,11 @@ class GpsTrackingEngine {
         }
       }
     }
+
+    // Atualiza âncora bruta sempre que o ponto entra na rota oficial.
+    _odoLat = pos.latitude;
+    _odoLng = pos.longitude;
+    _odoAt = recordedAt;
 
     if (_smoothedSpeedKmh >= 1.0) {
       lastValidSpeedKmh = _smoothedSpeedKmh;
