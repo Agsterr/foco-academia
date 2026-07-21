@@ -133,6 +133,39 @@ void main() {
       expect(d.reason, FilterReason.stationaryJitter);
     });
 
+    test('aceita esquina 90° real (não é deriva de bolso)', () {
+      final f = GpsFilterService(
+        minDistanceMeters: 1,
+        backgroundMode: true,
+      );
+      final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+      // ~15 m norte, depois ~15 m leste — quarteirão típico.
+      final a = TrackedPoint(
+        latitude: -23.55000,
+        longitude: -46.63000,
+        recordedAt: t0,
+        sequenceNum: 0,
+        accuracyMeters: 18,
+      );
+      final b = TrackedPoint(
+        latitude: -23.550135, // ~15 m sul
+        longitude: -46.63000,
+        recordedAt: t0.add(const Duration(seconds: 8)),
+        sequenceNum: 1,
+        accuracyMeters: 18,
+      );
+      final d = f.evaluate(
+        latitude: -23.550135,
+        longitude: -46.62985, // ~15 m leste
+        accuracyMeters: 18,
+        recordedAt: t0.add(const Duration(seconds: 16)),
+        previous: b,
+        beforePrevious: a,
+      );
+      expect(d.accepted, isTrue);
+      expect(d.reason, FilterReason.none);
+    });
+
     test('bearingDeltaDegrees', () {
       expect(GpsFilterService.bearingDeltaDegrees(10, 350), closeTo(20, 0.1));
       expect(GpsFilterService.bearingDeltaDegrees(0, 180), closeTo(180, 0.1));

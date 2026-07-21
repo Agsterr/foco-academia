@@ -14,7 +14,7 @@ class GpsConfig {
     this.gpsAlgorithmVersion = '2',
     this.filterVersion = '3',
     this.kalmanVersion = '1',
-    this.distanceVersion = '3',
+    this.distanceVersion = '4',
     this.caloriesVersion = '1',
   });
 
@@ -92,7 +92,7 @@ class GpsConfig {
         gpsAlgorithmVersion: json['gpsAlgorithmVersion'] as String? ?? '2',
         filterVersion: json['filterVersion'] as String? ?? '3',
         kalmanVersion: json['kalmanVersion'] as String? ?? '1',
-        distanceVersion: json['distanceVersion'] as String? ?? '3',
+        distanceVersion: json['distanceVersion'] as String? ?? '4',
         caloriesVersion: json['caloriesVersion'] as String? ?? '1',
       );
 

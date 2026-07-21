@@ -27,7 +27,7 @@ class GpsService {
         accuracy: LocationAccuracy.best,
         // Em background o chip “salta” dentro do raio de erro; distanceFilter
         // nativo evita desenhar ida-e-volta na mesma calçada.
-        distanceFilter: backgroundMode ? 8 : 0,
+        distanceFilter: backgroundMode ? 5 : 0,
         intervalDuration: backgroundMode
             ? const Duration(milliseconds: 1500)
             : const Duration(milliseconds: 500),
@@ -47,7 +47,7 @@ class GpsService {
       return AppleSettings(
         accuracy: LocationAccuracy.best,
         activityType: ActivityType.fitness,
-        distanceFilter: backgroundMode ? 8 : 0,
+        distanceFilter: backgroundMode ? 5 : 0,
         pauseLocationUpdatesAutomatically: false,
         allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
@@ -55,7 +55,7 @@ class GpsService {
     }
     return LocationSettings(
       accuracy: LocationAccuracy.best,
-      distanceFilter: backgroundMode ? 8 : 0,
+      distanceFilter: backgroundMode ? 5 : 0,
     );
   }
 

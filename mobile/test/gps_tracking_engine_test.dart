@@ -494,6 +494,41 @@ void main() {
     expect(engine.distanceMeters, greaterThan(80));
   });
 
+  test('modo background: caminho em L não perde a esquina no km', () {
+    final engine = GpsTrackingEngine();
+    engine.setBackgroundMode(true);
+    final t0 = DateTime(2026, 1, 1, 12, 0, 0);
+    // 10 × ~12 m sul + 10 × ~12 m leste ≈ 240 m de caminho.
+    // Bug antigo: turn>=75° rejeitava a esquina e a corda cortava ~30% ali.
+    for (var i = 0; i < 10; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (i * 0.000108),
+          lng: -46.63000,
+          speed: 1.5,
+          accuracy: 16,
+        ),
+        now: t0.add(Duration(seconds: i * 5)),
+      );
+    }
+    for (var i = 1; i <= 10; i++) {
+      engine.process(
+        _pos(
+          lat: -23.55000 - (9 * 0.000108),
+          lng: -46.63000 + (i * 0.000118),
+          speed: 1.5,
+          accuracy: 16,
+        ),
+        now: t0.add(Duration(seconds: 45 + i * 5)),
+      );
+    }
+    expect(engine.acceptedPoints.length, greaterThan(12));
+    // Exige ≥ ~85% do caminho real (~240 m) — não pode marcar ~1 km a menos
+    // em escala (antes a esquina sumia e o déficit acumulava).
+    expect(engine.distanceMeters, greaterThan(200));
+    expect(engine.distanceMeters, lessThan(280));
+  });
+
   test('ponta ao vivo usa fix bruto mesmo com accuracy ruim', () {
     final engine = GpsTrackingEngine();
     final t0 = DateTime(2026, 1, 1, 12, 0, 0);
