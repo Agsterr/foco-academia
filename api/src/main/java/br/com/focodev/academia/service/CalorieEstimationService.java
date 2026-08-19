@@ -7,6 +7,11 @@ import br.com.focodev.academia.repository.BodyMeasurementRepository;
 import br.com.focodev.academia.repository.StudentProfileRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
 /**
  * Estimativa de gasto calórico via MET (Metabolic Equivalent of Task).
  * Fórmula: kcal = MET × peso(kg) × tempo(horas).
@@ -20,6 +25,10 @@ public class CalorieEstimationService {
     public static final double DEFAULT_WEIGHT_KG = 70.0;
     public static final double STATIONARY_SPEED_KMH = 1.0;
     public static final double MIN_DISTANCE_METERS = 20.0;
+    /** Teto de musculação: treino aberto por dias não pode virar milhares de kcal. */
+    public static final long MAX_STRENGTH_SECONDS = 3 * 3600L;
+    /** Descanso entre séries conta no máximo isto — o resto é tela aberta parada. */
+    public static final long MAX_REST_BETWEEN_SETS_SECONDS = 15 * 60L;
 
     private static final double[][] WALK_MET = {
             {2.0, 2.0},
@@ -153,12 +162,38 @@ public class CalorieEstimationService {
         return roundKcal(kcal);
     }
 
+    /**
+     * Tempo efetivo de musculação: soma os intervalos entre séries,
+     * cada um limitado a 15 min. Ignora o relógio de tela aberta por dias.
+     */
+    public long activeStrengthDurationSeconds(List<Instant> setCompletedAt) {
+        if (setCompletedAt == null || setCompletedAt.isEmpty()) {
+            return 0;
+        }
+        List<Instant> times = new ArrayList<>(setCompletedAt);
+        times.sort(Comparator.naturalOrder());
+        if (times.size() == 1) {
+            return Math.min(5 * 60L, MAX_STRENGTH_SECONDS);
+        }
+        long total = 0;
+        for (int i = 1; i < times.size(); i++) {
+            long gap = times.get(i).getEpochSecond() - times.get(i - 1).getEpochSecond();
+            if (gap < 0) {
+                gap = 0;
+            }
+            total += Math.min(gap, MAX_REST_BETWEEN_SETS_SECONDS);
+        }
+        total += 90;
+        return Math.min(Math.max(total, 60), MAX_STRENGTH_SECONDS);
+    }
+
     public int estimateStrengthKcal(double weightKg, long durationSeconds, WorkoutIntensity intensity) {
         if (durationSeconds <= 0) {
             return 0;
         }
+        long capped = Math.min(durationSeconds, MAX_STRENGTH_SECONDS);
         double met = metForIntensity(intensity);
-        double hours = durationSeconds / 3600.0;
+        double hours = capped / 3600.0;
         return roundKcal(met * weightKg * hours);
     }
 

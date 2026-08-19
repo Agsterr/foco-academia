@@ -149,6 +149,37 @@ class CardioIntegrationTest {
     }
 
     @Test
+    void completeWithoutDistance_isRejectedAndDeleted() throws Exception {
+        String sessionJson = mockMvc.perform(post("/api/student/cardio-sessions/start")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"clientSessionId\":\"empty-session-1\"}"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID sessionId = UUID.fromString(
+                sessionJson.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1"));
+
+        mockMvc.perform(post("/api/student/cardio-sessions/" + sessionId + "/complete")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "distanceMeters", 0.0,
+                                "avgSpeedKmh", 0.0,
+                                "elapsedMs", 60000
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("não contabilizado")));
+
+        mockMvc.perform(get("/api/student/cardio-sessions")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == '" + sessionId + "')]").doesNotExist());
+    }
+
+    @Test
     void activeWorkoutReturns404WhenNone() throws Exception {
         mockMvc.perform(get("/api/student/cardio-workouts/active")
                         .header("Authorization", "Bearer " + fixture.studentToken()))

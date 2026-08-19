@@ -3,6 +3,9 @@ package br.com.focodev.academia.service;
 import br.com.focodev.academia.domain.WorkoutIntensity;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class CalorieEstimationServiceTest {
@@ -31,6 +34,22 @@ class CalorieEstimationServiceTest {
     void strengthModerate() {
         // 5.0 × 70 × 1h = 350
         assertEquals(350, service.estimateStrengthKcal(70, 3600, WorkoutIntensity.MODERADA));
+    }
+
+    @Test
+    void strengthOpenForDays_isCappedAtThreeHours() {
+        long threeDays = 3L * 24 * 3600;
+        int kcal = service.estimateStrengthKcal(70, threeDays, WorkoutIntensity.MODERADA);
+        // 5.0 × 70 × 3h = 1050 — não 25.200
+        assertEquals(1050, kcal);
+    }
+
+    @Test
+    void strengthActiveDurationIgnoresDaysBetweenSets() {
+        Instant first = Instant.parse("2026-08-01T10:00:00Z");
+        Instant last = Instant.parse("2026-08-04T10:00:00Z");
+        long seconds = service.activeStrengthDurationSeconds(List.of(first, last));
+        assertEquals(15 * 60 + 90, seconds);
     }
 
     @Test

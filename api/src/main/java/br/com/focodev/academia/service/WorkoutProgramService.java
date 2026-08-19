@@ -13,6 +13,7 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 
@@ -27,6 +28,7 @@ public class WorkoutProgramService {
     private final UserRepository userRepository;
     private final TenantService tenantService;
     private final StudentProfileRepository profileRepository;
+    private final BodyMeasurementRepository measurementRepository;
     private final CalorieEstimationService calorieEstimationService;
     private final CalorieStatsService calorieStatsService;
 
@@ -116,12 +118,21 @@ public class WorkoutProgramService {
 
         WorkoutSession session = sessionRepository
                 .findByWorkoutDayIdAndStudentIdAndCompletedAtIsNull(dayId, student.getId())
-                .orElseGet(() -> {
-                    WorkoutSession created = new WorkoutSession();
-                    created.setWorkoutDay(day);
-                    created.setStudent(studentUser);
-                    return sessionRepository.save(created);
-                });
+                .orElse(null);
+        if (session != null) {
+            session = sessionRepository.findByIdWithSetLogs(session.getId()).orElse(session);
+            if (isStaleStrengthSession(session)) {
+                sessionRepository.delete(session);
+                sessionRepository.flush();
+                session = null;
+            }
+        }
+        if (session == null) {
+            WorkoutSession created = new WorkoutSession();
+            created.setWorkoutDay(day);
+            created.setStudent(studentUser);
+            session = sessionRepository.save(created);
+        }
 
         return WorkoutSessionResponse.from(sessionRepository.findByIdWithSetLogs(session.getId()).orElseThrow());
     }
@@ -176,19 +187,26 @@ public class WorkoutProgramService {
             throw new ApiException("Treino já finalizado");
         }
 
+        boolean hasExercises = session.getWorkoutDay().getExercises() != null
+                && !session.getWorkoutDay().getExercises().isEmpty();
+        if (hasExercises && session.getSetLogs().isEmpty()) {
+            throw new ApiException("Marque pelo menos uma série antes de finalizar");
+        }
+
         Instant now = Instant.now();
         session.setCompletedAt(now);
-        long durationSeconds = now.getEpochSecond() - session.getStartedAt().getEpochSecond();
+        long durationSeconds = calorieEstimationService.activeStrengthDurationSeconds(
+                session.getSetLogs().stream().map(SetLog::getCompletedAt).toList()
+        );
         session.setTotalDurationSeconds(durationSeconds);
         session.setRating(request.rating());
         session.setComment(request.comment());
         WorkoutIntensity intensity = request.intensity() != null ? request.intensity() : WorkoutIntensity.MODERADA;
         session.setIntensity(intensity);
-        Double weight = profileRepository.findByUserId(student.getId())
-                .map(StudentProfile::getCurrentWeightKg)
-                .orElse(null);
+        double weight = calorieEstimationService.resolveStudentWeightKg(
+                student.getId(), profileRepository, measurementRepository);
         session.setCaloriesKcal(calorieEstimationService.estimateStrengthKcal(
-                calorieEstimationService.resolveWeightKg(weight),
+                weight,
                 durationSeconds,
                 intensity
         ));
@@ -330,6 +348,16 @@ public class WorkoutProgramService {
             throw new ApiException("Acesso negado");
         }
         return session;
+    }
+
+    private boolean isStaleStrengthSession(WorkoutSession session) {
+        Instant lastActivity = session.getSetLogs() == null || session.getSetLogs().isEmpty()
+                ? session.getStartedAt()
+                : session.getSetLogs().stream()
+                        .map(SetLog::getCompletedAt)
+                        .max(Comparator.naturalOrder())
+                        .orElse(session.getStartedAt());
+        return lastActivity != null && lastActivity.isBefore(Instant.now().minus(4, ChronoUnit.HOURS));
     }
 
     private void requireProgramAccess(AuthUser user, WorkoutProgram program) {

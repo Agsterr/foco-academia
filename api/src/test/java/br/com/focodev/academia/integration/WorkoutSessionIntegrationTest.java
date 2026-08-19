@@ -105,6 +105,7 @@ class WorkoutSessionIntegrationTest {
     @Test
     void instructorSeesSessionFeedbackAfterStudentCompletes() throws Exception {
         String sessionId = startSession(mondayDayId);
+        markSet(sessionId);
 
         mockMvc.perform(post("/api/student/sessions/" + sessionId + "/complete")
                         .header("Authorization", "Bearer " + fixture.studentToken())
@@ -136,6 +137,7 @@ class WorkoutSessionIntegrationTest {
     @Test
     void studentStatsEndpoint_returnsMetrics() throws Exception {
         String sessionId = startSession(mondayDayId);
+        markSet(sessionId);
         mockMvc.perform(post("/api/student/sessions/" + sessionId + "/complete")
                         .header("Authorization", "Bearer " + fixture.studentToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -168,6 +170,7 @@ class WorkoutSessionIntegrationTest {
     @Test
     void completedSessionCannotToggleSets() throws Exception {
         String sessionId = startSession(mondayDayId);
+        markSet(sessionId);
 
         mockMvc.perform(post("/api/student/sessions/" + sessionId + "/complete")
                         .header("Authorization", "Bearer " + fixture.studentToken())
@@ -184,6 +187,29 @@ class WorkoutSessionIntegrationTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Treino já finalizado"));
+    }
+
+    private void markSet(String sessionId) throws Exception {
+        mockMvc.perform(post("/api/student/sessions/" + sessionId + "/sets")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "exerciseId", exerciseId,
+                                "setNumber", 1
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void completeWithoutSets_isRejected() throws Exception {
+        String sessionId = startSession(mondayDayId);
+
+        mockMvc.perform(post("/api/student/sessions/" + sessionId + "/complete")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("rating", "BOM"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Marque pelo menos uma série antes de finalizar"));
     }
 
     private String startSession(String dayId) throws Exception {

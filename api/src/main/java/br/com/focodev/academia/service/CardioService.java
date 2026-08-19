@@ -5,6 +5,7 @@ import br.com.focodev.academia.dto.CardioDtos;
 import br.com.focodev.academia.dto.GpsAnalyticsDtos;
 import br.com.focodev.academia.dto.StudentProfileDtos;
 import br.com.focodev.academia.exception.ApiException;
+import br.com.focodev.academia.exception.UncountedWorkoutException;
 import br.com.focodev.academia.repository.*;
 import br.com.focodev.academia.security.AuthUser;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -182,13 +183,20 @@ public class CardioService {
         return toSessionResponse(sessionRepository.save(session));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = UncountedWorkoutException.class)
     public CardioDtos.CardioSessionResponse completeSession(
             AuthUser student,
             UUID sessionId,
             CardioDtos.CompleteCardioSessionRequest request
     ) {
         CardioSession session = requireStudentSession(student, sessionId);
+        double distance = request.distanceMeters() != null ? request.distanceMeters() : 0;
+        if (distance < CalorieEstimationService.MIN_DISTANCE_METERS) {
+            sessionRepository.delete(session);
+            sessionRepository.flush();
+            throw new UncountedWorkoutException(
+                    "Treino não contabilizado: sem deslocamento suficiente. Mova-se um pouco antes de finalizar.");
+        }
         session.setCompletedAt(Instant.now());
         session.setDistanceMeters(request.distanceMeters());
         session.setAvgSpeedKmh(request.avgSpeedKmh());
@@ -455,6 +463,13 @@ public class CardioService {
     }
 
     private void abandonStaleSession(CardioSession session) {
+        double distance = session.getDistanceMeters() != null ? session.getDistanceMeters() : 0;
+        boolean empty = distance < CalorieEstimationService.MIN_DISTANCE_METERS
+                && (session.getRoutePoints() == null || session.getRoutePoints().isEmpty());
+        if (empty) {
+            sessionRepository.delete(session);
+            return;
+        }
         session.setCompletedAt(Instant.now());
         if (session.getDistanceMeters() == null) {
             session.setDistanceMeters(0.0);
