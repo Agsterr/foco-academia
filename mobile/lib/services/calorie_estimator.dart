@@ -117,8 +117,9 @@ class CalorieEstimator {
     required String intensity,
   }) {
     if (durationSeconds <= 0) return 0;
+    final capped = durationSeconds.clamp(0, 3 * 3600);
     final met = intensityMet[intensity] ?? 5.0;
-    final hours = durationSeconds / 3600.0;
+    final hours = capped / 3600.0;
     return (met * resolveWeight(weightKg) * hours).round().clamp(0, 100000);
   }
 

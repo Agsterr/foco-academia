@@ -97,4 +97,13 @@ void main() {
     );
     expect(kcal, 0);
   });
+
+  test('musculação de dias é limitada a 3h', () {
+    final kcal = CalorieEstimator.strengthKcal(
+      weightKg: 70,
+      durationSeconds: 3 * 24 * 3600,
+      intensity: 'MODERADA',
+    );
+    expect(kcal, 1050);
+  });
 }

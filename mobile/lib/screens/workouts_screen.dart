@@ -24,11 +24,13 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _program == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final results = await Future.wait([
         WorkoutService.instance.getActiveProgram(),
@@ -63,7 +65,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => WorkoutDayScreen(dayId: day.id)),
     );
-    if (mounted) _load();
+    if (mounted) _load(silent: true);
   }
 
   @override

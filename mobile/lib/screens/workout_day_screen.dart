@@ -61,7 +61,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     void tick() {
       if (!mounted) return;
       setState(() {
-        _elapsed = DateTime.now().difference(start).inSeconds.clamp(0, 86400);
+        _elapsed = DateTime.now().difference(start).inSeconds.clamp(0, 3 * 3600);
       });
     }
 
@@ -73,7 +73,10 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     setState(() => _loading = true);
     try {
       final day = await WorkoutService.instance.getDay(widget.dayId);
-      final session = await WorkoutService.instance.startOrResumeSession(widget.dayId);
+      WorkoutSession? session;
+      if (day.activeSessionId != null) {
+        session = await WorkoutService.instance.startOrResumeSession(widget.dayId);
+      }
       try {
         _weightKg = await CaloriesService.instance.loadAthleteWeightKg();
       } catch (_) {}
@@ -83,6 +86,34 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
         _session = session;
         _loading = false;
       });
+      if (session != null) _startTimer();
+    } on SessionExpiredException {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o treino')),
+      );
+    }
+  }
+
+  Future<void> _startSession() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final session = await WorkoutService.instance.startOrResumeSession(widget.dayId);
+      if (!mounted) return;
+      setState(() {
+        _session = session;
+        _saving = false;
+      });
       _startTimer();
     } on SessionExpiredException {
       if (!mounted) return;
@@ -90,11 +121,11 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (_) => false,
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop();
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não foi possível abrir o treino')),
+        SnackBar(content: Text('Não foi possível iniciar: $e')),
       );
     }
   }
@@ -256,7 +287,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Voltar à ficha semanal'),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8 + MediaQuery.viewPaddingOf(context).bottom),
               ],
             ),
           ),
@@ -265,21 +296,24 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     }
 
     final day = _day!;
-    final session = _session!;
-    final completedSets = session.completedSetsByExercise;
+    final session = _session;
+    final started = session != null && !session.isCompleted;
+    final completedSets = session?.completedSetsByExercise ?? <String, Set<int>>{};
     final totalSets = day.exercises.fold<int>(0, (acc, ex) => acc + ex.setCount);
-    final doneSets = session.setLogs.length;
+    final doneSets = session?.setLogs.length ?? 0;
     final progress = totalSets > 0 ? (doneSets / totalSets).clamp(0.0, 1.0) : 0.0;
     final hasExercises = day.exercises.isNotEmpty;
-    final canFinish = !hasExercises || doneSets > 0;
+    final canFinish = started && (!hasExercises || doneSets > 0);
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(day.muscleGroup?.isNotEmpty == true ? day.muscleGroup! : 'Treino'),
       ),
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottomInset),
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,7 +354,9 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${CalorieEstimator.strengthKcal(weightKg: _weightKg, durationSeconds: _elapsed, intensity: _intensity)} kcal*',
+                        started
+                            ? '${CalorieEstimator.strengthKcal(weightKg: _weightKg, durationSeconds: _elapsed, intensity: _intensity)} kcal*'
+                            : '0 kcal*',
                         style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
                       ),
                     ],
@@ -450,6 +486,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                             setNumber: n,
                             done: done.contains(n),
                             elapsedMs: () {
+                              if (session == null) return null;
                               for (final l in session.setLogs) {
                                 if (l.exerciseId == exercise.id && l.setNumber == n) {
                                   return l.elapsedMs;
@@ -457,7 +494,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                               }
                               return null;
                             }(),
-                            enabled: !_saving,
+                            enabled: !_saving && started,
                             onTap: () => _toggleSet(exercise.id, n),
                           ),
                       ],
@@ -467,7 +504,12 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
               );
             }),
             const SizedBox(height: 8),
-            if (!_showFinish)
+            if (!started)
+              FilledButton(
+                onPressed: _saving ? null : _startSession,
+                child: Text(_saving ? 'Iniciando...' : 'Iniciar treino'),
+              )
+            else if (!_showFinish)
               FilledButton(
                 onPressed: canFinish ? () => setState(() => _showFinish = true) : null,
                 child: Text(hasExercises ? 'Finalizar treino' : 'Finalizar mesmo sem exercícios'),

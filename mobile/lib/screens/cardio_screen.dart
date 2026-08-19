@@ -31,6 +31,7 @@ import '../services/sync_service.dart';
 import '../services/cardio_workout_library.dart';
 import '../services/online_auth_gate.dart';
 import '../services/outdoor_goal.dart';
+import '../services/looping_intervals.dart';
 import '../services/outdoor_workout_service.dart';
 import '../widgets/coach_workout_picker.dart';
 import '../widgets/outdoor_goal_planner.dart';
@@ -87,6 +88,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   int _elapsed = 0;
   bool _running = false;
   bool _loading = true;
+  bool _starting = false;
   bool _finishing = false;
   GpsConfig _gpsConfig = GpsConfig.defaults;
   bool _wasGpsLost = false;
@@ -107,9 +109,19 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   bool get _useCoachIntervals =>
       _outdoorGoal.mode == OutdoorGoalMode.coach && _intervals.isNotEmpty;
 
+  bool get _useLoopingIntervals =>
+      _outdoorGoal.mode == OutdoorGoalMode.intervals &&
+      _outdoorGoal.walkSec > 0 &&
+      _outdoorGoal.runSec > 0;
+
+  bool get _useAnyIntervals => _useCoachIntervals || _useLoopingIntervals;
+
   double? get _goalTargetKm {
     switch (_outdoorGoal.mode) {
       case OutdoorGoalMode.distanceKm:
+        final km = _outdoorGoal.targetKm;
+        return km != null && km > 0 ? km : null;
+      case OutdoorGoalMode.intervals:
         final km = _outdoorGoal.targetKm;
         return km != null && km > 0 ? km : null;
       case OutdoorGoalMode.caloriesKcal:
@@ -159,12 +171,29 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           message = 'Meta de $target kcal atingida!';
         }
         break;
+      case OutdoorGoalMode.intervals:
+        final targetM = (_outdoorGoal.targetKm ?? 0) * 1000;
+        if (targetM > 0 && _distance >= targetM) {
+          reached = true;
+          message =
+              'Intervalado: ${_outdoorGoal.targetKm!.toStringAsFixed(0)} km concluídos!';
+        }
+        final mins = _outdoorGoal.targetMinutes ?? 0;
+        if (!reached && mins > 0 && _elapsed >= mins * 60) {
+          reached = true;
+          message = 'Intervalado: $mins min concluídos!';
+        }
+        break;
       default:
         break;
     }
     if (!reached || !mounted) return;
     _goalReachedNotified = true;
     unawaited(CardioFeedback.playBeeps(3));
+    if (_outdoorGoal.mode == OutdoorGoalMode.intervals) {
+      unawaited(_finish(auto: true));
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
     );
@@ -448,8 +477,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   }
 
   Future<void> _loadWorkout() async {
+    final showSpinner = !_running && _workout == null;
     setState(() {
-      _loading = true;
+      if (showSpinner) _loading = true;
       _error = null;
       _workoutNotice = null;
     });
@@ -824,7 +854,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     _startedAt = DateTime.now();
     _elapsed = 0;
     _phaseIndex = 0;
-    _phaseRemaining = _intervals.isNotEmpty ? _intervals.first.durationSec : 0;
+    _phaseRemaining = _useLoopingIntervals
+        ? _outdoorGoal.walkSec
+        : (_intervals.isNotEmpty ? _intervals.first.durationSec : 0);
     _matchedRoute = [];
     _snappedLive = null;
     _lastMatchedPointCount = 0;
@@ -877,6 +909,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (phaseIndex != _phaseIndex) {
         phaseChanged = true;
       }
+    } else if (_useLoopingIntervals && !_engine.isPaused) {
+      final walkSec = _outdoorGoal.walkSec;
+      final runSec = _outdoorGoal.runSec;
+      final next = LoopingIntervals.phaseAt(
+        elapsedSec: elapsed,
+        walkSec: walkSec,
+        runSec: runSec,
+      );
+      phaseRemaining = LoopingIntervals.remainingSec(
+        elapsedSec: elapsed,
+        walkSec: walkSec,
+        runSec: runSec,
+      );
+      phaseIndex = next.isRun ? 1 : 0;
+      if (phaseIndex != _phaseIndex) {
+        phaseChanged = true;
+      }
     }
 
     if (!mounted) return;
@@ -891,7 +940,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       _phaseRemaining = phaseRemaining;
     });
     if (phaseChanged) {
-      unawaited(CardioFeedback.playPhase(_intervals[phaseIndex].phase));
+      final phase = _useLoopingIntervals
+          ? LoopingIntervals.phaseAt(
+              elapsedSec: elapsed,
+              walkSec: _outdoorGoal.walkSec,
+              runSec: _outdoorGoal.runSec,
+            )
+          : _intervals[phaseIndex];
+      unawaited(CardioFeedback.playPhase(phase.phase));
     }
     _checkPersonalGoal();
     if (elapsed > 0 &&
@@ -981,110 +1037,116 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   }
 
   Future<void> _start() async {
-    if (_running || _finishing) return;
-    if (!await _ensureOnlineIfRequired()) return;
-    await _reloadAthleteMetrics();
-    await OutdoorGoalStore.instance.save(_outdoorGoal);
-    _goalReachedNotified = false;
-    if (!await LocationPermissionHelper.ensureTrackingPermissions(context)) {
-      return;
-    }
-    if (!mounted) return;
-    final energyFlow =
-        await LocationPermissionHelper.promptEnergyForWorkout(context);
-    if (!mounted) return;
-
-    setState(() {
-      _error = null;
-      _finishing = false;
-      _energyThreat = energyFlow.status;
-      _askedToDisablePowerSaver = energyFlow.askedToDisablePowerSaver;
-      _energyBannerDismissed = false;
-    });
-
-    _clientSessionId = const Uuid().v4();
-    _engine.reset();
-    _engine.applyConfig(_gpsConfig.copyWith(autoPauseEnabled: _autoPauseEnabled));
-    _engine.setAutoPauseEnabled(_autoPauseEnabled);
-    _wasGpsLost = false;
-    _lastCloudSeq = 0;
-    _lastCloudBackupAt = null;
-    await ActiveRunStore.instance.clear();
-
+    if (_running || _finishing || _starting) return;
+    setState(() => _starting = true);
     try {
-      final session = await CardioService.instance.startSession(
-        workoutId: _workout?.id,
-        clientSessionId: _clientSessionId!,
-      );
-      if (!mounted) return;
-
-      setState(() {
-        _session = session;
-        _running = true;
-        _distance = 0;
-        _estimatedGap = 0;
-        _gpsLost = false;
-        _autoPaused = false;
-        _manualPaused = false;
-      });
-
-      if (_useCoachIntervals) {
-        await CardioFeedback.playPhase(_intervals.first.phase);
-      } else {
-        await CardioFeedback.playBeeps(1);
-      }
-
-      _startClocks();
-      await _persistActiveRun(force: true);
-      await _startGpsTracking();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('GPS em segundo plano ativo — pode apagar a tela'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } on SessionExpiredException {
-      if (!mounted) return;
-      setState(() => _error = 'Sessão expirada. Faça login novamente.');
-    } catch (e) {
-      final msg = e is Exception
-          ? e.toString().replaceFirst('Exception: ', '')
-          : '$e';
-      if (!_looksLikeNetworkError(msg)) {
-        if (!mounted) return;
-        setState(() => _error = msg);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
+      if (!await _ensureOnlineIfRequired()) return;
+      await _reloadAthleteMetrics();
+      await OutdoorGoalStore.instance.save(_outdoorGoal);
+      _goalReachedNotified = false;
+      if (!await LocationPermissionHelper.ensureTrackingPermissions(context)) {
         return;
       }
       if (!mounted) return;
-      setState(() {
-        _session = null;
-        _running = true;
-        _distance = 0;
-        _estimatedGap = 0;
-        _gpsLost = false;
-        _autoPaused = false;
-        _manualPaused = false;
-      });
-      if (_useCoachIntervals) {
-        await CardioFeedback.playPhase(_intervals.first.phase);
-      } else {
-        await CardioFeedback.playBeeps(1);
-      }
-      _startClocks();
-      await _persistActiveRun(force: true);
-      await _startGpsTracking();
+      final energyFlow =
+          await LocationPermissionHelper.promptEnergyForWorkout(context);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Sem conexão com o servidor — GPS ativo; sincroniza ao finalizar',
+
+      setState(() {
+        _error = null;
+        _finishing = false;
+        _energyThreat = energyFlow.status;
+        _askedToDisablePowerSaver = energyFlow.askedToDisablePowerSaver;
+        _energyBannerDismissed = false;
+      });
+
+      _clientSessionId = const Uuid().v4();
+      _engine.reset();
+      _engine.applyConfig(_gpsConfig.copyWith(autoPauseEnabled: _autoPauseEnabled));
+      _engine.setAutoPauseEnabled(_autoPauseEnabled);
+      _wasGpsLost = false;
+      _lastCloudSeq = 0;
+      _lastCloudBackupAt = null;
+      await ActiveRunStore.instance.clear();
+
+      try {
+        final session = await CardioService.instance.startSession(
+          workoutId: _workout?.id,
+          clientSessionId: _clientSessionId!,
+        );
+        if (!mounted) return;
+
+        setState(() {
+          _session = session;
+          _running = true;
+          _distance = 0;
+          _estimatedGap = 0;
+          _gpsLost = false;
+          _autoPaused = false;
+          _manualPaused = false;
+        });
+
+        await _playStartCue();
+        _startClocks();
+        await _persistActiveRun(force: true);
+        await _startGpsTracking();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('GPS em segundo plano ativo — pode apagar a tela'),
+            duration: Duration(seconds: 3),
           ),
-        ),
-      );
+        );
+      } on SessionExpiredException {
+        if (!mounted) return;
+        setState(() => _error = 'Sessão expirada. Faça login novamente.');
+      } catch (e) {
+        final msg = e is Exception
+            ? e.toString().replaceFirst('Exception: ', '')
+            : '$e';
+        if (!_looksLikeNetworkError(msg)) {
+          if (!mounted) return;
+          setState(() => _error = msg);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg)),
+          );
+          return;
+        }
+        if (!mounted) return;
+        setState(() {
+          _session = null;
+          _running = true;
+          _distance = 0;
+          _estimatedGap = 0;
+          _gpsLost = false;
+          _autoPaused = false;
+          _manualPaused = false;
+        });
+        await _playStartCue();
+        _startClocks();
+        await _persistActiveRun(force: true);
+        await _startGpsTracking();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Sem conexão com o servidor — GPS ativo; sincroniza ao finalizar',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _playStartCue() async {
+    if (_useCoachIntervals) {
+      await CardioFeedback.playPhase(_intervals.first.phase);
+    } else if (_useLoopingIntervals) {
+      await CardioFeedback.playPhase('WALK');
+    } else {
+      await CardioFeedback.playBeeps(1);
     }
   }
 
@@ -1335,12 +1397,44 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       elapsedMs: elapsedMs,
       distanceMeters: totalDistance,
     );
+    final points = _engine.pointsForSync();
+
+    if (totalDistance < 20) {
+      await ActiveRunStore.instance.clear();
+      if (_session != null) {
+        try {
+          await CardioService.instance.completeSession(
+            sessionId: _session!.id,
+            distanceMeters: totalDistance,
+            avgSpeedKmh: avgSpeedKmh,
+            elapsedMs: elapsedMs,
+            pausedMs: pausedMs,
+            pauseCount: pauseCount,
+            caloriesKcal: 0,
+            points: points,
+          );
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Treino não contabilizado — sem deslocamento suficiente.',
+          ),
+        ),
+      );
+      setState(() {
+        _session = null;
+        _running = false;
+        _finishing = false;
+      });
+      return;
+    }
     final quality = GpsQualityService.instance.evaluate(
       acceptedPoints: _engine.acceptedPoints,
       rejectCounts: Map.of(_engine.rejectCounts),
       gpsGapSec: _engine.gpsGapSec,
     );
-    final points = _engine.pointsForSync();
 
     // Oferece exportação antes de sair.
     if (mounted && points.length >= 2) {
@@ -1528,10 +1622,19 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     return '$m:$sec';
   }
 
-  CardioInterval? get _currentPhase =>
-      _useCoachIntervals && _phaseIndex < _intervals.length
-          ? _intervals[_phaseIndex]
-          : null;
+  CardioInterval? get _currentPhase {
+    if (_useLoopingIntervals) {
+      return LoopingIntervals.phaseAt(
+        elapsedSec: _elapsed,
+        walkSec: _outdoorGoal.walkSec,
+        runSec: _outdoorGoal.runSec,
+      );
+    }
+    if (_useCoachIntervals && _phaseIndex < _intervals.length) {
+      return _intervals[_phaseIndex];
+    }
+    return null;
+  }
 
   String _subtitleForGoal() {
     return switch (_outdoorGoal.mode) {
@@ -1540,6 +1643,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
               ? _workout!.intervalsSummary
               : '${_intervals.length} fases · plano do coach')
           : 'Plano do coach indisponível — escolha distância ou calorias',
+      OutdoorGoalMode.intervals => _outdoorGoal.label,
       OutdoorGoalMode.distanceKm =>
         'Meta: ${_outdoorGoal.targetKm?.toStringAsFixed(1) ?? '?'} km',
       OutdoorGoalMode.caloriesKcal => () {
@@ -1565,7 +1669,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
   Widget? _goalProgressCard() {
     if (!_running || !_outdoorGoal.hasNumericTarget) return null;
     final targetKm = _goalTargetKm;
-  final progressKm = targetKm != null && targetKm > 0
+    final progressKm = targetKm != null && targetKm > 0
         ? (_distance / 1000 / targetKm).clamp(0.0, 1.0)
         : null;
     final targetKcal = _outdoorGoal.mode == OutdoorGoalMode.caloriesKcal
@@ -1574,12 +1678,20 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     final progressKcal = targetKcal != null && targetKcal > 0
         ? (_liveCalories / targetKcal).clamp(0.0, 1.0)
         : null;
-    final progress = progressKcal ?? progressKm;
+    final targetMin = _outdoorGoal.mode == OutdoorGoalMode.intervals
+        ? _outdoorGoal.targetMinutes
+        : null;
+    final progressMin = targetMin != null && targetMin > 0
+        ? (_elapsed / (targetMin * 60)).clamp(0.0, 1.0)
+        : null;
+    final progress = progressKcal ?? progressKm ?? progressMin;
     if (progress == null) return null;
 
     final label = _outdoorGoal.mode == OutdoorGoalMode.caloriesKcal
         ? '$_liveCalories / $targetKcal kcal'
-        : '${(_distance / 1000).toStringAsFixed(2)} / ${targetKm!.toStringAsFixed(1)} km';
+        : progressMin != null && progressKm == null
+            ? '${_fmt(_elapsed)} / $targetMin min'
+            : '${(_distance / 1000).toStringAsFixed(2)} / ${targetKm!.toStringAsFixed(1)} km';
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -1607,11 +1719,21 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
   /// Cada rodada prescrita = 1 caminhada + 1 corrida (2 fases no app).
   String get _roundLabel {
+    final paused = _manualPaused || _autoPaused ? ' · pausado' : '';
+    if (_useLoopingIntervals) {
+      final cycle = _outdoorGoal.walkSec + _outdoorGoal.runSec;
+      final roundNum = cycle > 0 ? (_elapsed ~/ cycle) + 1 : 1;
+      if (_outdoorGoal.targetKm != null && _outdoorGoal.targetKm! > 0) {
+        return 'Rodada $roundNum · até ${_outdoorGoal.targetKm!.toStringAsFixed(0)} km$paused';
+      }
+      if (_outdoorGoal.targetMinutes != null && _outdoorGoal.targetMinutes! > 0) {
+        return 'Rodada $roundNum · até ${_outdoorGoal.targetMinutes} min$paused';
+      }
+      return 'Rodada $roundNum$paused';
+    }
     if (_intervals.isEmpty) return '';
     final totalRounds = (_intervals.length + 1) ~/ 2;
     final roundNum = (_phaseIndex ~/ 2) + 1;
-    final paused =
-        _manualPaused || _autoPaused ? ' · pausado' : '';
     return 'Rodada $roundNum de $totalRounds$paused';
   }
 
@@ -1741,9 +1863,23 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         onChanged: (g) => setState(() => _outdoorGoal = g),
                       ),
                     ],
-                    if (_useCoachIntervals && !_running) ...[
+                    if (_useAnyIntervals && !_running) ...[
                       const SizedBox(height: 10),
-                      _IntervalPlanCard(intervals: _intervals),
+                      _IntervalPlanCard(
+                        intervals: _useLoopingIntervals
+                            ? [
+                                CardioInterval(
+                                  phase: 'WALK',
+                                  durationSec: _outdoorGoal.walkSec,
+                                ),
+                                CardioInterval(
+                                  phase: 'RUN',
+                                  durationSec: _outdoorGoal.runSec,
+                                ),
+                              ]
+                            : _intervals,
+                        looping: _useLoopingIntervals,
+                      ),
                     ],
                     if (_outdoorGoal.mode == OutdoorGoalMode.coach && !_running) ...[
                       const SizedBox(height: 10),
@@ -2108,8 +2244,18 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                       children: [
                         Expanded(
                           child: FilledButton(
-                            onPressed: _running || _finishing ? null : _start,
-                            child: const Text('Iniciar'),
+                            onPressed: _running || _finishing || _starting
+                                ? null
+                                : _start,
+                            child: _starting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Iniciar'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -2214,14 +2360,16 @@ class _Stat extends StatelessWidget {
 
 /// Plano da sequência prescrita (visível ao entrar, antes de iniciar).
 class _IntervalPlanCard extends StatelessWidget {
-  const _IntervalPlanCard({required this.intervals});
+  const _IntervalPlanCard({required this.intervals, this.looping = false});
 
   final List<CardioInterval> intervals;
+  final bool looping;
 
   @override
   Widget build(BuildContext context) {
     final walk = intervals.where((i) => !i.isRun).toList();
     final run = intervals.where((i) => i.isRun).toList();
+    if (intervals.isEmpty) return const SizedBox.shrink();
     final walkSec = walk.isNotEmpty ? walk.first.durationSec : 0;
     final runSec = run.isNotEmpty ? run.first.durationSec : 0;
     final rounds = (intervals.length + 1) ~/ 2;
@@ -2247,8 +2395,8 @@ class _IntervalPlanCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Sequência do coach',
+          Text(
+            looping ? 'Seu intervalado' : 'Sequência do coach',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white70,
@@ -2288,9 +2436,11 @@ class _IntervalPlanCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            rounds <= 1
-                ? 'Começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}'
-                : 'Repete $rounds vezes · começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}',
+            looping
+                ? 'Repete até a meta · começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}'
+                : (rounds <= 1
+                    ? 'Começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}'
+                    : 'Repete $rounds vezes · começa em ${first.isRun ? 'CORRIDA' : 'CAMINHADA'}'),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),

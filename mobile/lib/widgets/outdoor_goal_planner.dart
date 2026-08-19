@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/calorie_estimator.dart';
+import '../services/looping_intervals.dart';
 import '../services/outdoor_goal.dart';
 
 /// Escolha de meta antes de iniciar o treino outdoor.
@@ -29,6 +30,8 @@ class OutdoorGoalPlanner extends StatefulWidget {
 class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
   late final TextEditingController _kmCtrl;
   late final TextEditingController _kcalCtrl;
+  late final TextEditingController _walkCtrl;
+  late final TextEditingController _runCtrl;
 
   @override
   void initState() {
@@ -39,26 +42,53 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
     _kcalCtrl = TextEditingController(
       text: widget.goal.targetKcal?.toString() ?? '400',
     );
+    _walkCtrl = TextEditingController(text: '${widget.goal.walkMin}');
+    _runCtrl = TextEditingController(text: '${widget.goal.runMin}');
   }
 
   @override
   void dispose() {
     _kmCtrl.dispose();
     _kcalCtrl.dispose();
+    _walkCtrl.dispose();
+    _runCtrl.dispose();
     super.dispose();
   }
 
   void _setMode(OutdoorGoalMode mode) {
-    final next = widget.goal.copyWith(mode: mode);
+    var next = widget.goal.copyWith(mode: mode);
+    if (mode == OutdoorGoalMode.intervals) {
+      next = next.copyWith(
+        targetKm: next.targetKm ?? 5,
+        walkMin: next.walkMin,
+        runMin: next.runMin,
+      );
+    }
     widget.onChanged(_withParsedTargets(next));
   }
 
   OutdoorGoal _withParsedTargets(OutdoorGoal base) {
     final km = double.tryParse(_kmCtrl.text.replaceAll(',', '.'));
     final kcal = int.tryParse(_kcalCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    final walk = int.tryParse(_walkCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    final run = int.tryParse(_runCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
     return base.copyWith(
       targetKm: km,
       targetKcal: kcal,
+      walkMin: walk,
+      runMin: run,
+    );
+  }
+
+  void _setIntervalTarget({double? km, int? minutes}) {
+    widget.onChanged(
+      _withParsedTargets(widget.goal).copyWith(
+        mode: OutdoorGoalMode.intervals,
+        targetKm: km,
+        targetMinutes: minutes,
+        clearTargetKm: km == null,
+        clearTargetMinutes: minutes == null,
+      ),
     );
   }
 
@@ -80,11 +110,36 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
         'com $weightLabel$heightPart: ≈ ${km.toStringAsFixed(1)} km';
   }
 
+  String get _intervalPreview {
+    final walk = widget.goal.walkMin.clamp(1, 30);
+    final run = widget.goal.runMin.clamp(1, 30);
+    final km = widget.goal.targetKm;
+    final minutes = widget.goal.targetMinutes;
+    if (km != null && km > 0) {
+      final rounds = LoopingIntervals.estimatedRoundsForKm(
+        targetKm: km,
+        walkSec: walk * 60,
+        runSec: run * 60,
+      );
+      return '$walk min caminhada + $run min corrida até ${km.toStringAsFixed(0)} km · ~$rounds rodadas';
+    }
+    if (minutes != null && minutes > 0) {
+      final rounds = LoopingIntervals.estimatedRoundsForMinutes(
+        targetMin: minutes,
+        walkSec: walk * 60,
+        runSec: run * 60,
+      );
+      return '$walk min caminhada + $run min corrida por $minutes min · ~$rounds rodadas';
+    }
+    return '$walk min caminhada + $run min corrida — defina 5 km, 10 km ou 1 hora';
+  }
+
   @override
   Widget build(BuildContext context) {
     final modes = <OutdoorGoalMode>[
       OutdoorGoalMode.free,
       if (widget.hasCoachPlan) OutdoorGoalMode.coach,
+      OutdoorGoalMode.intervals,
       OutdoorGoalMode.distanceKm,
       OutdoorGoalMode.caloriesKcal,
     ];
@@ -122,6 +177,7 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
                 final label = switch (mode) {
                   OutdoorGoalMode.free => 'Livre',
                   OutdoorGoalMode.coach => 'Coach',
+                  OutdoorGoalMode.intervals => 'Intervalado',
                   OutdoorGoalMode.distanceKm => 'Distância',
                   OutdoorGoalMode.caloriesKcal => 'Calorias',
                 };
@@ -169,6 +225,76 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
                   style: const TextStyle(fontSize: 12, color: Colors.lightBlueAccent),
                 ),
               ],
+            ],
+            if (widget.goal.mode == OutdoorGoalMode.intervals) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _walkCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Caminhada',
+                        suffixText: 'min',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setState(() {
+                        widget.onChanged(_withParsedTargets(widget.goal));
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _runCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Corrida',
+                        suffixText: 'min',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setState(() {
+                        widget.onChanged(_withParsedTargets(widget.goal));
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('5 km'),
+                    selected: widget.goal.targetKm == 5 &&
+                        (widget.goal.targetMinutes == null ||
+                            widget.goal.targetMinutes == 0),
+                    onSelected: (_) => _setIntervalTarget(km: 5),
+                  ),
+                  ChoiceChip(
+                    label: const Text('10 km'),
+                    selected: widget.goal.targetKm == 10 &&
+                        (widget.goal.targetMinutes == null ||
+                            widget.goal.targetMinutes == 0),
+                    onSelected: (_) => _setIntervalTarget(km: 10),
+                  ),
+                  ChoiceChip(
+                    label: const Text('1 hora'),
+                    selected: widget.goal.targetMinutes == 60 &&
+                        (widget.goal.targetKm == null || widget.goal.targetKm == 0),
+                    onSelected: (_) => _setIntervalTarget(minutes: 60),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _intervalPreview,
+                style: const TextStyle(fontSize: 12, color: Colors.lightBlueAccent),
+              ),
             ],
           ],
         ),
