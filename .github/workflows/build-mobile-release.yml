@@ -33,15 +33,15 @@ jobs:
         env:
           API_URL: https://academia.focodev.com.br
         run: |
-          for i in $(seq 1 12); do
+          for i in $(seq 1 30); do
             if curl -fsS "${API_URL}/api/health" >/dev/null; then
               echo "API disponível."
               exit 0
             fi
-            echo "Aguardando API (${i}/12)..."
-            sleep 10
+            echo "Aguardando API (${i}/30)..."
+            sleep 15
           done
-          echo "API indisponível após 2 minutos."
+          echo "API indisponível após 7 minutos."
           exit 1
 
       - name: Ajustar versionCode
@@ -146,17 +146,18 @@ jobs:
           APK="mobile/build/app/outputs/flutter-apk/app-release.apk"
           SHORT_MSG=$(printf '%s' "$COMMIT_MSG" | head -n1 | cut -c1-180)
           NOTES="Deploy automático ${COMMIT_SHA:0:7} — ${SHORT_MSG}"
-          for i in $(seq 1 5); do
-            if curl -fsS -X POST "${API_URL}/api/app/releases/deploy" \
-              -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
-              -F "file=@${APK}" \
-              -F "versionName=${VERSION_NAME}" \
-              -F "versionCode=${VERSION_CODE}" \
-              -F "releaseNotes=${NOTES}"; then
+          for i in $(seq 1 12); do
+            if curl -fsS "${API_URL}/api/health" >/dev/null \
+              && curl -fsS -X POST "${API_URL}/api/app/releases/deploy" \
+                -H "X-Deploy-Token: ${DEPLOY_TOKEN}" \
+                -F "file=@${APK}" \
+                -F "versionName=${VERSION_NAME}" \
+                -F "versionCode=${VERSION_CODE}" \
+                -F "releaseNotes=${NOTES}"; then
               break
             fi
-            if [ "$i" -eq 5 ]; then
-              echo "Falha ao publicar APK após 5 tentativas."
+            if [ "$i" -eq 12 ]; then
+              echo "Falha ao publicar APK após 12 tentativas."
               exit 1
             fi
             echo "Tentativa ${i} falhou; aguardando 30s..."
