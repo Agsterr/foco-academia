@@ -45,8 +45,12 @@ class OutdoorGoal {
   int get runSec => (runMin.clamp(1, 30)) * 60;
 
   bool get hasNumericTarget =>
-      (mode == OutdoorGoalMode.distanceKm && targetKm != null && targetKm! > 0) ||
-      (mode == OutdoorGoalMode.caloriesKcal && targetKcal != null && targetKcal! > 0) ||
+      (mode == OutdoorGoalMode.distanceKm &&
+          targetKm != null &&
+          targetKm! > 0) ||
+      (mode == OutdoorGoalMode.caloriesKcal &&
+          targetKcal != null &&
+          targetKcal! > 0) ||
       (mode == OutdoorGoalMode.intervals &&
           ((targetKm != null && targetKm! > 0) ||
               (targetMinutes != null && targetMinutes! > 0)));
@@ -55,7 +59,8 @@ class OutdoorGoal {
     return switch (mode) {
       OutdoorGoalMode.free => 'Livre',
       OutdoorGoalMode.coach => 'Plano do coach',
-      OutdoorGoalMode.distanceKm => '${targetKm?.toStringAsFixed(1) ?? '?'} km',
+      OutdoorGoalMode.distanceKm =>
+        '${targetKm != null ? formatKm(targetKm!) : '?'} km',
       OutdoorGoalMode.caloriesKcal => '${targetKcal ?? '?'} kcal',
       OutdoorGoalMode.intervals => _intervalLabel,
     };
@@ -64,12 +69,25 @@ class OutdoorGoal {
   String get _intervalLabel {
     final cycle = '$walkMin min caminhada + $runMin min corrida';
     if (targetKm != null && targetKm! > 0) {
-      return '$cycle até ${targetKm!.toStringAsFixed(0)} km';
+      return '$cycle até ${formatKm(targetKm!)} km';
     }
     if (targetMinutes != null && targetMinutes! > 0) {
       return '$cycle por $targetMinutes min';
     }
     return cycle;
+  }
+
+  /// 7 → "7", 7.5 → "7.5", 7.25 → "7.25".
+  static String formatKm(double km) {
+    final hundredths = (km * 100).round() / 100;
+    if (hundredths == hundredths.roundToDouble()) {
+      return hundredths.toStringAsFixed(0);
+    }
+    final tenths = (km * 10).round() / 10;
+    if ((km - tenths).abs() < 0.001) {
+      return tenths.toStringAsFixed(1);
+    }
+    return hundredths.toStringAsFixed(2);
   }
 
   OutdoorGoal copyWith({

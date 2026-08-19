@@ -5,11 +5,14 @@ import 'package:foco_academia_mobile/services/outdoor_goal.dart';
 
 void main() {
   test('phaseAt alterna caminhada e corrida', () {
-    final walk = LoopingIntervals.phaseAt(elapsedSec: 30, walkSec: 120, runSec: 120);
+    final walk =
+        LoopingIntervals.phaseAt(elapsedSec: 30, walkSec: 120, runSec: 120);
     expect(walk.isRun, isFalse);
-    final run = LoopingIntervals.phaseAt(elapsedSec: 150, walkSec: 120, runSec: 120);
+    final run =
+        LoopingIntervals.phaseAt(elapsedSec: 150, walkSec: 120, runSec: 120);
     expect(run.isRun, isTrue);
-    final walk2 = LoopingIntervals.phaseAt(elapsedSec: 240, walkSec: 120, runSec: 120);
+    final walk2 =
+        LoopingIntervals.phaseAt(elapsedSec: 240, walkSec: 120, runSec: 120);
     expect(walk2.isRun, isFalse);
   });
 
@@ -30,12 +33,19 @@ void main() {
       walkSec: 120,
       runSec: 120,
     );
+    final r75 = LoopingIntervals.estimatedRoundsForKm(
+      targetKm: 7.5,
+      walkSec: 120,
+      runSec: 120,
+    );
     final r10 = LoopingIntervals.estimatedRoundsForKm(
       targetKm: 10,
       walkSec: 120,
       runSec: 120,
     );
     expect(r10, greaterThan(r5));
+    expect(r75, greaterThanOrEqualTo(r5));
+    expect(r75, lessThanOrEqualTo(r10));
     expect(r5, greaterThanOrEqualTo(1));
   });
 

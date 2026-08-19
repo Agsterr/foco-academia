@@ -1,7 +1,7 @@
 import 'cardio_service.dart';
 
 /// Intervalado do aluno: N min caminhando + M min correndo, repetido
-/// até bater km (5/10) ou tempo (1 hora).
+/// até bater a distância (km) ou o tempo (min) escolhidos.
 class LoopingIntervals {
   LoopingIntervals._();
 

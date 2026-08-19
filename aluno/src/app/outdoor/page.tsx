@@ -50,7 +50,9 @@ export default function OutdoorPage() {
   const [walkMin, setWalkMin] = useState(2);
   const [runMin, setRunMin] = useState(2);
   const [customInterval, setCustomInterval] = useState(false);
-  const [intervalTarget, setIntervalTarget] = useState<"5km" | "10km" | "60min" | null>("5km");
+  const [intervalKm, setIntervalKm] = useState("5");
+  const [intervalMin, setIntervalMin] = useState("");
+  const [intervalByTime, setIntervalByTime] = useState(false);
   const [starting, setStarting] = useState(false);
   const watchId = useRef<number | null>(null);
   const seq = useRef(0);
@@ -90,8 +92,10 @@ export default function OutdoorPage() {
       const pos = elapsed % cycle;
       const remaining = pos < loopWalkSec ? loopWalkSec - pos : cycle - pos;
       setPhaseRemaining(remaining);
-      const targetKm = intervalTarget === "5km" ? 5 : intervalTarget === "10km" ? 10 : 0;
-      const targetSec = intervalTarget === "60min" ? 3600 : 0;
+      const parsedKm = Number(String(intervalKm).replace(",", "."));
+      const targetKm = !intervalByTime && parsedKm > 0 ? parsedKm : 0;
+      const parsedMin = Number(intervalMin);
+      const targetSec = intervalByTime && parsedMin > 0 ? parsedMin * 60 : 0;
       if ((targetKm > 0 && distance >= targetKm * 1000) || (targetSec > 0 && elapsed >= targetSec)) {
         if (!finishingRef.current) {
           playBeeps(3);
@@ -116,7 +120,7 @@ export default function OutdoorPage() {
     }
     const t = window.setTimeout(() => setPhaseRemaining((v) => v - 1), 1000);
     return () => window.clearTimeout(t);
-  }, [running, phaseRemaining, phaseIndex, currentPhase, intervals, looping, elapsed, distance, intervalTarget, loopWalkSec, loopRunSec]);
+  }, [running, phaseRemaining, phaseIndex, currentPhase, intervals, looping, elapsed, distance, intervalKm, intervalMin, intervalByTime, loopWalkSec, loopRunSec]);
 
   useEffect(() => {
     if (!running) return;
@@ -284,23 +288,85 @@ export default function OutdoorPage() {
                   />
                 </label>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {(["5km", "10km", "60min"] as const).map((t) => (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-400">Até quantos km? (ou minutos)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-xs text-slate-400">
+                    Distância (km)
+                    <input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={intervalByTime ? "" : intervalKm}
+                      onChange={(e) => {
+                        setIntervalByTime(false);
+                        setIntervalKm(e.target.value);
+                        setIntervalMin("");
+                      }}
+                      className="form-input mt-1"
+                      placeholder="ex. 7.5"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-400">
+                    ou tempo (min)
+                    <input
+                      type="number"
+                      min={1}
+                      value={intervalByTime ? intervalMin : ""}
+                      onChange={(e) => {
+                        setIntervalByTime(true);
+                        setIntervalMin(e.target.value);
+                        setIntervalKm("");
+                      }}
+                      className="form-input mt-1"
+                      placeholder="ex. 40"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "5 km", km: "5" },
+                    { label: "10 km", km: "10" },
+                  ].map((t) => (
+                    <button
+                      key={t.label}
+                      type="button"
+                      onClick={() => {
+                        setIntervalByTime(false);
+                        setIntervalKm(t.km);
+                        setIntervalMin("");
+                      }}
+                      className={`rounded-full px-3 py-1 text-sm ${
+                        !intervalByTime && intervalKm === t.km
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-800 text-slate-300"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
                   <button
-                    key={t}
                     type="button"
-                    onClick={() => setIntervalTarget(t)}
+                    onClick={() => {
+                      setIntervalByTime(true);
+                      setIntervalMin("60");
+                      setIntervalKm("");
+                    }}
                     className={`rounded-full px-3 py-1 text-sm ${
-                      intervalTarget === t ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300"
+                      intervalByTime && intervalMin === "60"
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-800 text-slate-300"
                     }`}
                   >
-                    {t === "60min" ? "1 hora" : t.replace("km", " km")}
+                    1 hora
                   </button>
-                ))}
+                </div>
               </div>
               <p className="text-xs text-teal-300">
-                {walkMin} min caminhada + {runMin} min corrida até{" "}
-                {intervalTarget === "60min" ? "1 hora" : intervalTarget?.replace("km", " km")}
+                {walkMin} min caminhada + {runMin} min corrida{" "}
+                {intervalByTime
+                  ? `por ${intervalMin || "?"} min`
+                  : `até ${intervalKm || "?"} km`}
               </p>
             </div>
           )}
@@ -338,7 +404,7 @@ export default function OutdoorPage() {
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
-      <div className="mt-4 flex gap-2 pb-[env(safe-area-inset-bottom)]">
+      <div className="mt-4 flex gap-2 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {!running ? (
           <button onClick={start} disabled={starting} className="btn-primary flex-1">
             {starting ? "Iniciando..." : "Iniciar"}

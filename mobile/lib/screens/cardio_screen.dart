@@ -176,7 +176,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         if (targetM > 0 && _distance >= targetM) {
           reached = true;
           message =
-              'Intervalado: ${_outdoorGoal.targetKm!.toStringAsFixed(0)} km concluídos!';
+              'Intervalado: ${OutdoorGoal.formatKm(_outdoorGoal.targetKm!)} km concluídos!';
         }
         final mins = _outdoorGoal.targetMinutes ?? 0;
         if (!reached && mins > 0 && _elapsed >= mins * 60) {
@@ -1724,7 +1724,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       final cycle = _outdoorGoal.walkSec + _outdoorGoal.runSec;
       final roundNum = cycle > 0 ? (_elapsed ~/ cycle) + 1 : 1;
       if (_outdoorGoal.targetKm != null && _outdoorGoal.targetKm! > 0) {
-        return 'Rodada $roundNum · até ${_outdoorGoal.targetKm!.toStringAsFixed(0)} km$paused';
+        return 'Rodada $roundNum · até ${OutdoorGoal.formatKm(_outdoorGoal.targetKm!)} km$paused';
       }
       if (_outdoorGoal.targetMinutes != null && _outdoorGoal.targetMinutes! > 0) {
         return 'Rodada $roundNum · até ${_outdoorGoal.targetMinutes} min$paused';
@@ -1778,9 +1778,13 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         : '--';
 
     final expanded = _running && _mapExpanded;
-    // Edge-to-edge no Android zera MediaQuery.padding; viewPadding mantém a
-    // altura da barra de navegação para os botões Iniciar/Pausar/Finalizar.
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    // Edge-to-edge no Android zera MediaQuery.padding; viewPadding (com
+    // fallback) mantém Iniciar/Pausar/Finalizar acima da barra do sistema.
+    final mq = MediaQuery.of(context);
+    final bottomInset = [
+      mq.viewPadding.bottom,
+      mq.padding.bottom,
+    ].fold<double>(0, (a, b) => a > b ? a : b);
     final liveLat = _running && _engine.hasLiveFix
         ? (_engine.liveTipReliable
             ? (_snappedLive?.latitude ?? _engine.liveLatitude)
@@ -1800,6 +1804,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
         }
       },
       child: Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: expanded ? const Color(0xFF1E293B) : null,
       appBar: expanded
           ? null
@@ -1829,14 +1834,15 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
           : Stack(
               fit: StackFit.expand,
               children: [
-                SafeArea(
-              top: false,
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 12, 16, 8 + bottomInset),
-                child: Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        children: [
                     Text(
                       title,
                       style: const TextStyle(
@@ -1995,9 +2001,6 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                       ],
                     ],
                     const SizedBox(height: 8),
-                    Expanded(
-                      child: ListView(
-                        children: [
                           if (!expanded)
                             RouteMapView(
                               key: _routeMapKey,
@@ -2223,6 +2226,22 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         ],
                       ),
                     ),
+                    Material(
+                      elevation: 8,
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: SafeArea(
+                        top: false,
+                        left: false,
+                        right: false,
+                        maintainBottomViewPadding: true,
+                        minimum: EdgeInsets.only(
+                          bottom: bottomInset > 0 ? bottomInset : 24,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       dense: true,
@@ -2244,6 +2263,10 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                       children: [
                         Expanded(
                           child: FilledButton(
+                            key: const Key('outdoor-start-button'),
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                            ),
                             onPressed: _running || _finishing || _starting
                                 ? null
                                 : _start,
@@ -2265,6 +2288,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               backgroundColor: _manualPaused
                                   ? Colors.green
                                   : Colors.orange,
+                              minimumSize: const Size.fromHeight(48),
                             ),
                             onPressed: _running && !_finishing
                                 ? _toggleManualPause
@@ -2277,6 +2301,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           child: FilledButton(
                             style: FilledButton.styleFrom(
                               backgroundColor: Colors.red,
+                              minimumSize: const Size.fromHeight(48),
                             ),
                             onPressed: _running && !_finishing
                                 ? () => _finish()
@@ -2287,11 +2312,13 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ),
                 if (expanded)
                   Positioned.fill(
                     child: Material(

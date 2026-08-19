@@ -32,18 +32,26 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
   late final TextEditingController _kcalCtrl;
   late final TextEditingController _walkCtrl;
   late final TextEditingController _runCtrl;
+  late final TextEditingController _minCtrl;
 
   @override
   void initState() {
     super.initState();
     _kmCtrl = TextEditingController(
-      text: widget.goal.targetKm?.toStringAsFixed(1) ?? '5.0',
+      text: widget.goal.targetKm != null
+          ? OutdoorGoal.formatKm(widget.goal.targetKm!)
+          : '5',
     );
     _kcalCtrl = TextEditingController(
       text: widget.goal.targetKcal?.toString() ?? '400',
     );
     _walkCtrl = TextEditingController(text: '${widget.goal.walkMin}');
     _runCtrl = TextEditingController(text: '${widget.goal.runMin}');
+    _minCtrl = TextEditingController(
+      text: widget.goal.targetMinutes != null && widget.goal.targetMinutes! > 0
+          ? '${widget.goal.targetMinutes}'
+          : '',
+    );
   }
 
   @override
@@ -52,44 +60,108 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
     _kcalCtrl.dispose();
     _walkCtrl.dispose();
     _runCtrl.dispose();
+    _minCtrl.dispose();
     super.dispose();
   }
+
+  int? get _parsedWalk =>
+      int.tryParse(_walkCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  int? get _parsedRun =>
+      int.tryParse(_runCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  double? get _parsedKm =>
+      double.tryParse(_kmCtrl.text.replaceAll(',', '.').trim());
 
   void _setMode(OutdoorGoalMode mode) {
     var next = widget.goal.copyWith(mode: mode);
     if (mode == OutdoorGoalMode.intervals) {
-      next = next.copyWith(
-        targetKm: next.targetKm ?? 5,
-        walkMin: next.walkMin,
-        runMin: next.runMin,
-      );
+      final hasKm = next.targetKm != null && next.targetKm! > 0;
+      final hasMin = next.targetMinutes != null && next.targetMinutes! > 0;
+      if (!hasKm && !hasMin) {
+        next = next.copyWith(targetKm: 5, clearTargetMinutes: true);
+        _kmCtrl.text = '5';
+        _minCtrl.text = '';
+      }
     }
     widget.onChanged(_withParsedTargets(next));
   }
 
   OutdoorGoal _withParsedTargets(OutdoorGoal base) {
-    final km = double.tryParse(_kmCtrl.text.replaceAll(',', '.'));
     final kcal = int.tryParse(_kcalCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    final walk = int.tryParse(_walkCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    final run = int.tryParse(_runCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    return base.copyWith(
-      targetKm: km,
+    var next = base.copyWith(
       targetKcal: kcal,
-      walkMin: walk,
-      runMin: run,
+      walkMin: _parsedWalk,
+      runMin: _parsedRun,
     );
+    if (base.mode == OutdoorGoalMode.distanceKm) {
+      next = next.copyWith(targetKm: _parsedKm);
+    }
+    return next;
   }
 
-  void _setIntervalTarget({double? km, int? minutes}) {
+  void _setIntervalDistance(double km) {
+    _kmCtrl.text = OutdoorGoal.formatKm(km);
+    _minCtrl.text = '';
     widget.onChanged(
-      _withParsedTargets(widget.goal).copyWith(
+      widget.goal.copyWith(
         mode: OutdoorGoalMode.intervals,
         targetKm: km,
-        targetMinutes: minutes,
-        clearTargetKm: km == null,
-        clearTargetMinutes: minutes == null,
+        walkMin: _parsedWalk,
+        runMin: _parsedRun,
+        clearTargetMinutes: true,
       ),
     );
+    setState(() {});
+  }
+
+  void _setIntervalMinutes(int minutes) {
+    _minCtrl.text = '$minutes';
+    _kmCtrl.text = '';
+    widget.onChanged(
+      widget.goal.copyWith(
+        mode: OutdoorGoalMode.intervals,
+        targetMinutes: minutes,
+        walkMin: _parsedWalk,
+        runMin: _parsedRun,
+        clearTargetKm: true,
+      ),
+    );
+    setState(() {});
+  }
+
+  void _onIntervalKmChanged(String value) {
+    final km = double.tryParse(value.replaceAll(',', '.').trim());
+    if (value.trim().isNotEmpty) {
+      _minCtrl.text = '';
+    }
+    widget.onChanged(
+      widget.goal.copyWith(
+        mode: OutdoorGoalMode.intervals,
+        targetKm: km != null && km > 0 ? km : null,
+        walkMin: _parsedWalk,
+        runMin: _parsedRun,
+        clearTargetKm: km == null || km <= 0,
+        clearTargetMinutes: true,
+      ),
+    );
+    setState(() {});
+  }
+
+  void _onIntervalMinChanged(String value) {
+    final minutes = int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (value.trim().isNotEmpty) {
+      _kmCtrl.text = '';
+    }
+    widget.onChanged(
+      widget.goal.copyWith(
+        mode: OutdoorGoalMode.intervals,
+        targetMinutes: minutes != null && minutes > 0 ? minutes : null,
+        walkMin: _parsedWalk,
+        runMin: _parsedRun,
+        clearTargetKm: true,
+        clearTargetMinutes: minutes == null || minutes <= 0,
+      ),
+    );
+    setState(() {});
   }
 
   String get _estimateLine {
@@ -121,7 +193,7 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
         walkSec: walk * 60,
         runSec: run * 60,
       );
-      return '$walk min caminhada + $run min corrida até ${km.toStringAsFixed(0)} km · ~$rounds rodadas';
+      return '$walk min caminhada + $run min corrida até ${OutdoorGoal.formatKm(km)} km · ~$rounds rodadas';
     }
     if (minutes != null && minutes > 0) {
       final rounds = LoopingIntervals.estimatedRoundsForMinutes(
@@ -131,7 +203,7 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
       );
       return '$walk min caminhada + $run min corrida por $minutes min · ~$rounds rodadas';
     }
-    return '$walk min caminhada + $run min corrida — defina 5 km, 10 km ou 1 hora';
+    return '$walk min caminhada + $run min corrida — informe os km ou os minutos';
   }
 
   @override
@@ -192,7 +264,8 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
               const SizedBox(height: 12),
               TextField(
                 controller: _kmCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(
                   labelText: 'Meta em km',
                   suffixText: 'km',
@@ -222,7 +295,8 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
                 const SizedBox(height: 8),
                 Text(
                   _estimateLine,
-                  style: const TextStyle(fontSize: 12, color: Colors.lightBlueAccent),
+                  style: const TextStyle(
+                      fontSize: 12, color: Colors.lightBlueAccent),
                 ),
               ],
             ],
@@ -264,6 +338,48 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
                 ],
               ),
               const SizedBox(height: 10),
+              const Text(
+                'Até quantos km? (ou minutos)',
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('interval-km-field'),
+                      controller: _kmCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Distância',
+                        hintText: 'ex. 7.5',
+                        suffixText: 'km',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: _onIntervalKmChanged,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      key: const Key('interval-min-field'),
+                      controller: _minCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'ou tempo',
+                        hintText: 'ex. 40',
+                        suffixText: 'min',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: _onIntervalMinChanged,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -273,27 +389,29 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
                     selected: widget.goal.targetKm == 5 &&
                         (widget.goal.targetMinutes == null ||
                             widget.goal.targetMinutes == 0),
-                    onSelected: (_) => _setIntervalTarget(km: 5),
+                    onSelected: (_) => _setIntervalDistance(5),
                   ),
                   ChoiceChip(
                     label: const Text('10 km'),
                     selected: widget.goal.targetKm == 10 &&
                         (widget.goal.targetMinutes == null ||
                             widget.goal.targetMinutes == 0),
-                    onSelected: (_) => _setIntervalTarget(km: 10),
+                    onSelected: (_) => _setIntervalDistance(10),
                   ),
                   ChoiceChip(
                     label: const Text('1 hora'),
                     selected: widget.goal.targetMinutes == 60 &&
-                        (widget.goal.targetKm == null || widget.goal.targetKm == 0),
-                    onSelected: (_) => _setIntervalTarget(minutes: 60),
+                        (widget.goal.targetKm == null ||
+                            widget.goal.targetKm == 0),
+                    onSelected: (_) => _setIntervalMinutes(60),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                 _intervalPreview,
-                style: const TextStyle(fontSize: 12, color: Colors.lightBlueAccent),
+                style: const TextStyle(
+                    fontSize: 12, color: Colors.lightBlueAccent),
               ),
             ],
           ],
