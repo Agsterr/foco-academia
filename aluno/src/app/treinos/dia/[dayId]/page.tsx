@@ -42,10 +42,14 @@ export default function TreinoDiaPage() {
   const load = useCallback(async () => {
     const dayData = await api<WorkoutDay>(`/api/student/days/${dayId}`);
     setDay(dayData);
-    const sessionData = await api<WorkoutSession>(`/api/student/days/${dayId}/sessions`, {
-      method: "POST",
-    });
-    setSession(sessionData);
+    if (dayData.activeSessionId) {
+      const sessionData = await api<WorkoutSession>(`/api/student/days/${dayId}/sessions`, {
+        method: "POST",
+      });
+      setSession(sessionData);
+    } else {
+      setSession(null);
+    }
   }, [dayId]);
 
   useEffect(() => {
@@ -61,7 +65,7 @@ export default function TreinoDiaPage() {
   useEffect(() => {
     if (!session?.startedAt || session.completedAt) return;
     const start = new Date(session.startedAt).getTime();
-    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    const tick = () => setElapsed(Math.min(3 * 3600, Math.floor((Date.now() - start) / 1000)));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
@@ -83,7 +87,20 @@ export default function TreinoDiaPage() {
   const doneSets = session?.setLogs.length ?? 0;
   const progress = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
   const hasExercises = (day?.exercises.length ?? 0) > 0;
-  const canFinish = !hasExercises || doneSets > 0;
+  const started = !!session && !session.completedAt;
+  const canFinish = started && (!hasExercises || doneSets > 0);
+
+  async function startSession() {
+    setSaving(true);
+    try {
+      const sessionData = await api<WorkoutSession>(`/api/student/days/${dayId}/sessions`, {
+        method: "POST",
+      });
+      setSession(sessionData);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function toggleSet(exerciseId: string, setNumber: number) {
     if (!session || saving) return;
@@ -129,7 +146,7 @@ export default function TreinoDiaPage() {
     );
   }
 
-  if (!day || !session) return null;
+  if (!day) return null;
 
   if (celebration) {
     return (
@@ -254,14 +271,14 @@ export default function TreinoDiaPage() {
                 <div className="flex flex-wrap gap-2">
                   {Array.from({ length: sets }, (_, i) => i + 1).map((setNumber) => {
                     const isDone = done.has(setNumber);
-                    const log = session.setLogs.find(
+                    const log = session?.setLogs?.find(
                       (l) => l.exerciseId === exercise.id && l.setNumber === setNumber
                     );
                     return (
                       <button
                         key={setNumber}
                         type="button"
-                        disabled={saving}
+                        disabled={saving || !started}
                         onClick={() => toggleSet(exercise.id, setNumber)}
                         className={`flex min-w-[4.5rem] flex-col items-center rounded-lg border px-3 py-2 text-sm transition ${
                           isDone
@@ -285,7 +302,15 @@ export default function TreinoDiaPage() {
         })}
       </div>
 
-      {!showFinish ? (
+      {!started ? (
+        <button
+          onClick={startSession}
+          disabled={saving}
+          className="mt-6 w-full rounded-lg bg-blue-600 py-3 font-medium disabled:opacity-40"
+        >
+          {saving ? "Iniciando..." : "Iniciar treino"}
+        </button>
+      ) : !showFinish ? (
         <button
           onClick={() => setShowFinish(true)}
           disabled={!canFinish}

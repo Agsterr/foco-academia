@@ -47,8 +47,14 @@ export default function OutdoorPage() {
   const [distance, setDistance] = useState(0);
   const [error, setError] = useState("");
   const [weightKg, setWeightKg] = useState(70);
+  const [walkMin, setWalkMin] = useState(2);
+  const [runMin, setRunMin] = useState(2);
+  const [customInterval, setCustomInterval] = useState(false);
+  const [intervalTarget, setIntervalTarget] = useState<"5km" | "10km" | "60min" | null>("5km");
+  const [starting, setStarting] = useState(false);
   const watchId = useRef<number | null>(null);
   const seq = useRef(0);
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     if (!getToken()) {
@@ -68,10 +74,33 @@ export default function OutdoorPage() {
       .catch(() => undefined);
   }, [router]);
 
-  const currentPhase = intervals[phaseIndex];
+  const looping = customInterval;
+  const loopWalkSec = Math.max(1, walkMin) * 60;
+  const loopRunSec = Math.max(1, runMin) * 60;
+  const currentPhase = looping
+    ? (elapsed % (loopWalkSec + loopRunSec) < loopWalkSec
+        ? { phase: "WALK" as const, durationSec: loopWalkSec }
+        : { phase: "RUN" as const, durationSec: loopRunSec })
+    : intervals[phaseIndex];
 
   useEffect(() => {
-    if (!running || !currentPhase) return;
+    if (!running) return;
+    if (looping) {
+      const cycle = loopWalkSec + loopRunSec;
+      const pos = elapsed % cycle;
+      const remaining = pos < loopWalkSec ? loopWalkSec - pos : cycle - pos;
+      setPhaseRemaining(remaining);
+      const targetKm = intervalTarget === "5km" ? 5 : intervalTarget === "10km" ? 10 : 0;
+      const targetSec = intervalTarget === "60min" ? 3600 : 0;
+      if ((targetKm > 0 && distance >= targetKm * 1000) || (targetSec > 0 && elapsed >= targetSec)) {
+        if (!finishingRef.current) {
+          playBeeps(3);
+          void finish();
+        }
+      }
+      return;
+    }
+    if (!currentPhase) return;
     if (phaseRemaining <= 0) {
       const next = phaseIndex + 1;
       if (next >= intervals.length) {
@@ -87,7 +116,7 @@ export default function OutdoorPage() {
     }
     const t = window.setTimeout(() => setPhaseRemaining((v) => v - 1), 1000);
     return () => window.clearTimeout(t);
-  }, [running, phaseRemaining, phaseIndex, currentPhase, intervals]);
+  }, [running, phaseRemaining, phaseIndex, currentPhase, intervals, looping, elapsed, distance, intervalTarget, loopWalkSec, loopRunSec]);
 
   useEffect(() => {
     if (!running) return;
@@ -116,11 +145,17 @@ export default function OutdoorPage() {
 
   async function start() {
     setError("");
+    setStarting(true);
     try {
-      const s = await startCardioSession(workout?.id, crypto.randomUUID());
+      const s = await startCardioSession(customInterval ? undefined : workout?.id, crypto.randomUUID());
       setSession(s);
       setRunning(true);
-      if (intervals.length > 0) {
+      if (looping) {
+        setPhaseIndex(0);
+        setPhaseRemaining(loopWalkSec);
+        playBeeps(1);
+        playPhaseSound("WALK");
+      } else if (intervals.length > 0) {
         setPhaseIndex(0);
         setPhaseRemaining(intervals[0].durationSec);
         playBeeps(1);
@@ -134,26 +169,46 @@ export default function OutdoorPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao iniciar");
+    } finally {
+      setStarting(false);
     }
   }
 
   async function finish() {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setRunning(false);
     if (watchId.current != null) {
       navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
     }
-    if (!session) return;
+    if (!session) {
+      finishingRef.current = false;
+      return;
+    }
     const elapsedMs = elapsed * 1000;
     const avgSpeedKmh = elapsed > 0 ? distance / 1000 / (elapsed / 3600) : 0;
     const caloriesKcal = estimateCardioKcal(weightKg, avgSpeedKmh, elapsedMs, distance);
-    await completeCardioSession(session.id, {
-      distanceMeters: distance,
-      avgSpeedKmh,
-      elapsedMs,
-      caloriesKcal,
-      points,
-    });
-    router.push("/dashboard");
+    try {
+      await completeCardioSession(session.id, {
+        distanceMeters: distance,
+        avgSpeedKmh,
+        elapsedMs,
+        caloriesKcal,
+        points,
+      });
+      router.push("/dashboard");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "";
+      if (distance < 20 || message.toLowerCase().includes("não contabilizado")) {
+        setError("Treino não contabilizado: saia e caminhe um pouco antes de finalizar.");
+        setSession(null);
+        finishingRef.current = false;
+        return;
+      }
+      setError(message || "Não foi possível finalizar o treino.");
+      finishingRef.current = false;
+    }
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -172,7 +227,7 @@ export default function OutdoorPage() {
         </p>
       )}
 
-      {intervals.length > 0 && !running && (
+      {intervals.length > 0 && !running && !customInterval && (
         <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-slate-700 bg-slate-900/80 p-3 text-center text-sm">
           {intervals.find((i) => i.phase === "WALK") && (
             <div>
@@ -187,6 +242,65 @@ export default function OutdoorPage() {
               <p className="text-xs text-red-400">CORRIDA</p>
               <p className="text-lg font-semibold">
                 {Math.round((intervals.find((i) => i.phase === "RUN")!.durationSec) / 60)} min
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!running && (
+        <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/80 p-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={customInterval}
+              onChange={(e) => setCustomInterval(e.target.checked)}
+            />
+            Criar intervalado (caminhada + corrida)
+          </label>
+          {customInterval && (
+            <div className="mt-3 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-slate-400">
+                  Caminhada (min)
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={walkMin}
+                    onChange={(e) => setWalkMin(Number(e.target.value) || 1)}
+                    className="form-input mt-1"
+                  />
+                </label>
+                <label className="text-xs text-slate-400">
+                  Corrida (min)
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={runMin}
+                    onChange={(e) => setRunMin(Number(e.target.value) || 1)}
+                    className="form-input mt-1"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(["5km", "10km", "60min"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setIntervalTarget(t)}
+                    className={`rounded-full px-3 py-1 text-sm ${
+                      intervalTarget === t ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-300"
+                    }`}
+                  >
+                    {t === "60min" ? "1 hora" : t.replace("km", " km")}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-teal-300">
+                {walkMin} min caminhada + {runMin} min corrida até{" "}
+                {intervalTarget === "60min" ? "1 hora" : intervalTarget?.replace("km", " km")}
               </p>
             </div>
           )}
@@ -224,10 +338,10 @@ export default function OutdoorPage() {
 
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex gap-2 pb-[env(safe-area-inset-bottom)]">
         {!running ? (
-          <button onClick={start} className="btn-primary flex-1">
-            Iniciar
+          <button onClick={start} disabled={starting} className="btn-primary flex-1">
+            {starting ? "Iniciando..." : "Iniciar"}
           </button>
         ) : (
           <button onClick={finish} className="btn-primary flex-1 bg-red-600 hover:bg-red-500">

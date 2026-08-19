@@ -53,7 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
       </header>
-      <main className="flex-1 px-4 py-4">{children}</main>
+      <main className="flex-1 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">{children}</main>
     </div>
   );
 }
