@@ -38,8 +38,17 @@ jobs:
         run: |
           USER="${HETZNER_USER:-root}"
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=30 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=120 -o TCPKeepAlive=yes \
             "${USER}@${HETZNER_HOST}" \
-            'bash /opt/foco-academia/scripts/deploy-hetzner.sh'
+            'set -euo pipefail
+             KEY=/root/.ssh/github_deploy_foco_academia
+             if [ -f "$KEY" ]; then
+               export GIT_SSH_COMMAND="ssh -i ${KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+             fi
+             cd /opt/foco-academia
+             git fetch origin main
+             git reset --hard origin/main
+             exec bash scripts/deploy-hetzner.sh'
 
       - name: Verificar containers
         env:
@@ -48,5 +57,6 @@ jobs:
         run: |
           USER="${HETZNER_USER:-root}"
           ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
             "${USER}@${HETZNER_HOST}" \
             'docker ps --filter name=foco-academia --format "table {{.Names}}\t{{.Status}}"'

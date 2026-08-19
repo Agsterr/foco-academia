@@ -1,0 +1,10 @@
+.git
+.github
+mobile
+docs
+**/.next
+**/node_modules
+**/target
+**/.env
+**/*.log
+**/.DS_Store

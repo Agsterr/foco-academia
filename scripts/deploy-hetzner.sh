@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Continua o rebuild se o SSH da Actions cair (SIGHUP).
+trap '' HUP
 
 APP_DIR="/opt/foco-academia"
 BRANCH="${DEPLOY_BRANCH:-main}"
@@ -26,8 +28,26 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-echo "==> Rebuild e restart"
-docker compose up -d --build
+# Bake paralelo estoura RAM da VPS e derruba a API no meio do deploy.
+export COMPOSE_BAKE=false
+export COMPOSE_PARALLEL_LIMIT=1
+
+echo "==> Sobe postgres (se ainda nao estiver)"
+docker compose up -d postgres
+
+echo "==> Build API"
+docker compose build api
+docker compose up -d api
+
+echo "==> Build aluno"
+docker compose build aluno
+echo "==> Build instrutor"
+docker compose build instrutor
+echo "==> Build admin"
+docker compose build admin
+
+echo "==> Restart dos servicos"
+docker compose up -d
 
 echo "==> Reinicia nginx (atualiza IPs dos containers)"
 docker compose up -d --force-recreate nginx
