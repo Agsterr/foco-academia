@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'interval_duration.dart';
+
 /// Modo de treino outdoor escolhido pelo aluno.
 enum OutdoorGoalMode {
   /// Sem meta numérica — só GPS e calorias ao vivo.
@@ -26,8 +28,8 @@ class OutdoorGoal {
     this.targetKm,
     this.targetKcal,
     this.targetMinutes,
-    this.walkMin = 2,
-    this.runMin = 2,
+    this.walkSec = 120,
+    this.runSec = 120,
     this.assumedSpeedKmh = 5.0,
   });
 
@@ -35,14 +37,24 @@ class OutdoorGoal {
   final double? targetKm;
   final int? targetKcal;
   final int? targetMinutes;
-  final int walkMin;
-  final int runMin;
+  final int walkSec;
+  final int runSec;
+
+  /// Minutos (pode ser fracionário) — derivado dos segundos.
+  double get walkMin => walkSec / 60.0;
+  double get runMin => runSec / 60.0;
 
   /// Ritmo assumido para converter kcal → km (caminhada moderada).
   final double assumedSpeedKmh;
 
-  int get walkSec => (walkMin.clamp(1, 30)) * 60;
-  int get runSec => (runMin.clamp(1, 30)) * 60;
+  int get walkSecClamped =>
+      walkSec.clamp(IntervalDuration.minSec, IntervalDuration.maxSec);
+
+  int get runSecClamped =>
+      runSec.clamp(IntervalDuration.minSec, IntervalDuration.maxSec);
+
+  static int _normalizeSec(int sec) =>
+      sec.clamp(IntervalDuration.minSec, IntervalDuration.maxSec);
 
   bool get hasNumericTarget =>
       (mode == OutdoorGoalMode.distanceKm &&
@@ -67,7 +79,8 @@ class OutdoorGoal {
   }
 
   String get _intervalLabel {
-    final cycle = '$walkMin min caminhada + $runMin min corrida';
+    final cycle =
+        '${IntervalDuration.format(walkSec)} caminhada + ${IntervalDuration.format(runSec)} corrida';
     if (targetKm != null && targetKm! > 0) {
       return '$cycle até ${formatKm(targetKm!)} km';
     }
@@ -95,8 +108,8 @@ class OutdoorGoal {
     double? targetKm,
     int? targetKcal,
     int? targetMinutes,
-    int? walkMin,
-    int? runMin,
+    int? walkSec,
+    int? runSec,
     double? assumedSpeedKmh,
     bool clearTargetKm = false,
     bool clearTargetMinutes = false,
@@ -107,8 +120,8 @@ class OutdoorGoal {
       targetKcal: targetKcal ?? this.targetKcal,
       targetMinutes:
           clearTargetMinutes ? null : (targetMinutes ?? this.targetMinutes),
-      walkMin: walkMin ?? this.walkMin,
-      runMin: runMin ?? this.runMin,
+      walkSec: walkSec != null ? _normalizeSec(walkSec) : this.walkSec,
+      runSec: runSec != null ? _normalizeSec(runSec) : this.runSec,
       assumedSpeedKmh: assumedSpeedKmh ?? this.assumedSpeedKmh,
     );
   }
@@ -118,8 +131,8 @@ class OutdoorGoal {
         if (targetKm != null) 'targetKm': targetKm,
         if (targetKcal != null) 'targetKcal': targetKcal,
         if (targetMinutes != null) 'targetMinutes': targetMinutes,
-        'walkMin': walkMin,
-        'runMin': runMin,
+        'walkSec': walkSec,
+        'runSec': runSec,
         'assumedSpeedKmh': assumedSpeedKmh,
       };
 
@@ -129,13 +142,21 @@ class OutdoorGoal {
       (m) => m.name == rawMode,
       orElse: () => OutdoorGoalMode.free,
     );
+    int readSec(String secKey, String minKey, int defaultSec) {
+      final rawSec = json[secKey];
+      if (rawSec is num) return _normalizeSec(rawSec.round());
+      final rawMin = json[minKey];
+      if (rawMin is num) return _normalizeSec((rawMin * 60).round());
+      return defaultSec;
+    }
+
     return OutdoorGoal(
       mode: mode,
       targetKm: (json['targetKm'] as num?)?.toDouble(),
       targetKcal: (json['targetKcal'] as num?)?.toInt(),
       targetMinutes: (json['targetMinutes'] as num?)?.toInt(),
-      walkMin: (json['walkMin'] as num?)?.toInt() ?? 2,
-      runMin: (json['runMin'] as num?)?.toInt() ?? 2,
+      walkSec: readSec('walkSec', 'walkMin', 120),
+      runSec: readSec('runSec', 'runMin', 120),
       assumedSpeedKmh: (json['assumedSpeedKmh'] as num?)?.toDouble() ?? 5.0,
     );
   }

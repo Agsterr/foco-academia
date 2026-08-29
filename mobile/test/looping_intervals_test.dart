@@ -53,8 +53,8 @@ void main() {
     expect(
       const OutdoorGoal(
         mode: OutdoorGoalMode.intervals,
-        walkMin: 2,
-        runMin: 2,
+        walkSec: 120,
+        runSec: 120,
         targetKm: 5,
       ).hasNumericTarget,
       isTrue,

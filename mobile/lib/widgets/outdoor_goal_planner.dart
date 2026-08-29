@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../services/calorie_estimator.dart';
+import '../services/interval_duration.dart';
 import '../services/looping_intervals.dart';
 import '../services/outdoor_goal.dart';
+import 'interval_phase_duration_field.dart';
 
 /// Escolha de meta antes de iniciar o treino outdoor.
 class OutdoorGoalPlanner extends StatefulWidget {
@@ -30,8 +32,6 @@ class OutdoorGoalPlanner extends StatefulWidget {
 class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
   late final TextEditingController _kmCtrl;
   late final TextEditingController _kcalCtrl;
-  late final TextEditingController _walkCtrl;
-  late final TextEditingController _runCtrl;
   late final TextEditingController _minCtrl;
 
   @override
@@ -45,8 +45,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
     _kcalCtrl = TextEditingController(
       text: widget.goal.targetKcal?.toString() ?? '400',
     );
-    _walkCtrl = TextEditingController(text: '${widget.goal.walkMin}');
-    _runCtrl = TextEditingController(text: '${widget.goal.runMin}');
     _minCtrl = TextEditingController(
       text: widget.goal.targetMinutes != null && widget.goal.targetMinutes! > 0
           ? '${widget.goal.targetMinutes}'
@@ -58,18 +56,22 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
   void dispose() {
     _kmCtrl.dispose();
     _kcalCtrl.dispose();
-    _walkCtrl.dispose();
-    _runCtrl.dispose();
     _minCtrl.dispose();
     super.dispose();
   }
 
-  int? get _parsedWalk =>
-      int.tryParse(_walkCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
-  int? get _parsedRun =>
-      int.tryParse(_runCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
   double? get _parsedKm =>
       double.tryParse(_kmCtrl.text.replaceAll(',', '.').trim());
+
+  OutdoorGoal _goalWithPhase({
+    int? walkSec,
+    int? runSec,
+  }) {
+    return widget.goal.copyWith(
+      walkSec: walkSec,
+      runSec: runSec,
+    );
+  }
 
   void _setMode(OutdoorGoalMode mode) {
     var next = widget.goal.copyWith(mode: mode);
@@ -89,8 +91,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
     final kcal = int.tryParse(_kcalCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
     var next = base.copyWith(
       targetKcal: kcal,
-      walkMin: _parsedWalk,
-      runMin: _parsedRun,
     );
     if (base.mode == OutdoorGoalMode.distanceKm) {
       next = next.copyWith(targetKm: _parsedKm);
@@ -105,8 +105,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
       widget.goal.copyWith(
         mode: OutdoorGoalMode.intervals,
         targetKm: km,
-        walkMin: _parsedWalk,
-        runMin: _parsedRun,
         clearTargetMinutes: true,
       ),
     );
@@ -120,8 +118,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
       widget.goal.copyWith(
         mode: OutdoorGoalMode.intervals,
         targetMinutes: minutes,
-        walkMin: _parsedWalk,
-        runMin: _parsedRun,
         clearTargetKm: true,
       ),
     );
@@ -137,8 +133,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
       widget.goal.copyWith(
         mode: OutdoorGoalMode.intervals,
         targetKm: km != null && km > 0 ? km : null,
-        walkMin: _parsedWalk,
-        runMin: _parsedRun,
         clearTargetKm: km == null || km <= 0,
         clearTargetMinutes: true,
       ),
@@ -155,8 +149,6 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
       widget.goal.copyWith(
         mode: OutdoorGoalMode.intervals,
         targetMinutes: minutes != null && minutes > 0 ? minutes : null,
-        walkMin: _parsedWalk,
-        runMin: _parsedRun,
         clearTargetKm: true,
         clearTargetMinutes: minutes == null || minutes <= 0,
       ),
@@ -183,27 +175,29 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
   }
 
   String get _intervalPreview {
-    final walk = widget.goal.walkMin.clamp(1, 30);
-    final run = widget.goal.runMin.clamp(1, 30);
+    final walk = widget.goal.walkSec;
+    final run = widget.goal.runSec;
     final km = widget.goal.targetKm;
     final minutes = widget.goal.targetMinutes;
+    final walkLabel = IntervalDuration.format(walk);
+    final runLabel = IntervalDuration.format(run);
     if (km != null && km > 0) {
       final rounds = LoopingIntervals.estimatedRoundsForKm(
         targetKm: km,
-        walkSec: walk * 60,
-        runSec: run * 60,
+        walkSec: walk,
+        runSec: run,
       );
-      return '$walk min caminhada + $run min corrida até ${OutdoorGoal.formatKm(km)} km · ~$rounds rodadas';
+      return '$walkLabel caminhada + $runLabel corrida até ${OutdoorGoal.formatKm(km)} km · ~$rounds rodadas';
     }
     if (minutes != null && minutes > 0) {
       final rounds = LoopingIntervals.estimatedRoundsForMinutes(
         targetMin: minutes,
-        walkSec: walk * 60,
-        runSec: run * 60,
+        walkSec: walk,
+        runSec: run,
       );
-      return '$walk min caminhada + $run min corrida por $minutes min · ~$rounds rodadas';
+      return '$walkLabel caminhada + $runLabel corrida por $minutes min · ~$rounds rodadas';
     }
-    return '$walk min caminhada + $run min corrida — informe os km ou os minutos';
+    return '$walkLabel caminhada + $runLabel corrida — informe os km ou os minutos';
   }
 
   @override
@@ -303,39 +297,37 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
             if (widget.goal.mode == OutdoorGoalMode.intervals) ...[
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _walkCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Caminhada',
-                        suffixText: 'min',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: (_) => setState(() {
-                        widget.onChanged(_withParsedTargets(widget.goal));
-                      }),
+                    child: IntervalPhaseDurationField(
+                      key: const Key('interval-walk-field'),
+                      label: 'Caminhada',
+                      seconds: widget.goal.walkSec,
+                      onChanged: (sec) {
+                        widget.onChanged(_goalWithPhase(walkSec: sec));
+                        setState(() {});
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: TextField(
-                      controller: _runCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Corrida',
-                        suffixText: 'min',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: (_) => setState(() {
-                        widget.onChanged(_withParsedTargets(widget.goal));
-                      }),
+                    child: IntervalPhaseDurationField(
+                      key: const Key('interval-run-field'),
+                      label: 'Corrida',
+                      seconds: widget.goal.runSec,
+                      onChanged: (sec) {
+                        widget.onChanged(_goalWithPhase(runSec: sec));
+                        setState(() {});
+                      },
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Use as setas para ajustar de 30 em 30 s, ou digite 2:30 / 2,5',
+                style: TextStyle(fontSize: 11, color: Colors.white54),
               ),
               const SizedBox(height: 10),
               const Text(

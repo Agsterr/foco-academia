@@ -77,4 +77,36 @@ void main() {
 
     expect(find.textContaining('40 min'), findsWidgets);
   });
+
+  testWidgets('intervalado aceita 2,5 min na caminhada', (tester) async {
+    await tester.pumpWidget(_app(const _PlannerHarness()));
+
+    await tester.tap(find.text('Intervalado'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('interval-walk-field')), '2,5');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+
+    expect(find.textContaining('2:30 caminhada'), findsWidgets);
+  });
+
+  testWidgets('seta sobe caminhada em 30 segundos', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        const _PlannerHarness(
+          initial: OutdoorGoal(
+            mode: OutdoorGoalMode.intervals,
+            walkSec: 120,
+            targetKm: 5,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('+30 s').first);
+    await tester.pump();
+
+    expect(find.textContaining('2:30 caminhada'), findsWidgets);
+  });
 }

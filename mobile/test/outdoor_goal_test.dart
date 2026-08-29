@@ -42,8 +42,8 @@ void main() {
   test('intervalado aceita km personalizado', () {
     const goal = OutdoorGoal(
       mode: OutdoorGoalMode.intervals,
-      walkMin: 3,
-      runMin: 1,
+      walkSec: 180,
+      runSec: 60,
       targetKm: 7.5,
     );
     expect(goal.hasNumericTarget, isTrue);
@@ -58,5 +58,15 @@ void main() {
     );
     expect(goal.hasNumericTarget, isTrue);
     expect(goal.label, contains('40 min'));
+  });
+
+  test('fromJson migra walkMin legado para walkSec', () {
+    final goal = OutdoorGoal.fromJson({
+      'mode': 'intervals',
+      'walkMin': 3,
+      'runMin': 1,
+    });
+    expect(goal.walkSec, 180);
+    expect(goal.runSec, 60);
   });
 }
