@@ -73,7 +73,7 @@ class AdminAcademyIntegrationTest {
         mockMvc.perform(post("/api/admin/academies")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -49,5 +50,25 @@ class AuthRefreshIntegrationTest {
     void refreshRejectsMissingToken() throws Exception {
         mockMvc.perform(post("/api/auth/refresh"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void protectedEndpointWithoutTokenReturnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/student/stats"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void protectedEndpointWithInvalidTokenReturnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/student/stats")
+                        .header("Authorization", "Bearer token-invalido"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void wrongRoleStillReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/admin/academies")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isForbidden());
     }
 }
