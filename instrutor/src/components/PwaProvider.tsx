@@ -14,6 +14,13 @@ export function PwaProvider() {
   const [installed, setInstalled] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
+  // Não mostrar de novo depois que o usuário fechou
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("pwa_banner_dismissed") === "1") queueMicrotask(() => setDismissed(true));
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (window.matchMedia("(display-mode: standalone)").matches) {
       setInstalled(true);
@@ -59,8 +66,8 @@ export function PwaProvider() {
   }
 
   return (
-    <div className="border-b border-violet-800 bg-violet-950/80 px-4 py-3">
-      <div className="mx-auto max-w-5xl">
+    <div className="fixed inset-x-3 bottom-24 z-40 rounded-2xl border border-violet-700/60 bg-violet-950/95 px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur lg:inset-x-auto lg:bottom-5 lg:right-5 lg:w-[400px]">
+      <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-violet-100">Instalar atalho do Instrutor</p>
@@ -81,7 +88,10 @@ export function PwaProvider() {
             )}
             <button
               type="button"
-              onClick={() => setDismissed(true)}
+              onClick={() => {
+                setDismissed(true);
+                try { localStorage.setItem("pwa_banner_dismissed", "1"); } catch {}
+              }}
               className="rounded-lg border border-violet-700 px-3 py-1.5 text-sm text-violet-200"
             >
               Fechar
