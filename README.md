@@ -47,6 +47,16 @@ Configure `NEXT_PUBLIC_API_URL=http://localhost:8080` nos dois apps.
 
 Contas de demonstração são criadas automaticamente ao rodar o seed da API. Consulte a documentação interna ou o time de desenvolvimento para obter acesso em ambiente local.
 
+## Verificações (CI)
+
+O workflow `.github/workflows/ci.yml` roda em todo PR e push no `main`:
+
+| Parte | Comando local |
+|-------|---------------|
+| API | `cd api && ./mvnw test` |
+| PWAs | `npx eslint . --max-warnings 0 && npx tsc --noEmit && npm run build` (em `aluno/`, `instrutor/`, `admin/`) |
+| Mobile | `cd mobile && flutter analyze && flutter test` |
+
 ## Docker
 
 ```bash
