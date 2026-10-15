@@ -1,0 +1,101 @@
+name: Build Mobile Preview
+
+# Gera um APK de teste para PRs, SEM publicar para os alunos e SEM alterar a main.
+# O APK fica disponível em "Artifacts" na página da execução.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-mobile-preview.yml"
+
+concurrency:
+  group: mobile-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-preview:
+    name: Build APK de teste
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ajustar versionCode (somente local)
+        id: version
+        working-directory: mobile
+        env:
+          API_URL: https://academia.focodev.com.br
+        run: |
+          set -euo pipefail
+          VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          NAME="${VERSION_LINE%%+*}"
+          CODE="${VERSION_LINE##*+}"
+          PUBLISHED=0
+          if RESP=$(curl -fsS "${API_URL}/api/app/version" 2>/dev/null); then
+            PUBLISHED=$(echo "$RESP" | sed -n 's/.*"versionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+            PUBLISHED="${PUBLISHED:-0}"
+          fi
+          # Precisa ser maior que a versão instalada para instalar por cima.
+          if [ "$CODE" -le "$PUBLISHED" ]; then
+            CODE=$((PUBLISHED + 1))
+            sed -i "s/^version: .*/version: ${NAME}+${CODE}/" pubspec.yaml
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Configurar assinatura (se disponível)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD}" ] \
+            || [ -z "${ANDROID_KEY_ALIAS}" ] || [ -z "${ANDROID_KEY_PASSWORD}" ]; then
+            echo "Secrets de assinatura indisponíveis: APK será assinado com chave debug."
+            exit 0
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > mobile/android/app/upload-keystore.jks
+          cat > mobile/android/key.properties <<PROPS
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          storeFile=app/upload-keystore.jks
+          PROPS
+
+      - name: Testes
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: Build APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Enviar APK como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: foco-academia-teste-${{ steps.version.outputs.name }}-${{ steps.version.outputs.code }}
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
