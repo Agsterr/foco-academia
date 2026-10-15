@@ -19,17 +19,20 @@ export function getSavedLogin(): SavedLogin {
   if (!remember) {
     return { email: "", password: "", remember: false };
   }
+  // Remove senhas que versões antigas guardavam em texto puro
+  localStorage.removeItem(PASSWORD_KEY);
   return {
     email: localStorage.getItem(EMAIL_KEY) ?? "",
-    password: localStorage.getItem(PASSWORD_KEY) ?? "",
+    password: "",
     remember: true,
   };
 }
 
-export function saveLogin(email: string, password: string) {
+/** Lembra apenas o e-mail. A senha nunca é salva no aparelho (ficava em texto puro no localStorage). */
+export function saveLogin(email: string) {
   localStorage.setItem(REMEMBER_KEY, "1");
   localStorage.setItem(EMAIL_KEY, email.trim());
-  localStorage.setItem(PASSWORD_KEY, password);
+  localStorage.removeItem(PASSWORD_KEY);
 }
 
 export function clearSavedLogin() {

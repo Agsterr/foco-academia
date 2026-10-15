@@ -40,6 +40,7 @@ public class ApiControllers {
     private final GpsAnalyticsService gpsAnalyticsService;
     private final WorkoutReprocessingService workoutReprocessingService;
     private final GpsAiAnalysisService gpsAiAnalysisService;
+    private final br.com.focodev.academia.security.LoginRateLimiter loginRateLimiter;
 
     @GetMapping("/health")
     public Map<String, String> health() {
@@ -57,7 +58,9 @@ public class ApiControllers {
     }
 
     @PostMapping("/auth/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+    public AuthResponse login(@Valid @RequestBody LoginRequest request,
+                              jakarta.servlet.http.HttpServletRequest httpRequest) {
+        loginRateLimiter.check(httpRequest);
         return authService.login(request);
     }
 

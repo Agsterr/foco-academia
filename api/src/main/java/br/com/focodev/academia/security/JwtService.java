@@ -25,6 +25,10 @@ public class JwtService {
             @Value("${app.jwt.secret}") String secret,
             @Value("${app.jwt.expiration-hours}") long expirationHours
     ) {
+        if (secret.startsWith("change-me") || secret.startsWith("gere-uma-chave")) {
+            org.slf4j.LoggerFactory.getLogger(JwtService.class)
+                    .error("SEGURANÇA: JWT_SECRET está com o valor padrão/de exemplo. Defina uma chave aleatória no .env.");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationHours = expirationHours;
     }

@@ -58,8 +58,8 @@ export function PwaProvider() {
   }
 
   return (
-    <div className="border-b border-emerald-800 bg-emerald-950/80 px-4 py-2">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
+    <div className="fixed inset-x-3 bottom-24 z-40 rounded-2xl border border-emerald-700/60 bg-emerald-950/95 px-4 py-3 shadow-2xl shadow-black/50 backdrop-blur lg:inset-x-auto lg:bottom-5 lg:right-5 lg:w-[380px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-emerald-100">Instale o admin da academia no celular ou desktop.</p>
         <button
           type="button"
