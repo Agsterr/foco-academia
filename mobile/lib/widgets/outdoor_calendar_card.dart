@@ -267,7 +267,7 @@ class _WeekDayCell extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            day.walked ? '${day.km.toStringAsFixed(1)}' : '—',
+            day.walked ? day.km.toStringAsFixed(1) : '—',
             style: TextStyle(
               fontSize: 9,
               color: day.walked ? Colors.white70 : Colors.white24,

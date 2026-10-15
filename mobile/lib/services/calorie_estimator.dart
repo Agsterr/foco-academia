@@ -86,7 +86,7 @@ class CalorieEstimator {
 
     // Quase parado com drift de GPS: só o que o km justifica (não o relógio).
     if (moved && speed < 0.6) {
-      final km = distanceMeters! / 1000.0;
+      final km = distanceMeters / 1000.0;
       return (0.7 * w * km).round().clamp(0, 100000);
     }
 

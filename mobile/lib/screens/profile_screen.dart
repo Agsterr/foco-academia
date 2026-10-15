@@ -174,7 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _sex,
+                  initialValue: _sex,
                   decoration: const InputDecoration(
                     labelText: 'Sexo',
                     border: OutlineInputBorder(),
@@ -188,7 +188,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _activity,
+                  initialValue: _activity,
                   decoration: const InputDecoration(
                     labelText: 'Nível de atividade',
                     border: OutlineInputBorder(),
@@ -201,7 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _goal,
+                  initialValue: _goal,
                   decoration: const InputDecoration(
                     labelText: 'Objetivo',
                     border: OutlineInputBorder(),

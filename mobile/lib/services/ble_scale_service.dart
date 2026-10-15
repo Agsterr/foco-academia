@@ -241,7 +241,7 @@ class BleScaleService {
     try {
       return await completer.future;
     } finally {
-      watchdog?.cancel();
+      watchdog.cancel();
       if (identical(_waitCompleter, completer)) {
         _waitCompleter = null;
       }

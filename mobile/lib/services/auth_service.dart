@@ -26,7 +26,7 @@ class AuthService {
   String? token;
   String? academySlug;
   String? deviceId;
-  bool _refreshing = false;
+  Future<bool>? _refreshInFlight;
 
   Future<bool> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -44,10 +44,17 @@ class AuthService {
   }
 
   /// Renova o JWT ao abrir o app (aceita token expirado dentro da janela da API).
-  Future<bool> refreshSession() async {
-    if (token == null || token!.isEmpty) return false;
-    if (_refreshing) return token != null;
-    _refreshing = true;
+  ///
+  /// Chamadas simultâneas aguardam a mesma renovação: antes, quem chegava
+  /// durante um refresh em andamento repetia a requisição com o token antigo
+  /// e era deslogado.
+  Future<bool> refreshSession() {
+    if (token == null || token!.isEmpty) return Future.value(false);
+    return _refreshInFlight ??=
+        _refreshSessionNow().whenComplete(() => _refreshInFlight = null);
+  }
+
+  Future<bool> _refreshSessionNow() async {
     try {
       final response = await http.post(
         Uri.parse('$apiBase/api/auth/refresh'),
@@ -74,8 +81,6 @@ class AuthService {
     } catch (_) {
       // Sem rede: mantém token local para tentar depois.
       return token != null;
-    } finally {
-      _refreshing = false;
     }
   }
 

@@ -67,8 +67,7 @@ void main() {
 
   test('não conta volta sem sair e voltar ao início', () {
     final detector = LapDetectorService(minLapMeters: 180);
-    const start = LatLng(-23.55000, -46.63000);
-    // Só caminha para o norte ~200 m e fica longe do início.
+    // Sai de (-23.55000, -46.63000) e só caminha para o norte ~200 m e fica longe do início.
     for (var i = 0; i <= 20; i++) {
       detector.addPoint(LatLng(-23.55000 - i * 0.00009, -46.63000));
     }

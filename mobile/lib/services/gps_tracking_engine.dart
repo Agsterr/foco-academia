@@ -979,7 +979,7 @@ class GpsTrackingEngine {
 
     if (autoPaused) {
       currentActivity = MotionActivity.stopped;
-      return GpsProcessResult.rejected(
+      return const GpsProcessResult.rejected(
         GpsRejectReason.autoPaused,
         activity: MotionActivity.stopped,
         autoPaused: true,

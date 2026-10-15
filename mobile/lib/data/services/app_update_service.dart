@@ -197,7 +197,7 @@ class AppUpdateService {
       type: 'application/vnd.android.package-archive',
     );
     if (result.type != ResultType.done) {
-      throw Exception(result.message ?? 'Não foi possível abrir o instalador');
+      throw Exception(result.message.isNotEmpty ? result.message : 'Não foi possível abrir o instalador');
     }
   }
 

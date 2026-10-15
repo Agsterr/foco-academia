@@ -46,6 +46,7 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
     } on SessionExpiredException {
       if (!mounted) return;
       await AuthService.instance.logout();
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
@@ -80,7 +81,7 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
                 'Faz mais de ${OnlineAuthGate.maxOfflineHours} horas desde a última '
                 'validação online. Ative a internet e toque abaixo para continuar usando o app.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withOpacity(0.75)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

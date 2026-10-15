@@ -1044,6 +1044,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       await _reloadAthleteMetrics();
       await OutdoorGoalStore.instance.save(_outdoorGoal);
       _goalReachedNotified = false;
+      if (!mounted) return;
       if (!await LocationPermissionHelper.ensureTrackingPermissions(context)) {
         return;
       }
@@ -2425,7 +2426,7 @@ class _IntervalPlanCard extends StatelessWidget {
           Text(
             looping ? 'Seu intervalado' : 'Sequência do coach',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 12,
               fontWeight: FontWeight.w600,
