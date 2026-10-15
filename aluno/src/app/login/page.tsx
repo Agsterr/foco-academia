@@ -6,34 +6,33 @@ import PasswordInput from "@/components/PasswordInput";
 import { api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
 import { clearSavedLogin, getSavedLogin, saveLogin } from "@/lib/auth-storage";
 import { lookupAcademyName } from "@/lib/tenant";
+import { useHydrated } from "@/lib/use-hydrated";
+
+function initialEmail(): string {
+  const saved = getSavedLogin();
+  const email = saved.email.trim().toLowerCase();
+  if (saved.remember && email.startsWith("admin@")) {
+    clearSavedLogin();
+    return "";
+  }
+  return saved.remember ? saved.email : "";
+}
 
 export default function LoginPage() {
+  // Os valores iniciais vêm do localStorage: só monta o formulário no cliente.
+  const hydrated = useHydrated();
+  return hydrated ? <LoginForm /> : null;
+}
+
+function LoginForm() {
   const router = useRouter();
-  const [academySlug, setSlug] = useState("academia-demo");
+  const [academySlug, setSlug] = useState(getAcademySlug);
   const [academyName, setAcademyName] = useState("");
-  const [email, setEmail] = useState("aluno@academia.com");
-  const [password, setPassword] = useState("aluno123");
-  const [remember, setRemember] = useState(false);
+  const [email, setEmail] = useState(initialEmail);
+  const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(() => getSavedLogin().remember);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [fieldsLocked, setFieldsLocked] = useState(true);
-
-  useEffect(() => {
-    const savedSlug = getAcademySlug();
-    if (savedSlug) setSlug(savedSlug);
-
-    const savedLogin = getSavedLogin();
-    const savedEmail = savedLogin.email.trim().toLowerCase();
-    const looksLikeAdmin = savedEmail.startsWith("admin@");
-    if (savedLogin.remember && savedEmail && !looksLikeAdmin) {
-      setEmail(savedLogin.email);
-      setPassword(savedLogin.password);
-      setRemember(true);
-    } else if (savedLogin.remember && looksLikeAdmin) {
-      clearSavedLogin();
-    }
-    setFieldsLocked(false);
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,7 +64,7 @@ export default function LoginPage() {
         }),
       });
       if (remember) {
-        saveLogin(email, password);
+        saveLogin(email);
       } else {
         clearSavedLogin();
       }
@@ -119,7 +118,6 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               className="form-input"
               required
-              readOnly={fieldsLocked}
               autoComplete="off"
               data-lpignore="true"
               data-1p-ignore="true"
@@ -142,7 +140,7 @@ export default function LoginPage() {
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            Lembrar e-mail e senha neste aparelho
+            Lembrar meu e-mail neste aparelho
           </label>
           {error && (
             <div className="text-sm text-red-400">
@@ -161,9 +159,6 @@ export default function LoginPage() {
           <button type="submit" disabled={loading} className="btn-primary w-full">
             {loading ? "Entrando..." : "Entrar"}
           </button>
-          <p className="text-center text-xs text-slate-500">
-            Demo: código <code className="text-slate-400">academia-demo</code> · aluno@academia.com / aluno123
-          </p>
         </form>
       </div>
     </div>

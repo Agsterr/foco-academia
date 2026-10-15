@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   EXERCISE_LIBRARY,
   LibraryExercise,
@@ -35,6 +35,7 @@ export default function ExerciseNameField({
   const [highlight, setHighlight] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const listId = useId();
 
   const suggestions = useMemo(() => {
     const q = value.trim().toLowerCase();
@@ -49,9 +50,12 @@ export default function ExerciseNameField({
     ).slice(0, 14);
   }, [value]);
 
-  useEffect(() => {
+  // Volta o destaque para o primeiro item sempre que o texto muda.
+  const [highlightFor, setHighlightFor] = useState(value);
+  if (highlightFor !== value) {
+    setHighlightFor(value);
     setHighlight(0);
-  }, [suggestions.length, value]);
+  }
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -116,8 +120,10 @@ export default function ExerciseNameField({
         placeholder={placeholder}
         autoComplete="off"
         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
+        aria-controls={listId}
       />
       <p className="mt-1 text-[10px] text-slate-500">
         Digite o nome livremente ou escolha da lista
@@ -126,6 +132,7 @@ export default function ExerciseNameField({
       {open && (
         <ul
           ref={listRef}
+          id={listId}
           className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-700 bg-slate-950 shadow-xl"
           role="listbox"
         >

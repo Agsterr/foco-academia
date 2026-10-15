@@ -58,7 +58,7 @@ export default function PasswordInput({ id, value, onChange, required }: Passwor
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
         aria-label={visible ? "Ocultar senha" : "Mostrar senha"}
       >
-        {visible ? "Ocultar" : "Ver"}
+        <EyeIcon open={visible} />
       </button>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import BluetoothScaleButton from "@/components/BluetoothScaleButton";
@@ -27,7 +27,7 @@ export default function EvolucaoPage() {
   const [goalComment, setGoalComment] = useState("");
   const [message, setMessage] = useState("");
 
-  function load() {
+  const load = useCallback(() => {
     void Promise.all([listMeasurements(), getProfileStatus(), getProfile()])
       .then(([m, s, p]) => {
         setMeasurements(m);
@@ -41,7 +41,8 @@ export default function EvolucaoPage() {
         }
         router.replace("/login");
       });
-  }
+  }, [router]);
+
 
   useEffect(() => {
     if (!getToken()) {
@@ -49,7 +50,7 @@ export default function EvolucaoPage() {
       return;
     }
     load();
-  }, [router]);
+  }, [load, router]);
 
   async function handleWeight(e: FormEvent) {
     e.preventDefault();

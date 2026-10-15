@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { Suggestion, api, getToken } from "@/lib/api";
@@ -11,12 +11,13 @@ export default function SugestoesPage() {
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
-  function load() {
+  const load = useCallback(() => {
     api<Suggestion[]>("/api/instructor/suggestions")
       .then(setSuggestions)
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
-  }
+  }, [router]);
+
 
   useEffect(() => {
     if (!getToken()) {
@@ -24,7 +25,7 @@ export default function SugestoesPage() {
       return;
     }
     load();
-  }, [router]);
+  }, [load, router]);
 
   async function handleRespond(id: string, e: FormEvent) {
     e.preventDefault();

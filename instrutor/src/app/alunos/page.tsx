@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import StudentWeightChart, { WeightPoint } from "@/components/StudentWeightChart";
@@ -22,12 +22,13 @@ export default function AlunosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  function load() {
+  const load = useCallback(() => {
     api<User[]>("/api/instructor/students")
       .then(setStudents)
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
-  }
+  }, [router]);
+
 
   useEffect(() => {
     if (!getToken()) {
@@ -35,7 +36,7 @@ export default function AlunosPage() {
       return;
     }
     load();
-  }, [router]);
+  }, [load, router]);
 
   async function selectStudent(student: User) {
     setSelected(student);

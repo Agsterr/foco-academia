@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { Academy, AdminUser, api, formatDate, getToken } from "@/lib/api";
@@ -19,18 +19,17 @@ export default function AcademiaDetailPage() {
   const [message, setMessage] = useState("");
   const [selectedInstructorId, setSelectedInstructorId] = useState("");
 
-  function load() {
+  const load = useCallback(() => {
     api<Academy>(`/api/admin/academies/${id}`).then((a) => {
       setAcademy(a);
       setDeviceLimit(a.deviceLimitPerUser);
       setAppBlocked(a.appBlocked);
       setAcademyActive(a.active);
     });
-    setUsersLoaded(false);
-    setUsersError("");
     api<AdminUser[]>(`/api/admin/academies/${id}/users`)
       .then((data) => {
         setUsers(data);
+        setUsersError("");
         setUsersLoaded(true);
       })
       .catch((err: Error) => {
@@ -38,22 +37,22 @@ export default function AcademiaDetailPage() {
         setUsersLoaded(true);
         setUsersError(err.message || "Erro ao carregar usuários");
       });
-  }
+  }, [id]);
 
   useEffect(() => {
     if (!getToken()) { router.replace("/login"); return; }
     load();
-  }, [id, router]);
+  }, [load, router]);
 
   const instructors = users.filter((u) => u.role === "INSTRUTOR");
 
-  useEffect(() => {
-    setSelectedInstructorId((current) => {
-      if (instructors.length === 1) return instructors[0].id;
-      if (current && instructors.some((i) => i.id === current)) return current;
-      return "";
-    });
-  }, [instructors]);
+  // Com um único instrutor ele já vem selecionado; seleção que sumiu da lista é descartada.
+  const instructorValue =
+    instructors.length === 1
+      ? instructors[0].id
+      : instructors.some((i) => i.id === selectedInstructorId)
+        ? selectedInstructorId
+        : "";
 
   async function saveAcademySettings() {
     await api(`/api/admin/academies/${id}`, {
@@ -181,7 +180,7 @@ export default function AcademiaDetailPage() {
               name="instructorId"
               className="form-input"
               required
-              value={selectedInstructorId}
+              value={instructorValue}
               onChange={(e) => setSelectedInstructorId(e.target.value)}
               disabled={!usersLoaded || instructors.length === 0}
             >

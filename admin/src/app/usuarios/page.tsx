@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { AdminUser, DeviceSession, api, formatDate, getToken } from "@/lib/api";
@@ -12,9 +12,10 @@ export default function UsuariosPage() {
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [message, setMessage] = useState("");
 
-  function load() {
+  const load = useCallback(() => {
     api<AdminUser[]>("/api/admin/users").then(setUsers).catch(() => router.replace("/login"));
-  }
+  }, [router]);
+
 
   useEffect(() => {
     if (!getToken()) {
@@ -22,7 +23,7 @@ export default function UsuariosPage() {
       return;
     }
     load();
-  }, [router]);
+  }, [load, router]);
 
   async function selectUser(user: AdminUser) {
     setSelected(user);

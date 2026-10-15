@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { API_URL, type MediaType } from "@/lib/api";
 import { getRecentMedia, touchRecentMedia, type RecentMedia } from "@/lib/recent-media";
 
@@ -79,20 +79,23 @@ export default function MediaPicker({
   const [recentItems, setRecentItems] = useState<RecentMedia[]>([]);
   const [showRecent, setShowRecent] = useState(false);
 
-  useEffect(() => {
-    setRecentItems(getRecentMedia());
-  }, [attached, uploading]);
-
   const sourceOptions = [
-    { id: "gallery", label: "Galeria", action: () => galleryRef.current?.click() },
-    { id: "camera", label: "Câmera", action: () => cameraRef.current?.click() },
-    { id: "files", label: "Arquivos", action: () => filesRef.current?.click() },
-    {
-      id: "recent",
-      label: "Recentes",
-      action: () => setShowRecent((prev) => !prev),
-    },
+    { id: "gallery", label: "Galeria" },
+    { id: "camera", label: "Câmera" },
+    { id: "files", label: "Arquivos" },
+    { id: "recent", label: "Recentes" },
   ] as const;
+
+  function openSource(id: (typeof sourceOptions)[number]["id"]) {
+    if (id === "gallery") galleryRef.current?.click();
+    else if (id === "camera") cameraRef.current?.click();
+    else if (id === "files") filesRef.current?.click();
+    else {
+      // Relê o localStorage ao abrir, para incluir mídias enviadas há pouco.
+      if (!showRecent) setRecentItems(getRecentMedia());
+      setShowRecent((prev) => !prev);
+    }
+  }
 
   const previewUrl = attached && videoUrl ? resolveMediaUrl(videoUrl) : null;
   const mediaLabel = mediaType === "IMAGE" ? "Foto" : mediaType === "VIDEO" ? "Vídeo" : "Mídia";
@@ -106,6 +109,8 @@ export default function MediaPicker({
           <div className="flex items-stretch gap-3 p-3">
             <div className="relative h-20 w-28 shrink-0 overflow-hidden rounded-lg bg-black">
               {mediaType === "IMAGE" ? (
+                // Mídia enviada pelo instrutor (URL da API, pode ser blob:) — next/image não se aplica.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewUrl} alt="Preview do exercício" className="h-full w-full object-cover" />
               ) : (
                 <video src={previewUrl} className="h-full w-full object-cover" muted playsInline />
@@ -171,7 +176,7 @@ export default function MediaPicker({
             <button
               type="button"
               disabled={uploading}
-              onClick={option.action}
+              onClick={() => openSource(option.id)}
               className={`font-medium transition disabled:opacity-50 ${
                 option.id === "recent" && showRecent
                   ? "text-violet-300"

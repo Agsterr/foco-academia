@@ -174,6 +174,42 @@ export function getDeviceId(): string {
   return id;
 }
 
+const LOGIN_PATH = `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/login`;
+
+type RefreshResult = { kind: "ok"; token: string } | { kind: "expired" } | { kind: "unavailable" };
+
+let refreshInFlight: Promise<RefreshResult> | null = null;
+
+/** Renova o JWT (a API aceita token expirado dentro da janela de graça). Uma chamada por vez. */
+function refreshSession(token: string): Promise<RefreshResult> {
+  refreshInFlight ??= fetch(`${API_URL}/api/auth/refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  })
+    .then(async (res): Promise<RefreshResult> => {
+      if (res.status === 401) return { kind: "expired" };
+      if (!res.ok) return { kind: "unavailable" };
+      const body = (await res.json().catch(() => ({}))) as { token?: unknown };
+      return typeof body.token === "string" ? { kind: "ok", token: body.token } : { kind: "unavailable" };
+    })
+    .catch((): RefreshResult => ({ kind: "unavailable" }))
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+function redirectToLogin() {
+  clearToken();
+  if (typeof window !== "undefined" && !window.location.pathname.endsWith("/login")) {
+    window.location.assign(LOGIN_PATH);
+  }
+}
+
+function isSessionFailure(status: number): boolean {
+  return status === 401;
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {}
@@ -188,7 +224,19 @@ export async function api<T>(
   }
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  let response = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (token && isSessionFailure(response.status) && !path.startsWith("/api/auth/")) {
+    const renewed = await refreshSession(token);
+    if (renewed.kind === "ok") {
+      setToken(renewed.token);
+      headers.Authorization = `Bearer ${renewed.token}`;
+      response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    } else if (renewed.kind === "expired") {
+      redirectToLogin();
+    }
+  }
+
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
