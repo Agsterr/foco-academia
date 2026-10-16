@@ -68,8 +68,10 @@ function LoginForm() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-4 py-8">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-10">
+      <div className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-black/40 backdrop-blur sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/25 blur-3xl" />
+        <span className="relative mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-400 to-violet-700 text-2xl shadow-lg shadow-violet-900/50">🏋️</span>
         <h1 className="text-2xl font-bold text-violet-400">Painel do Instrutor</h1>
         <p className="mt-1 text-sm text-slate-400">Gerencie alunos e treinos da sua academia</p>
 

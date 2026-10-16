@@ -50,8 +50,10 @@ function LoginForm() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-4 py-8">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-10">
+      <div className="relative overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl shadow-black/40 backdrop-blur sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/25 blur-3xl" />
+        <span className="relative mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-700 text-2xl shadow-lg shadow-emerald-900/50">🏋️</span>
         <h1 className="text-2xl font-bold text-emerald-400">Admin da Plataforma</h1>
         <p className="mt-1 text-sm text-slate-400">Gerencie academias, usuários e limites de dispositivos</p>
         <p className="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">

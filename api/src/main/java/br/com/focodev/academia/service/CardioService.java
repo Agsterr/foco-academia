@@ -328,7 +328,10 @@ public class CardioService {
                 session.setGpsConfigSnapshot(dto.gpsConfigSnapshot());
                 session.setSynced(true);
                 if (dto.workoutId() != null) {
-                    workoutRepository.findById(dto.workoutId()).ifPresent(session::setWorkout);
+                    // Só vincula a um treino do próprio aluno
+                    workoutRepository.findById(dto.workoutId())
+                            .filter(w -> w.getStudent() != null && w.getStudent().getId().equals(user.getId()))
+                            .ifPresent(session::setWorkout);
                 }
                 session.getRoutePoints().clear();
                 if (dto.points() != null) {
