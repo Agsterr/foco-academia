@@ -52,14 +52,12 @@ export default function OutdoorSessionPage() {
       .catch(() => setInsights(null));
   }, [params.id]);
 
-  const points = session?.routePoints ?? [];
+  const points = useMemo(() => session?.routePoints ?? [], [session]);
+  const atEnd = index >= points.length - 1;
+  const isPlaying = playing && !atEnd;
 
   useEffect(() => {
-    if (!playing || points.length < 2) return;
-    if (index >= points.length - 1) {
-      setPlaying(false);
-      return;
-    }
+    if (!isPlaying || points.length < 2) return;
     const cur = points[index];
     const next = points[index + 1];
     const dt = Math.max(
@@ -71,7 +69,7 @@ export default function OutdoorSessionPage() {
     );
     const t = window.setTimeout(() => setIndex((i) => i + 1), dt);
     return () => window.clearTimeout(t);
-  }, [playing, index, points, speed]);
+  }, [isPlaying, index, points, speed]);
 
   const metrics = useMemo(() => {
     if (!session || points.length === 0) {
@@ -154,12 +152,16 @@ export default function OutdoorSessionPage() {
               type="button"
               className="btn-primary text-sm"
               onClick={() => {
-                if (index >= points.length - 1) setIndex(0);
-                setPlaying((p) => !p);
+                if (isPlaying) {
+                  setPlaying(false);
+                } else {
+                  if (atEnd) setIndex(0);
+                  setPlaying(true);
+                }
               }}
               disabled={points.length < 2}
             >
-              {playing ? "Pausar" : "Reproduzir"}
+              {isPlaying ? "Pausar" : "Reproduzir"}
             </button>
             <label className="flex flex-1 items-center gap-2 text-xs text-slate-400">
               Velocidade

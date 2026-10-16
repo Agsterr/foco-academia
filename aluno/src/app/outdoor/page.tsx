@@ -34,13 +34,40 @@ function summarizeIntervals(intervals: CardioInterval[]): string {
   return rounds <= 1 ? cycle : `${cycle} · ${rounds} rodadas`;
 }
 
+interface PhaseNow {
+  index: number;
+  phase: CardioInterval["phase"];
+  remaining: number;
+}
+
+/** Fase ativa derivada do tempo decorrido (sem contador próprio, que dessincronizava). */
+function phaseAt(
+  elapsedSec: number,
+  intervals: CardioInterval[],
+  loop: { walkSec: number; runSec: number } | null
+): PhaseNow | null {
+  if (loop) {
+    const cycle = loop.walkSec + loop.runSec;
+    const round = Math.floor(elapsedSec / cycle);
+    const pos = elapsedSec % cycle;
+    return pos < loop.walkSec
+      ? { index: round * 2, phase: "WALK", remaining: loop.walkSec - pos }
+      : { index: round * 2 + 1, phase: "RUN", remaining: cycle - pos };
+  }
+  let start = 0;
+  for (let i = 0; i < intervals.length; i++) {
+    const end = start + intervals[i].durationSec;
+    if (elapsedSec < end) return { index: i, phase: intervals[i].phase, remaining: end - elapsedSec };
+    start = end;
+  }
+  return null;
+}
+
 export default function OutdoorPage() {
   const router = useRouter();
   const [workout, setWorkout] = useState<CardioWorkout | null>(null);
   const [session, setSession] = useState<CardioSession | null>(null);
   const [intervals, setIntervals] = useState<CardioInterval[]>([]);
-  const [phaseIndex, setPhaseIndex] = useState(0);
-  const [phaseRemaining, setPhaseRemaining] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
   const [points, setPoints] = useState<RoutePoint[]>([]);
@@ -57,6 +84,7 @@ export default function OutdoorPage() {
   const watchId = useRef<number | null>(null);
   const seq = useRef(0);
   const finishingRef = useRef(false);
+  const lastPhaseRef = useRef(0);
 
   useEffect(() => {
     if (!getToken()) {
@@ -79,48 +107,40 @@ export default function OutdoorPage() {
   const looping = customInterval;
   const loopWalkSec = Math.max(1, walkMin) * 60;
   const loopRunSec = Math.max(1, runMin) * 60;
-  const currentPhase = looping
-    ? (elapsed % (loopWalkSec + loopRunSec) < loopWalkSec
-        ? { phase: "WALK" as const, durationSec: loopWalkSec }
-        : { phase: "RUN" as const, durationSec: loopRunSec })
-    : intervals[phaseIndex];
+  const phaseNow = running
+    ? phaseAt(elapsed, intervals, looping ? { walkSec: loopWalkSec, runSec: loopRunSec } : null)
+    : null;
+  const phaseIndexNow = phaseNow?.index ?? -1;
+  const phaseKindNow = phaseNow?.phase;
+
+  const finishRef = useRef<() => Promise<void>>(async () => undefined);
+  useEffect(() => {
+    finishRef.current = finish;
+  });
 
   useEffect(() => {
-    if (!running) return;
+    if (!running || finishingRef.current) return;
     if (looping) {
-      const cycle = loopWalkSec + loopRunSec;
-      const pos = elapsed % cycle;
-      const remaining = pos < loopWalkSec ? loopWalkSec - pos : cycle - pos;
-      setPhaseRemaining(remaining);
       const parsedKm = Number(String(intervalKm).replace(",", "."));
       const targetKm = !intervalByTime && parsedKm > 0 ? parsedKm : 0;
       const parsedMin = Number(intervalMin);
       const targetSec = intervalByTime && parsedMin > 0 ? parsedMin * 60 : 0;
       if ((targetKm > 0 && distance >= targetKm * 1000) || (targetSec > 0 && elapsed >= targetSec)) {
-        if (!finishingRef.current) {
-          playBeeps(3);
-          void finish();
-        }
-      }
-      return;
-    }
-    if (!currentPhase) return;
-    if (phaseRemaining <= 0) {
-      const next = phaseIndex + 1;
-      if (next >= intervals.length) {
         playBeeps(3);
-        void finish();
+        void finishRef.current();
         return;
       }
-      playBeeps(next);
-      setPhaseIndex(next);
-      setPhaseRemaining(intervals[next].durationSec);
-      playPhaseSound(intervals[next].phase);
+    } else if (intervals.length > 0 && phaseIndexNow < 0) {
+      playBeeps(3);
+      void finishRef.current();
       return;
     }
-    const t = window.setTimeout(() => setPhaseRemaining((v) => v - 1), 1000);
-    return () => window.clearTimeout(t);
-  }, [running, phaseRemaining, phaseIndex, currentPhase, intervals, looping, elapsed, distance, intervalKm, intervalMin, intervalByTime, loopWalkSec, loopRunSec]);
+    if (phaseKindNow && phaseIndexNow !== lastPhaseRef.current) {
+      lastPhaseRef.current = phaseIndexNow;
+      playBeeps(looping ? 1 : Math.max(1, phaseIndexNow));
+      playPhaseSound(phaseKindNow);
+    }
+  }, [running, looping, elapsed, distance, intervalKm, intervalMin, intervalByTime, intervals.length, phaseIndexNow, phaseKindNow]);
 
   useEffect(() => {
     if (!running) return;
@@ -153,15 +173,15 @@ export default function OutdoorPage() {
     try {
       const s = await startCardioSession(customInterval ? undefined : workout?.id, crypto.randomUUID());
       setSession(s);
+      setElapsed(0);
+      setPoints([]);
+      setDistance(0);
+      lastPhaseRef.current = 0;
       setRunning(true);
       if (looping) {
-        setPhaseIndex(0);
-        setPhaseRemaining(loopWalkSec);
         playBeeps(1);
         playPhaseSound("WALK");
       } else if (intervals.length > 0) {
-        setPhaseIndex(0);
-        setPhaseRemaining(intervals[0].durationSec);
         playBeeps(1);
         playPhaseSound(intervals[0].phase);
       }
@@ -393,9 +413,9 @@ export default function OutdoorPage() {
           <p className="text-lg font-semibold text-orange-300">{liveCalories}</p>
         </div>
       </div>
-      {currentPhase && (
+      {phaseNow && (
         <p className="mt-2 text-center text-sm text-slate-400">
-          Fase: {currentPhase.phase} · {phaseRemaining}s
+          Fase: {phaseNow.phase === "WALK" ? "Caminhada" : "Corrida"} · {formatTime(phaseNow.remaining)}
         </p>
       )}
       <p className="mt-1 text-center text-[11px] text-slate-500">

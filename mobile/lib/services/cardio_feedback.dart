@@ -58,7 +58,7 @@ class CardioFeedback {
         ),
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
-          options: {
+          options: const {
             AVAudioSessionOptions.duckOthers,
             AVAudioSessionOptions.mixWithOthers,
           },

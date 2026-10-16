@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { Suggestion, api, getToken } from "@/lib/api";
@@ -14,12 +14,13 @@ export default function SugestoesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  function load() {
+  const load = useCallback(() => {
     api<Suggestion[]>("/api/student/suggestions")
       .then(setSuggestions)
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));
-  }
+  }, [router]);
+
 
   useEffect(() => {
     if (!getToken()) {
@@ -27,7 +28,7 @@ export default function SugestoesPage() {
       return;
     }
     load();
-  }, [router]);
+  }, [load, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

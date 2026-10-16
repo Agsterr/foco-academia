@@ -6,28 +6,23 @@ import PasswordInput from "@/components/PasswordInput";
 import { api, getAcademySlug, getDeviceId, setAcademySlug, setToken } from "@/lib/api";
 import { clearSavedLogin, getSavedLogin, saveLogin } from "@/lib/auth-storage";
 import { lookupAcademyName } from "@/lib/tenant";
+import { useHydrated } from "@/lib/use-hydrated";
 
 export default function LoginPage() {
+  // Os valores iniciais vêm do localStorage: só monta o formulário no cliente.
+  const hydrated = useHydrated();
+  return hydrated ? <LoginForm /> : null;
+}
+
+function LoginForm() {
   const router = useRouter();
-  const [academySlug, setSlug] = useState("academia-demo");
+  const [academySlug, setSlug] = useState(getAcademySlug);
   const [academyName, setAcademyName] = useState("");
-  const [email, setEmail] = useState("instrutor@academia.com");
+  const [email, setEmail] = useState(() => getSavedLogin().email);
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(() => getSavedLogin().remember);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const savedSlug = getAcademySlug();
-    if (savedSlug) setSlug(savedSlug);
-
-    const savedLogin = getSavedLogin();
-    if (savedLogin.remember) {
-      setEmail(savedLogin.email);
-      setPassword(savedLogin.password);
-      setRemember(true);
-    }
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();

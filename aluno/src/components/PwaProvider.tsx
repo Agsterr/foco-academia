@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+const STANDALONE_QUERY = "(display-mode: standalone)";
+
+function subscribeStandalone(onChange: () => void) {
+  const query = window.matchMedia(STANDALONE_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
 export function PwaProvider() {
+  const standalone = useSyncExternalStore(
+    subscribeStandalone,
+    () => window.matchMedia(STANDALONE_QUERY).matches,
+    () => false,
+  );
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setInstalled(true);
-    }
-
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
     }
@@ -49,7 +58,7 @@ export function PwaProvider() {
     setInstallEvent(null);
   }
 
-  if (installed || !installEvent) {
+  if (standalone || installed || !installEvent) {
     return null;
   }
 

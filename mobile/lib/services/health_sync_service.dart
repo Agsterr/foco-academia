@@ -35,7 +35,7 @@ class HealthSyncService {
     // Placeholder: em builds com plugin `health`, escrever ExerciseSession /
     // Distance / ActiveEnergyBurned aqui. Mantém o contrato estável.
     await SharedPreferences.getInstance().then((p) async {
-      final key = 'health_last_synced_session';
+      const key = 'health_last_synced_session';
       await p.setString(key, session.id);
     });
   }

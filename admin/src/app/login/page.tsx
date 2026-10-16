@@ -1,27 +1,25 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordInput from "@/components/PasswordInput";
 import { api, getDeviceId, setToken } from "@/lib/api";
 import { clearSavedLogin, getSavedLogin, saveLogin } from "@/lib/auth-storage";
+import { useHydrated } from "@/lib/use-hydrated";
 
 export default function LoginPage() {
+  // Os valores iniciais vêm do localStorage: só monta o formulário no cliente.
+  const hydrated = useHydrated();
+  return hydrated ? <LoginForm /> : null;
+}
+
+function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => getSavedLogin().email);
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(() => getSavedLogin().remember);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const savedLogin = getSavedLogin();
-    if (savedLogin.remember) {
-      setEmail(savedLogin.email);
-      setPassword(savedLogin.password);
-      setRemember(true);
-    }
-  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

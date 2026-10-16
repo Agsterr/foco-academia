@@ -248,8 +248,7 @@ class CompassHeadingService {
     ey /= normE;
     ez /= normE;
 
-    // North = gravity × east.
-    final nx = ay * ez - az * ey;
+    // North = gravity × east (o componente x não entra no heading).
     final ny = az * ex - ax * ez;
     final nz = ax * ey - ay * ex;
 

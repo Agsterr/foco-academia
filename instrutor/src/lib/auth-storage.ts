@@ -3,46 +3,44 @@ const PREFIX = "academia_instrutor";
 export const TOKEN_KEY = `${PREFIX}_token`;
 export const SLUG_KEY = `${PREFIX}_slug`;
 const EMAIL_KEY = `${PREFIX}_login_email`;
-const PASSWORD_KEY = `${PREFIX}_login_password`;
+const LEGACY_PASSWORD_KEY = `${PREFIX}_login_password`;
 const REMEMBER_KEY = `${PREFIX}_remember`;
-
-const LEGACY_TOKEN_KEY = "academia_token";
-const LEGACY_SLUG_KEY = "academia_slug";
 
 export interface SavedLogin {
   email: string;
-  password: string;
   remember: boolean;
+}
+
+/** Remove a senha gravada por versões antigas (ficava em texto puro no localStorage). */
+function purgeLegacyPassword() {
+  localStorage.removeItem(LEGACY_PASSWORD_KEY);
 }
 
 export function getSavedLogin(): SavedLogin {
   if (typeof window === "undefined") {
-    return { email: "", password: "", remember: false };
+    return { email: "", remember: false };
   }
+  purgeLegacyPassword();
   const remember = localStorage.getItem(REMEMBER_KEY) === "1";
   if (!remember) {
-    return { email: "", password: "", remember: false };
+    return { email: "", remember: false };
   }
-  // Remove senhas que versões antigas guardavam em texto puro
-  localStorage.removeItem(PASSWORD_KEY);
   return {
     email: localStorage.getItem(EMAIL_KEY) ?? "",
-    password: "",
     remember: true,
   };
 }
 
-/** Lembra apenas o e-mail. A senha nunca é salva no aparelho (ficava em texto puro no localStorage). */
 export function saveLogin(email: string) {
   localStorage.setItem(REMEMBER_KEY, "1");
   localStorage.setItem(EMAIL_KEY, email.trim());
-  localStorage.removeItem(PASSWORD_KEY);
+  purgeLegacyPassword();
 }
 
 export function clearSavedLogin() {
   localStorage.removeItem(REMEMBER_KEY);
   localStorage.removeItem(EMAIL_KEY);
-  localStorage.removeItem(PASSWORD_KEY);
+  purgeLegacyPassword();
 }
 
 export function readStorageItem(key: string, legacyKey?: string): string | null {

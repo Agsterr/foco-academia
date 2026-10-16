@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import ExerciseMedia from "@/components/ExerciseMedia";
@@ -39,28 +39,34 @@ export default function TreinoDiaPage() {
   const [celebration, setCelebration] = useState<SessionComplete | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
-  const load = useCallback(async () => {
-    const dayData = await api<WorkoutDay>(`/api/student/days/${dayId}`);
-    setDay(dayData);
-    if (dayData.activeSessionId) {
-      const sessionData = await api<WorkoutSession>(`/api/student/days/${dayId}/sessions`, {
-        method: "POST",
-      });
-      setSession(sessionData);
-    } else {
-      setSession(null);
-    }
-  }, [dayId]);
-
   useEffect(() => {
     if (!getToken()) {
       router.replace("/login");
       return;
     }
-    load()
-      .catch(() => router.replace("/treinos"))
-      .finally(() => setLoading(false));
-  }, [load, router]);
+    let cancelled = false;
+    (async () => {
+      const dayData = await api<WorkoutDay>(`/api/student/days/${dayId}`);
+      const sessionData = dayData.activeSessionId
+        ? await api<WorkoutSession>(`/api/student/days/${dayId}/sessions`, { method: "POST" })
+        : null;
+      return { dayData, sessionData };
+    })()
+      .then(({ dayData, sessionData }) => {
+        if (cancelled) return;
+        setDay(dayData);
+        setSession(sessionData);
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/treinos");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dayId, router]);
 
   useEffect(() => {
     if (!session?.startedAt || session.completedAt) return;

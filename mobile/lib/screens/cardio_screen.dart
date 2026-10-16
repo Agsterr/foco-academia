@@ -1044,6 +1044,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       await _reloadAthleteMetrics();
       await OutdoorGoalStore.instance.save(_outdoorGoal);
       _goalReachedNotified = false;
+      if (!mounted) return;
       if (!await LocationPermissionHelper.ensureTrackingPermissions(context)) {
         return;
       }
@@ -2266,6 +2267,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             key: const Key('outdoor-start-button'),
                             style: FilledButton.styleFrom(
                               minimumSize: const Size.fromHeight(48),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: _running || _finishing || _starting
                                 ? null
@@ -2278,7 +2281,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Text('Iniciar'),
+                                : const _ActionLabel('Iniciar'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -2289,11 +2292,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                                   ? Colors.green
                                   : Colors.orange,
                               minimumSize: const Size.fromHeight(48),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: _running && !_finishing
                                 ? _toggleManualPause
                                 : null,
-                            child: Text(_manualPaused ? 'Retomar' : 'Pausar'),
+                            child: _ActionLabel(
+                                _manualPaused ? 'Retomar' : 'Pausar'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -2302,12 +2308,14 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                             style: FilledButton.styleFrom(
                               backgroundColor: Colors.red,
                               minimumSize: const Size.fromHeight(48),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
                             ),
                             onPressed: _running && !_finishing
                                 ? () => _finish()
                                 : null,
-                            child:
-                                Text(_finishing ? 'Salvando...' : 'Finalizar'),
+                            child: _ActionLabel(
+                                _finishing ? 'Salvando...' : 'Finalizar'),
                           ),
                         ),
                       ],
@@ -2425,7 +2433,7 @@ class _IntervalPlanCard extends StatelessWidget {
           Text(
             looping ? 'Seu intervalado' : 'Sequência do coach',
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -2627,3 +2635,18 @@ class _MapHud extends StatelessWidget {
   }
 }
 
+/// Rótulo dos botões de ação: uma linha só, diminui a fonte se não couber
+/// (fonte grande do sistema quebrava "Finalizar" em duas linhas).
+class _ActionLabel extends StatelessWidget {
+  const _ActionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Text(text, maxLines: 1, softWrap: false),
+    );
+  }
+}
