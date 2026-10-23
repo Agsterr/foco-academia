@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -6,7 +8,8 @@ import '../services/sync_service.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 
-/// Bloqueia o app até reconectar à internet e validar a sessão (máx. 48h offline).
+/// Aparece quando passou do limite offline (48h): valida a sessão sozinha assim
+/// que houver internet. Se a sessão não puder ser renovada, vai direto ao login.
 class OnlineReconnectScreen extends StatefulWidget {
   const OnlineReconnectScreen({super.key});
 
@@ -15,10 +18,38 @@ class OnlineReconnectScreen extends StatefulWidget {
 }
 
 class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
+  static const _retryEvery = Duration(seconds: 10);
+
   bool _loading = false;
   String? _error;
+  Timer? _retryTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reconnect());
+    _retryTimer = Timer.periodic(_retryEvery, (_) {
+      if (!_loading) _reconnect();
+    });
+  }
+
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _goToLogin() async {
+    _retryTimer?.cancel();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
 
   Future<void> _reconnect() async {
+    if (_loading) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -26,12 +57,18 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
     try {
       final ok = await AuthService.instance.ensureOnlineSession();
       if (!ok) {
+        if (AuthService.instance.token == null) {
+          await _goToLogin();
+          return;
+        }
+        if (!mounted) return;
         setState(() {
           _loading = false;
-          _error = 'Não foi possível validar online. Verifique a internet e tente de novo.';
+          _error = 'Sem conexão com o servidor. Assim que a internet voltar, o app continua sozinho.';
         });
         return;
       }
+      _retryTimer?.cancel();
       try {
         await SyncService.instance.syncAll();
       } catch (_) {}
@@ -44,12 +81,8 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
         );
       }
     } on SessionExpiredException {
-      if (!mounted) return;
       await AuthService.instance.logout();
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      await _goToLogin();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -69,38 +102,37 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              const Icon(Icons.wifi_off, size: 64, color: Colors.amberAccent),
+              Icon(
+                _error == null ? Icons.cloud_sync_outlined : Icons.wifi_off,
+                size: 64,
+                color: Colors.amberAccent,
+              ),
               const SizedBox(height: 16),
-              const Text(
-                'Reconexão necessária',
+              Text(
+                _error == null ? 'Validando sua sessão...' : 'Aguardando internet',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               Text(
                 'Faz mais de ${OnlineAuthGate.maxOfflineHours} horas desde a última '
-                'validação online. Ative a internet e toque abaixo para continuar usando o app.',
+                'validação online. Com a internet ligada, o app valida e continua sozinho.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              if (_loading)
+                const Center(child: CircularProgressIndicator())
+              else if (_error != null)
                 Text(
                   _error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.redAccent),
+                  style: const TextStyle(color: Colors.amberAccent),
                 ),
-              ],
               const Spacer(),
-              FilledButton(
+              OutlinedButton(
                 onPressed: _loading ? null : _reconnect,
-                child: _loading
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Conectar e validar'),
+                child: const Text('Tentar agora'),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -108,10 +140,7 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
                     ? null
                     : () async {
                         await AuthService.instance.logout();
-                        if (!context.mounted) return;
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
+                        await _goToLogin();
                       },
                 child: const Text('Sair e entrar com outra conta'),
               ),

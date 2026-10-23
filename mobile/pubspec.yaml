@@ -33,6 +33,7 @@ dependencies:
   flutter_blue_plus: ^2.3.10
   file_picker: ^11.0.2
   xml: ^6.6.1
+  flutter_secure_storage: ^10.3.4
 
 dev_dependencies:
   flutter_test:

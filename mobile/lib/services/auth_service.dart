@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -14,9 +15,43 @@ class SessionExpiredException implements Exception {
   String toString() => message;
 }
 
+/// Login lembrado no aparelho.
+class SavedCredentials {
+  const SavedCredentials({required this.email, required this.password, required this.slug});
+  final String email;
+  final String password;
+  final String slug;
+}
+
+/// Onde a senha lembrada fica guardada (cofre do sistema; substituível nos testes).
+abstract class CredentialStore {
+  Future<String?> readPassword();
+  Future<void> writePassword(String password);
+  Future<void> deletePassword();
+}
+
+class SecureCredentialStore implements CredentialStore {
+  static const _key = 'login_password';
+  final _storage = const FlutterSecureStorage();
+
+  @override
+  Future<String?> readPassword() => _storage.read(key: _key);
+
+  @override
+  Future<void> writePassword(String password) => _storage.write(key: _key, value: password);
+
+  @override
+  Future<void> deletePassword() => _storage.delete(key: _key);
+}
+
 class AuthService {
   AuthService._();
   static final instance = AuthService._();
+
+  static const _rememberKey = 'remember_login';
+  static const _emailKey = 'login_email';
+
+  CredentialStore credentialStore = SecureCredentialStore();
 
   static const apiBase = String.fromEnvironment(
     'API_URL',
@@ -73,6 +108,8 @@ class AuthService {
         }
       }
       if (response.statusCode == 401) {
+        // Token venceu de vez: entra de novo sozinho com o login lembrado.
+        if (await reloginWithSavedCredentials()) return true;
         await logout();
         return false;
       }
@@ -108,8 +145,10 @@ class AuthService {
           await _persistToken(newToken);
         }
       } else if (response.statusCode == 401) {
-        await logout();
-        return false;
+        if (!await reloginWithSavedCredentials()) {
+          await logout();
+          return false;
+        }
       } else if (response.statusCode != 200) {
         return false;
       }
@@ -137,7 +176,55 @@ class AuthService {
     }
   }
 
-  Future<void> login(String email, String password, String slug) async {
+  /// Login lembrado (e-mail e código da academia + senha do cofre), se houver.
+  Future<SavedCredentials?> savedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool(_rememberKey) ?? false)) return null;
+    final email = prefs.getString(_emailKey) ?? '';
+    final slug = prefs.getString('academy_slug') ?? '';
+    String? password;
+    try {
+      password = await credentialStore.readPassword();
+    } catch (_) {
+      password = null;
+    }
+    if (email.isEmpty) return null;
+    return SavedCredentials(email: email, password: password ?? '', slug: slug);
+  }
+
+  Future<void> _rememberCredentials(String email, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_rememberKey, true);
+    await prefs.setString(_emailKey, email);
+    try {
+      await credentialStore.writePassword(password);
+    } catch (_) {
+      // Sem cofre disponível: lembra só o e-mail.
+    }
+  }
+
+  Future<void> forgetCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_rememberKey);
+    await prefs.remove(_emailKey);
+    try {
+      await credentialStore.deletePassword();
+    } catch (_) {}
+  }
+
+  /// Entra de novo com o login lembrado, sem o aluno digitar nada.
+  Future<bool> reloginWithSavedCredentials() async {
+    final saved = await savedCredentials();
+    if (saved == null || saved.password.isEmpty || saved.slug.isEmpty) return false;
+    try {
+      await login(saved.email, saved.password, saved.slug, remember: true);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> login(String email, String password, String slug, {bool remember = true}) async {
     final response = await http.post(
       Uri.parse('$apiBase/api/auth/login'),
       headers: {'Content-Type': 'application/json'},
@@ -161,6 +248,11 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('academy_slug', slug);
     await OnlineAuthGate.instance.markOnlineAuthSuccess();
+    if (remember) {
+      await _rememberCredentials(email, password);
+    } else {
+      await forgetCredentials();
+    }
   }
 
   Future<void> logout() async {

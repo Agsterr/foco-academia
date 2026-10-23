@@ -17,7 +17,26 @@ class _LoginScreenState extends State<LoginScreen> {
   late final _slug = TextEditingController(text: AuthService.instance.academySlug ?? '');
   bool _loading = false;
   bool _showPassword = false;
+  bool _remember = true;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedLogin();
+  }
+
+  /// Preenche com o login lembrado neste aparelho.
+  Future<void> _loadSavedLogin() async {
+    final saved = await AuthService.instance.savedCredentials();
+    if (!mounted || saved == null) return;
+    setState(() {
+      if (_email.text.isEmpty) _email.text = saved.email;
+      if (_password.text.isEmpty) _password.text = saved.password;
+      if (_slug.text.isEmpty) _slug.text = saved.slug;
+      _remember = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -48,6 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _email.text.trim(),
         _password.text,
         _slug.text.trim().toLowerCase(),
+        remember: _remember,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -164,6 +184,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             validator: (v) => (v == null || v.isEmpty) ? 'Informe a senha' : null,
                           ),
+                          const SizedBox(height: 6),
+                          CheckboxListTile(
+                            value: _remember,
+                            onChanged: _loading ? null : (v) => setState(() => _remember = v ?? false),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('Lembrar login e senha neste celular'),
+                            subtitle: Text(
+                              'Entra sozinho quando a sessão vencer',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                            ),
+                          ),
                           if (_error != null) ...[
                             const SizedBox(height: 16),
                             Container(
@@ -182,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 18),
                           FilledButton(
                             onPressed: _loading ? null : _submit,
                             child: _loading

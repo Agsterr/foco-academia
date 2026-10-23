@@ -58,7 +58,11 @@ class _BootstrapState extends State<_Bootstrap> {
           try {
             await SyncService.instance.syncAll();
           } catch (_) {}
+        } else if (AuthService.instance.token == null) {
+          // Sessão vencida e sem login lembrado que funcione: direto para o login.
+          loggedIn = false;
         } else {
+          // Só falta internet: a tela de reconexão tenta de novo sozinha.
           loggedIn = true;
           needsReconnect = true;
         }
