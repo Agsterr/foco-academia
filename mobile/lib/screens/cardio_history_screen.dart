@@ -7,6 +7,7 @@ import '../services/outdoor_consistency.dart';
 import '../widgets/outdoor_calendar_card.dart';
 import 'login_screen.dart';
 import 'run_replay_screen.dart';
+import '../core/ui/insets.dart';
 
 /// Histórico de treinos outdoor com acesso ao Replay.
 class CardioHistoryScreen extends StatefulWidget {
@@ -116,6 +117,7 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
               onRefresh: _load,
               child: _error != null
                   ? ListView(
+                      padding: scrollablePadding(context, all: 0),
                       children: [
                         Padding(
                           padding: const EdgeInsets.all(24),
@@ -124,7 +126,7 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                       ],
                     )
                   : ListView(
-                      padding: const EdgeInsets.all(12),
+                      padding: scrollablePadding(context, all: 12),
                       children: [
                         if (_consistency != null) ...[
                           OutdoorCalendarCard(
@@ -202,10 +204,9 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
                           ...monthSessions.map((s) {
                             final km = ((s.distanceMeters ?? 0) / 1000)
                                 .toStringAsFixed(2);
+                            final whenAt = s.completedAt ?? s.startedAt;
                             final when =
-                                s.completedAt?.toLocal().toString() ??
-                                    s.startedAt?.toLocal().toString() ??
-                                    '';
+                                whenAt == null ? '' : _formatWhen(whenAt);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: ListTile(
@@ -242,4 +243,11 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
             ),
     );
   }
+}
+
+/// "23/10/2026 · 20:03" no horário do aparelho.
+String _formatWhen(DateTime at) {
+  final d = at.toLocal();
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(d.day)}/${two(d.month)}/${d.year} · ${two(d.hour)}:${two(d.minute)}';
 }

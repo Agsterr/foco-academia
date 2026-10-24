@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
+import '../core/ui/insets.dart';
 
 class CalorieStatsScreen extends StatefulWidget {
   const CalorieStatsScreen({super.key});
@@ -61,7 +62,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: scrollablePadding(context),
                     children: [
                       const Text('Quilômetros', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
                       const SizedBox(height: 8),

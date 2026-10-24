@@ -7,6 +7,7 @@ import '../services/active_run_store.dart';
 import '../services/gps_service.dart';
 import '../services/location_permission_helper.dart';
 import '../services/sync_service.dart';
+import '../core/ui/insets.dart';
 
 /// Tela de telemetria GPS — apenas para desenvolvedores (kDebugMode / flavor).
 class GpsDebugScreen extends StatefulWidget {
@@ -122,7 +123,7 @@ class _GpsDebugScreenState extends State<GpsDebugScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: scrollablePadding(context),
         children: [
           const Text(
             'Somente desenvolvimento — use nos testes de campo.',

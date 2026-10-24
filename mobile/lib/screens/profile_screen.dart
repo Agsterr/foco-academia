@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/health_sync_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
+import '../core/ui/insets.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -126,7 +127,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: scrollablePadding(context),
               children: [
                 const Text(
                   'Usados na estimativa de calorias (MET). Sempre uma estimativa.',
