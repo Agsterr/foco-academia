@@ -37,6 +37,7 @@ import '../widgets/coach_workout_picker.dart';
 import '../widgets/outdoor_goal_planner.dart';
 import '../widgets/route_map_view.dart';
 import '../screens/online_reconnect_screen.dart';
+import '../services/checkpoint_schedule.dart';
 
 class CardioScreen extends StatefulWidget {
   const CardioScreen({super.key, this.autoResume = false});
@@ -950,15 +951,11 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       unawaited(CardioFeedback.playPhase(phase.phase));
     }
     _checkPersonalGoal();
-    if (elapsed > 0 &&
-        elapsed % 10 == 0 &&
-        _lastPersistElapsedSec != elapsed) {
+    if (checkpointDue(lastSec: _lastPersistElapsedSec, nowSec: elapsed, everySec: 10)) {
       _lastPersistElapsedSec = elapsed;
       unawaited(_persistActiveRun());
     }
-    if (elapsed > 0 &&
-        elapsed % 30 == 0 &&
-        _lastCloudElapsedSec != elapsed) {
+    if (checkpointDue(lastSec: _lastCloudElapsedSec, nowSec: elapsed, everySec: 30)) {
       _lastCloudElapsedSec = elapsed;
       unawaited(_cloudBackup());
     }
@@ -1170,6 +1167,9 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
 
     _distance = _engine.distanceMeters;
     _estimatedGap = _engine.estimatedGapMeters;
+    // Salva também a cada ponto de GPS (o store limita a 1 save a cada 3 s):
+    // com a tela apagada o GPS continua chegando mesmo quando o relógio atrasa.
+    unawaited(_persistActiveRun());
 
     // Accuracy ruim em rajada → telemetria (ajuda a ver falha com tela apagada).
     final acc = pos.accuracy.isNaN ? 99.0 : pos.accuracy;

@@ -4,6 +4,7 @@ import '../services/ble_scale_service.dart';
 import '../services/weight_service.dart';
 import '../services/watch_import_service.dart';
 import '../services/auth_service.dart';
+import '../core/ui/insets.dart';
 
 class WeightScreen extends StatefulWidget {
   const WeightScreen({super.key});
@@ -134,7 +135,7 @@ class _WeightScreenState extends State<WeightScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: scrollablePadding(context),
               children: [
                 if (_error != null)
                   Text(_error!, style: const TextStyle(color: Colors.redAccent)),
@@ -393,7 +394,7 @@ class _ScaleScanSheetState extends State<_ScaleScanSheet> {
     return SizedBox(
       height: height,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + systemBottomInset(context)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

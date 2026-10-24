@@ -9,6 +9,7 @@ import '../services/gps_ai_service.dart';
 import '../services/gps_tracking_engine.dart';
 import '../services/run_export_service.dart';
 import '../widgets/route_map_view.dart';
+import '../core/ui/insets.dart';
 
 /// Replay da corrida: marcador percorre a rota na velocidade real.
 class RunReplayScreen extends StatefulWidget {
@@ -202,7 +203,7 @@ class _RunReplayScreenState extends State<RunReplayScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
+                    padding: scrollablePadding(context),
                     child: Column(
                       children: [
                       if (s.gpsQualityLabel != null)
