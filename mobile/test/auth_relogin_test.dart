@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:foco_academia_mobile/services/auth_service.dart';
+import 'package:foco_academia_mobile/services/online_auth_gate.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -103,9 +104,26 @@ void main() {
           if (request.url.path == '/api/auth/login') {
             return http.Response(jsonEncode({'token': 'token-novo'}), 200);
           }
-          return http.Response('{}', 200);
+          return http.Response('', 204);
         }));
 
     expect(AuthService.instance.token, 'token-novo');
+  });
+
+  test('validação online passa quando o heartbeat responde 204 (resposta real da API)', () async {
+    SharedPreferences.setMockInitialValues({});
+    await http.runWithClient(() async {
+      AuthService.instance.token = 'token-valido';
+      expect(await AuthService.instance.ensureOnlineSession(), isTrue);
+    }, () => MockClient((request) async {
+          if (request.url.path == '/api/auth/refresh') {
+            return http.Response(jsonEncode({'token': 'token-renovado'}), 200);
+          }
+          if (request.url.path == '/api/auth/heartbeat') return http.Response('', 204);
+          return http.Response('{}', 404);
+        }));
+
+    expect(AuthService.instance.token, 'token-renovado');
+    expect(await OnlineAuthGate.instance.isWithinOfflineWindow(), isTrue);
   });
 }
