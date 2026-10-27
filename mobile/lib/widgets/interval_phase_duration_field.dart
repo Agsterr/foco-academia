@@ -70,11 +70,13 @@ class _IntervalPhaseDurationFieldState extends State<IntervalPhaseDurationField>
   Widget build(BuildContext context) {
     return InputDecorator(
       decoration: InputDecoration(
-        labelText: widget.label,
-        border: const OutlineInputBorder(),
+        labelText: '${widget.label} (min)',
         isDense: true,
-        contentPadding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+        contentPadding: const EdgeInsets.fromLTRB(12, 12, 0, 12),
+        // Setas estreitas: o padrão do Material reserva 48 px e espremia o número.
+        suffixIconConstraints: const BoxConstraints(minWidth: 32, maxWidth: 32),
         suffixIcon: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _StepIcon(
@@ -96,11 +98,19 @@ class _IntervalPhaseDurationFieldState extends State<IntervalPhaseDurationField>
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[0-9:.,]')),
         ],
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        // O tema dá borda, fundo e 16 px de margem a todo campo: aqui
+        // dentro isso desenhava uma caixa dentro da outra e cortava
+        // "19:00" para "1". O campo interno fica sem moldura.
         decoration: const InputDecoration(
+          isCollapsed: true,
+          filled: false,
           border: InputBorder.none,
-          isDense: true,
-          hintText: 'ex. 2:30 ou 2,5',
-          suffixText: 'min',
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          hintText: '2:30',
         ),
         onTap: () => _editing = true,
         onChanged: (_) => _editing = true,
@@ -127,7 +137,7 @@ class _StepIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 20,
-      width: 36,
+      width: 32,
       child: IconButton(
         padding: EdgeInsets.zero,
         visualDensity: VisualDensity.compact,
