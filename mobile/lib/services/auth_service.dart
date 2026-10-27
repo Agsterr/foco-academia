@@ -166,7 +166,9 @@ class AuthService {
         await logout();
         return false;
       }
-      if (hb.statusCode == 200) {
+      // A API responde o heartbeat com 204 (sem corpo). Antes só 200 contava,
+      // então a validação online nunca passava e a tela de reconexão travava.
+      if (_isSuccess(hb.statusCode)) {
         await OnlineAuthGate.instance.markOnlineAuthSuccess();
         return true;
       }
@@ -274,7 +276,7 @@ class AuthService {
         }),
       );
       await _handleAuthResponse(response);
-      if (response.statusCode == 200) {
+      if (_isSuccess(response.statusCode)) {
         await OnlineAuthGate.instance.markOnlineAuthSuccess();
       }
     } catch (e) {
@@ -282,6 +284,8 @@ class AuthService {
       // Heartbeat é best-effort.
     }
   }
+
+  static bool _isSuccess(int statusCode) => statusCode >= 200 && statusCode < 300;
 
   Map<String, String> _headers() => {
         'Authorization': 'Bearer $token',
