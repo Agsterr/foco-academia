@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import 'app_home.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -72,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => appHome()),
       );
     } catch (e) {
       if (mounted) setState(() => _error = _friendlyError(e));
@@ -239,9 +239,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Treina em academia? Use o código e o e-mail que ela cadastrou.',
+                            'Treina em academia? Use o código e o e-mail que ela cadastrou. '
+                            'Dono de academia ou personal entra só com e-mail e senha.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                          TextButton(
+                            key: const Key('register-business'),
+                            onPressed: _loading
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const RegisterScreen(initialProfile: SignupProfile.academia),
+                                      ),
+                                    ),
+                            child: const Text('Sou academia ou personal'),
                           ),
                         ],
                       ),

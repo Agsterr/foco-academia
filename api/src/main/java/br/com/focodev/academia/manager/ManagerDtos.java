@@ -42,6 +42,9 @@ public final class ManagerDtos {
             UUID instructorId
     ) {}
 
+    /** O que o app mostra para a equipe: painel da academia (gestor/autônomo) ou só "meus alunos". */
+    public record Access(boolean manager, boolean personal, String academyName, String academySlug) {}
+
     public record AssignInstructorRequest(@NotNull UUID instructorId) {}
 
     public record RespondRequest(@NotBlank @Size(max = 2000) String response) {}

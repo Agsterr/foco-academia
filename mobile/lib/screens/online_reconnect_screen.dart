@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/online_auth_gate.dart';
 import '../services/sync_service.dart';
-import 'home_screen.dart';
+import 'app_home.dart';
 import 'login_screen.dart';
 
 /// Aparece quando passou do limite offline (48h): valida a sessão sozinha assim
@@ -77,7 +77,7 @@ class _OnlineReconnectScreenState extends State<OnlineReconnectScreen> {
         Navigator.of(context).pop(true);
       } else {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) => appHome()),
         );
       }
     } on SessionExpiredException {

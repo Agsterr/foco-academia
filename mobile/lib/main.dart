@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/theme/app_theme.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/app_home.dart';
 import 'screens/online_reconnect_screen.dart';
 import 'services/auth_service.dart';
 import 'services/online_auth_gate.dart';
@@ -80,6 +80,8 @@ class _BootstrapState extends State<_Bootstrap> {
       }
     }
 
+    if (loggedIn) await AuthService.instance.ensureRole();
+
     if (!mounted) return;
     setState(() {
       _loggedIn = loggedIn;
@@ -95,6 +97,6 @@ class _BootstrapState extends State<_Bootstrap> {
     }
     if (!_loggedIn) return const LoginScreen();
     if (_needsReconnect) return const OnlineReconnectScreen();
-    return const HomeScreen();
+    return appHome();
   }
 }

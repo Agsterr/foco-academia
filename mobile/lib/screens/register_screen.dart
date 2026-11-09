@@ -1,11 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import 'app_home.dart';
 
-/// Cadastro de aluno avulso (sem academia): monta os próprios treinos e usa os treinos prontos.
+/// Perfil escolhido no cadastro.
+enum SignupProfile {
+  /// Aluno avulso (sem academia): monta os próprios treinos e usa os treinos prontos.
+  aluno,
+
+  /// Personal que trabalha sozinho: vê tudo como uma academia de um instrutor só.
+  instrutorAutonomo,
+
+  /// Academia com vários instrutores: painel com alunos, instrutores, notas e reclamações.
+  academia,
+}
+
+/// Cadastro: aluno, instrutor autônomo ou academia.
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({super.key, this.initialProfile = SignupProfile.aluno});
+
+  final SignupProfile initialProfile;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -13,6 +27,8 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  late SignupProfile _profile = widget.initialProfile;
+  final _academyName = TextEditingController();
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -24,6 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
+    _academyName.dispose();
     _name.dispose();
     _email.dispose();
     _password.dispose();
@@ -39,15 +56,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _error = null;
     });
     try {
-      await AuthService.instance.register(
-        name: _name.text.trim(),
-        email: _email.text.trim().toLowerCase(),
-        password: _password.text,
-        remember: _remember,
-      );
+      if (_profile == SignupProfile.aluno) {
+        await AuthService.instance.register(
+          name: _name.text.trim(),
+          email: _email.text.trim().toLowerCase(),
+          password: _password.text,
+          remember: _remember,
+        );
+      } else {
+        await AuthService.instance.registerBusiness(
+          type: _profile == SignupProfile.academia ? 'ACADEMIA' : 'INSTRUTOR_AUTONOMO',
+          academyName: _profile == SignupProfile.academia ? _academyName.text.trim() : null,
+          name: _name.text.trim(),
+          email: _email.text.trim().toLowerCase(),
+          password: _password.text,
+          remember: _remember,
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => appHome()),
         (_) => false,
       );
     } catch (e) {
@@ -61,6 +89,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  String get _headline => switch (_profile) {
+        SignupProfile.aluno => 'Treine do seu jeito',
+        SignupProfile.instrutorAutonomo => 'Seus alunos na palma da mão',
+        SignupProfile.academia => 'Sua academia no controle',
+      };
+
+  String get _pitch => switch (_profile) {
+        SignupProfile.aluno =>
+          'Monte seus treinos ou escolha um pronto de musculação, corrida, spinning ou bike.',
+        SignupProfile.instrutorAutonomo =>
+          'Cadastre seus alunos, monte as fichas e acompanhe treinos, notas e recados de cada um.',
+        SignupProfile.academia =>
+          'Cadastre instrutores e alunos e acompanhe desempenho, notas, reclamações e gráficos da academia.',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -76,25 +119,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text('Você é', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  const SizedBox(height: 8),
+                  SegmentedButton<SignupProfile>(
+                    key: const Key('register-profile'),
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: SignupProfile.aluno,
+                        label: Text('Aluno'),
+                        icon: Icon(Icons.directions_run_rounded),
+                      ),
+                      ButtonSegment(
+                        value: SignupProfile.instrutorAutonomo,
+                        label: Text('Personal'),
+                        icon: Icon(Icons.sports_rounded),
+                      ),
+                      ButtonSegment(
+                        value: SignupProfile.academia,
+                        label: Text('Academia'),
+                        icon: Icon(Icons.store_rounded),
+                      ),
+                    ],
+                    selected: {_profile},
+                    onSelectionChanged: _loading ? null : (v) => setState(() => _profile = v.first),
+                  ),
+                  const SizedBox(height: 20),
                   Text(
-                    'Treine do seu jeito',
+                    _headline,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    'Monte seus treinos ou escolha um pronto de musculação, corrida, spinning ou bike.',
-                    style: TextStyle(color: scheme.onSurfaceVariant),
-                  ),
+                  Text(_pitch, style: TextStyle(color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 24),
+                  if (_profile == SignupProfile.academia) ...[
+                    TextFormField(
+                      key: const Key('register-academy'),
+                      controller: _academyName,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome da academia',
+                        prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                      ),
+                      validator: (v) =>
+                          (_profile == SignupProfile.academia && (v == null || v.trim().length < 2))
+                              ? 'Informe o nome da academia'
+                              : null,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextFormField(
                     key: const Key('register-name'),
                     controller: _name,
                     textCapitalization: TextCapitalization.words,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.name],
-                    decoration: const InputDecoration(
-                      labelText: 'Nome',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
+                    decoration: InputDecoration(
+                      labelText: _profile == SignupProfile.academia ? 'Seu nome (responsável)' : 'Nome',
+                      prefixIcon: const Icon(Icons.person_outline_rounded),
                     ),
                     validator: (v) => (v == null || v.trim().length < 2) ? 'Informe seu nome' : null,
                   ),
@@ -179,6 +262,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         : const Text('Criar conta'),
                   ),
                   const SizedBox(height: 16),
+                  if (_profile == SignupProfile.aluno)
                   Text(
                     'Se você treina em uma academia que usa o Foco Academia, não precisa criar conta: '
                     'entre com o código e o e-mail que ela cadastrou.',

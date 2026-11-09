@@ -93,6 +93,18 @@ public class ManagerService {
     // ---------------------------------------------------------------- painel
 
     @Transactional(readOnly = true)
+    public Access access(AuthUser authUser) {
+        User user = userRepository.findByIdWithAcademy(authUser.getId())
+                .orElseThrow(() -> new ApiException("Usuário não encontrado"));
+        tenantService.requireActiveAcademy(user);
+        Academy academy = user.getAcademy();
+        if (academy == null) {
+            return new Access(false, false, null, null);
+        }
+        return new Access(isManager(user), academy.isPersonal(), academy.getName(), academy.getSlug());
+    }
+
+    @Transactional(readOnly = true)
     public Dashboard dashboard(AuthUser authUser) {
         User manager = requireManager(authUser);
         Academy academy = manager.getAcademy();
@@ -256,12 +268,16 @@ public class ManagerService {
         User user = userRepository.findByIdWithAcademy(authUser.getId())
                 .orElseThrow(() -> new ApiException("Usuário não encontrado"));
         tenantService.requireActiveAcademy(user);
-        Academy academy = user.getAcademy();
-        boolean owner = academy != null && academy.getOwner() != null && academy.getOwner().getId().equals(user.getId());
-        if (user.getRole() == UserRole.GESTOR || (user.getRole() == UserRole.INSTRUTOR && owner)) {
+        if (isManager(user)) {
             return user;
         }
         throw new ApiException("Disponível só para o gestor da academia.", HttpStatus.FORBIDDEN);
+    }
+
+    private static boolean isManager(User user) {
+        Academy academy = user.getAcademy();
+        boolean owner = academy != null && academy.getOwner() != null && academy.getOwner().getId().equals(user.getId());
+        return user.getRole() == UserRole.GESTOR || (user.getRole() == UserRole.INSTRUTOR && owner);
     }
 
     private List<User> instructorsOf(Academy academy) {

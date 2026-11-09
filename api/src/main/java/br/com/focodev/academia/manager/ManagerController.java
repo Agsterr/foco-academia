@@ -29,6 +29,11 @@ public class ManagerController {
         return managerService.register(request);
     }
 
+    @GetMapping("/manager/access")
+    public Access access(@AuthenticationPrincipal AuthUser user) {
+        return managerService.access(user);
+    }
+
     @GetMapping("/manager/dashboard")
     public Dashboard dashboard(@AuthenticationPrincipal AuthUser user) {
         return managerService.dashboard(user);

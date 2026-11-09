@@ -70,15 +70,40 @@ class AuthService {
   String? token;
   String? academySlug;
   String? deviceId;
+
+  /// ALUNO, INSTRUTOR ou GESTOR (nulo em sessões antigas, até [ensureRole]).
+  String? role;
+
+  /// Instrutor ou gestor de academia: o app abre o painel da equipe.
+  bool get isStaff => role == 'INSTRUTOR' || role == 'GESTOR';
   Future<bool>? _refreshInFlight;
 
   Future<bool> load() async {
     final prefs = await SharedPreferences.getInstance();
     token = prefs.getString('token');
     academySlug = prefs.getString('academy_slug');
+    role = prefs.getString('user_role');
     deviceId = prefs.getString('device_id') ?? const Uuid().v4();
     await prefs.setString('device_id', deviceId!);
     return token != null;
+  }
+
+  Future<void> _persistRole(Object? user) async {
+    final value = user is Map ? user['role'] as String? : null;
+    if (value == null || value.isEmpty) return;
+    role = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_role', value);
+  }
+
+  /// Sessões abertas antes do perfil existir no app: descobre o papel pela API.
+  Future<void> ensureRole() async {
+    if (role != null || token == null) return;
+    try {
+      await _persistRole(await get('/api/auth/me'));
+    } catch (_) {
+      // Sem rede: continua como aluno até a próxima abertura.
+    }
   }
 
   Future<void> _persistToken(String newToken) async {
@@ -260,11 +285,52 @@ class AuthService {
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Não foi possível criar a conta'));
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, '', email, password, remember);
+  }
+
+  /// Cria uma academia (o dono vira gestor) ou um instrutor autônomo, e já entra.
+  /// O dono entra depois sem código da academia.
+  Future<void> registerBusiness({
+    required String type,
+    String? academyName,
+    required String name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/register-business'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'type': type,
+        if (academyName != null && academyName.trim().isNotEmpty) 'academyName': academyName.trim(),
+        'name': name,
+        'email': email,
+        'password': password,
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Não foi possível criar a conta'));
+    }
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, '', email, password, remember);
+  }
+
+  Future<void> _startSession(
+    Map<String, dynamic> data,
+    String slug,
+    String email,
+    String password,
+    bool remember,
+  ) async {
     await _persistToken(data['token'] as String);
-    academySlug = '';
+    await _persistRole(data['user']);
+    academySlug = slug;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('academy_slug', '');
+    await prefs.setString('academy_slug', slug);
     await OnlineAuthGate.instance.markOnlineAuthSuccess();
     if (remember) {
       await _rememberCredentials(email, password);
@@ -292,23 +358,15 @@ class AuthService {
       final body = jsonDecode(response.body);
       throw Exception(body['message'] ?? 'Erro no login');
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    await _persistToken(data['token'] as String);
-    academySlug = slug;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('academy_slug', slug);
-    await OnlineAuthGate.instance.markOnlineAuthSuccess();
-    if (remember) {
-      await _rememberCredentials(email, password);
-    } else {
-      await forgetCredentials();
-    }
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, slug, email, password, remember);
   }
 
   Future<void> logout() async {
     token = null;
+    role = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
+    await prefs.remove('user_role');
   }
 
   Future<void> heartbeat() async {

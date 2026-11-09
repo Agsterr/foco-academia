@@ -463,6 +463,14 @@ class WorkoutService {
     return WorkoutProgram.fromJson(data);
   }
 
+  /// Instrutor monta a ficha do aluno; ela passa a ser a ficha ativa dele.
+  Future<void> createProgramForStudent(String studentId, String title, List<DayDraft> days) async {
+    await AuthService.instance.post('/api/instructor/programs', {
+      ...programBody(title, days),
+      'studentId': studentId,
+    });
+  }
+
   Future<WorkoutProgram> updateProgram(String id, String title, List<DayDraft> days) async {
     final data = await AuthService.instance.put('/api/student/programs/$id', programBody(title, days));
     return WorkoutProgram.fromJson(data);

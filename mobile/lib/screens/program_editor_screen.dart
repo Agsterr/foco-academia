@@ -8,10 +8,14 @@ import 'premium_screen.dart';
 
 /// Montagem de ficha própria: dias da semana, exercícios da biblioteca (ou digitados), séries e repetições.
 class ProgramEditorScreen extends StatefulWidget {
-  const ProgramEditorScreen({super.key, this.program});
+  const ProgramEditorScreen({super.key, this.program, this.studentId, this.studentName});
 
   /// Ficha própria a editar; nulo para criar uma nova.
   final WorkoutProgram? program;
+
+  /// Instrutor montando a ficha de um aluno (vira a ficha ativa dele).
+  final String? studentId;
+  final String? studentName;
 
   @override
   State<ProgramEditorScreen> createState() => _ProgramEditorScreenState();
@@ -26,7 +30,8 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
   void initState() {
     super.initState();
     final program = widget.program;
-    _title = TextEditingController(text: program?.title ?? 'Meu treino');
+    final defaultTitle = widget.studentName != null ? 'Treino de ${widget.studentName!.split(' ').first}' : 'Meu treino';
+    _title = TextEditingController(text: program?.title ?? defaultTitle);
     final byWeekDay = {for (final d in program?.days ?? const <WorkoutDay>[]) d.weekDay: d};
     _days = [
       for (final wd in weekDayOrder)
@@ -76,7 +81,9 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
     }
     setState(() => _saving = true);
     try {
-      if (widget.program == null) {
+      if (widget.studentId != null) {
+        await WorkoutService.instance.createProgramForStudent(widget.studentId!, title, _days);
+      } else if (widget.program == null) {
         await WorkoutService.instance.createProgram(title, _days);
       } else {
         await WorkoutService.instance.updateProgram(widget.program!.id, title, _days);
@@ -103,7 +110,11 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.program == null ? 'Montar treino' : 'Editar treino'),
+        title: Text(widget.studentName != null
+            ? 'Ficha de ${widget.studentName!.split(' ').first}'
+            : widget.program == null
+                ? 'Montar treino'
+                : 'Editar treino'),
         actions: [
           TextButton(
             key: const Key('save-program'),

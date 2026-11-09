@@ -166,6 +166,14 @@ class ManagerIntegrationTest {
         mockMvc.perform(get("/api/manager/dashboard").header("Authorization", "Bearer " + manager))
                 .andExpect(jsonPath("$.pendingSuggestions").value(0));
 
+        mockMvc.perform(get("/api/manager/access").header("Authorization", "Bearer " + manager))
+                .andExpect(jsonPath("$.manager").value(true))
+                .andExpect(jsonPath("$.personal").value(false));
+        mockMvc.perform(get("/api/manager/access").header("Authorization", "Bearer " + instructorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.manager").value(false))
+                .andExpect(jsonPath("$.academyName").value("Academia Painel"));
+
         // A instrutora não vê o painel da academia, só os próprios alunos.
         mockMvc.perform(get("/api/manager/dashboard").header("Authorization", "Bearer " + instructorToken))
                 .andExpect(status().isForbidden());
@@ -192,6 +200,9 @@ class ManagerIntegrationTest {
                 .andExpect(jsonPath("$.personal").value(true))
                 .andExpect(jsonPath("$.instructors").value(1))
                 .andExpect(jsonPath("$.students").value(1));
+        mockMvc.perform(get("/api/manager/access").header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.manager").value(true))
+                .andExpect(jsonPath("$.personal").value(true));
         // Ele também usa as telas de instrutor.
         mockMvc.perform(get("/api/instructor/students/overview").header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$[0].name").value("Cliente do Personal"));
