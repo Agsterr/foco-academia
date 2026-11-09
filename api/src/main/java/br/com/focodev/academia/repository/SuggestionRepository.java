@@ -11,4 +11,10 @@ public interface SuggestionRepository extends JpaRepository<Suggestion, UUID> {
     List<Suggestion> findByStudentIdOrderByCreatedAtDesc(UUID studentId);
     List<Suggestion> findByInstructorIdOrderByCreatedAtDesc(UUID instructorId);
     long countByInstructorIdAndStatus(UUID instructorId, SuggestionStatus status);
+
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT s FROM Suggestion s JOIN FETCH s.student st
+            WHERE st.academy.id = :academyId ORDER BY s.createdAt DESC
+            """)
+    List<Suggestion> findByAcademyId(UUID academyId);
 }

@@ -30,6 +30,13 @@ public interface WorkoutSessionRepository extends JpaRepository<WorkoutSession, 
 
     long countByStudentIdAndCompletedAtIsNotNull(UUID studentId);
 
+    /** Treinos de musculação concluídos pelos alunos de uma academia (painel do gestor). */
+    @Query("""
+            SELECT s FROM WorkoutSession s JOIN FETCH s.student st
+            WHERE st.academy.id = :academyId AND s.completedAt IS NOT NULL AND s.completedAt >= :since
+            """)
+    List<WorkoutSession> findCompletedByAcademySince(UUID academyId, Instant since);
+
     @Query("""
             SELECT s FROM WorkoutSession s
             WHERE s.student.id = :studentId

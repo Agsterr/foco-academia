@@ -86,7 +86,14 @@ public class AuthService {
         }
 
         boolean independentStudent = user.getRole() == UserRole.ALUNO && user.getAcademy() == null;
-        if (independentStudent) {
+        // Quem criou a academia pelo app (gestor ou instrutor autônomo) entra sem digitar o código.
+        boolean academyOwner = user.getAcademy() != null
+                && (user.getRole() == UserRole.GESTOR
+                    || (user.getAcademy().getOwner() != null && user.getAcademy().getOwner().getId().equals(user.getId())));
+        boolean slugBlank = request.academySlug() == null || request.academySlug().isBlank();
+        if (academyOwner && slugBlank) {
+            tenantService.requireActiveAcademy(user);
+        } else if (independentStudent) {
             if (request.academySlug() != null && !request.academySlug().isBlank()) {
                 throw new ApiException("Sua conta não é vinculada a uma academia. Deixe o código da academia em branco.");
             }
@@ -148,12 +155,13 @@ public class AuthService {
         tenantService.requireActiveAcademy(user);
 
         AuthUser authUser = new AuthUser(user);
-        boolean missingAcademy = authUser.getAcademyId() == null && authUser.getRole() == UserRole.INSTRUTOR;
-        if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)
+        boolean staff = authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.GESTOR;
+        boolean missingAcademy = authUser.getAcademyId() == null && staff;
+        if ((staff || authUser.getRole() == UserRole.ALUNO)
                 && (missingAcademy || !authUser.isAcademyActive())) {
             throw new ApiException("Academia desativada ou não vinculada", HttpStatus.FORBIDDEN);
         }
-        if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)
+        if ((staff || authUser.getRole() == UserRole.ALUNO)
                 && authUser.isAcademyAppBlocked()) {
             throw new ApiException("Aplicativo bloqueado para esta academia", HttpStatus.FORBIDDEN);
         }

@@ -24,7 +24,7 @@ public class DatabaseSchemaFix {
             jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
             jdbcTemplate.execute("""
                     ALTER TABLE users ADD CONSTRAINT users_role_check
-                    CHECK (role IN ('ADMIN', 'INSTRUTOR', 'ALUNO'))
+                    CHECK (role IN ('ADMIN', 'INSTRUTOR', 'ALUNO', 'GESTOR'))
                     """);
 
             // Fichas e treinos outdoor criados pelo próprio aluno não têm instrutor.
