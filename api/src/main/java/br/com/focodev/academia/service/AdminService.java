@@ -24,6 +24,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final DeviceSessionRepository deviceSessionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final br.com.focodev.academia.billing.BillingProperties billingProperties;
 
     public AdminDashboardResponse dashboard() {
         long academies = academyRepository.count();
@@ -186,7 +187,9 @@ public class AdminService {
     private AcademyResponse toAcademyResponse(Academy academy) {
         long instructors = userRepository.countByAcademyIdAndRole(academy.getId(), UserRole.INSTRUTOR);
         long students = userRepository.countByAcademyIdAndRole(academy.getId(), UserRole.ALUNO);
-        return AcademyResponse.from(academy, instructors, students);
+        return AcademyResponse.from(academy, instructors, students,
+                billingProperties.academyMonthlyPriceOrDefault(),
+                billingProperties.academyIncludedStudentsOrDefault());
     }
 
     private AdminUserResponse toAdminUser(User user) {

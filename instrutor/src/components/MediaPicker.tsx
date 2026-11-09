@@ -160,10 +160,10 @@ export default function MediaPicker({
             )}
           </span>
           <span className="text-sm font-semibold text-slate-100">
-            {uploading ? "Enviando arquivo..." : "Anexar vídeo ou foto"}
+            {uploading ? "Enviando e otimizando..." : "Anexar vídeo ou foto"}
           </span>
           <span className="text-xs text-slate-400">
-            Toque para escolher · MP4, MOV, JPG, PNG
+            Toque para escolher · vídeo até 60 s, JPG ou PNG
           </span>
         </button>
       )}

@@ -27,6 +27,7 @@ public class AcademiaService {
     private final PasswordEncoder passwordEncoder;
     private final TenantService tenantService;
     private final MediaStorageService mediaStorageService;
+    private final MediaProcessingService mediaProcessingService;
 
     @Transactional
     public UserResponse createStudent(AuthUser instructor, CreateStudentRequest request) {
@@ -233,6 +234,11 @@ public class AcademiaService {
             throw new ApiException("Arquivo vazio");
         }
 
-        return mediaStorageService.store(file);
+        MediaProcessingService.ProcessedMedia media = mediaProcessingService.process(file);
+        try {
+            return mediaStorageService.store(media);
+        } finally {
+            java.nio.file.Files.deleteIfExists(media.path());
+        }
     }
 }

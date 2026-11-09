@@ -3,6 +3,12 @@
 O código já está pronto no app e na API. Enquanto `BILLING_ENFORCE=false`, **ninguém é bloqueado**:
 contas novas ganham 7 dias de teste, e o cartão "Foco Premium" aparece, mas tudo continua liberado.
 
+## Academias
+
+Mensalidade da academia: **R$ 149/mês até 100 alunos, instrutores ilimitados**
+(`ACADEMY_MONTHLY_PRICE` / `ACADEMY_INCLUDED_STUDENTS` no `.env`). O painel admin mostra o plano
+e avisa quando a academia passa do limite. A cobrança da academia é feita fora do app (Pix/boleto).
+
 ## O que é premium
 
 - **Aluno de academia:** tudo liberado (a academia paga). Não vê cobrança.

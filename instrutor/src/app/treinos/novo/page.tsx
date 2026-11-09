@@ -15,6 +15,7 @@ import {
   weekDayLabels,
   weekDayOrder,
 } from "@/lib/api";
+import { checkMediaFile } from "@/lib/media-check";
 import { addRecentMedia } from "@/lib/recent-media";
 import {
   DAY_SCOPE_TEMPLATES,
@@ -243,6 +244,11 @@ export default function NovaFichaPage() {
   }
 
   async function handleMediaUpload(weekDay: WeekDay, index: number, file: File) {
+    const problem = await checkMediaFile(file);
+    if (problem) {
+      setMessage(problem);
+      return;
+    }
     const key = `${weekDay}-${index}`;
     setUploadingKey(key);
     try {

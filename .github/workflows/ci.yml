@@ -26,6 +26,8 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
+      - name: ffmpeg (compressão de vídeos)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Testes
         working-directory: api
         run: ./mvnw -B -q test

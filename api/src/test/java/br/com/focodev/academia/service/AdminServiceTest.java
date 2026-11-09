@@ -32,6 +32,11 @@ class AdminServiceTest {
     @Mock DeviceSessionRepository deviceSessionRepository;
     @Mock PasswordEncoder passwordEncoder;
 
+    @org.mockito.Spy
+    br.com.focodev.academia.billing.BillingProperties billingProperties =
+            new br.com.focodev.academia.billing.BillingProperties(
+                    false, null, null, null, null, new java.math.BigDecimal("149.00"), 100);
+
     @InjectMocks AdminService adminService;
 
     private UUID academyId;

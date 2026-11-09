@@ -13,6 +13,8 @@ import java.util.List;
  * @param productIds         IDs das assinaturas cadastradas no Play Console
  * @param googlePackageName  pacote do app na Play Store
  * @param googleServiceAccountJson JSON da conta de serviço com acesso à Google Play Developer API
+ * @param academyMonthlyPrice     mensalidade da academia (R$), inclui todos os instrutores
+ * @param academyIncludedStudents alunos incluídos na mensalidade da academia
  */
 @ConfigurationProperties(prefix = "app.billing")
 public record BillingProperties(
@@ -20,8 +22,18 @@ public record BillingProperties(
         Integer trialDays,
         List<String> productIds,
         String googlePackageName,
-        String googleServiceAccountJson
+        String googleServiceAccountJson,
+        java.math.BigDecimal academyMonthlyPrice,
+        Integer academyIncludedStudents
 ) {
+    public java.math.BigDecimal academyMonthlyPriceOrDefault() {
+        return academyMonthlyPrice != null ? academyMonthlyPrice : new java.math.BigDecimal("149.00");
+    }
+
+    public int academyIncludedStudentsOrDefault() {
+        return academyIncludedStudents != null ? academyIncludedStudents : 100;
+    }
+
     public int trialDaysOrDefault() {
         return trialDays != null ? trialDays : 7;
     }
