@@ -18,6 +18,7 @@ import 'online_reconnect_screen.dart';
 import 'profile_screen.dart';
 import 'weight_screen.dart';
 import 'workouts_screen.dart';
+import 'templates_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -287,6 +288,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ? 'Toque para enviar dados offline'
                   : _status,
               onTap: _sync,
+            ),
+            const SizedBox(height: 8),
+            _MenuCard(
+              icon: Icons.auto_awesome_rounded,
+              iconColor: Colors.amberAccent,
+              title: 'Treinos prontos',
+              subtitle: 'Musculação, corrida, spinning e bike por nível',
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
+                );
+                await _loadTodayStats();
+              },
             ),
             const SizedBox(height: 8),
             _MenuCard(

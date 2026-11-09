@@ -30,4 +30,14 @@ public interface WorkoutProgramRepository extends JpaRepository<WorkoutProgram, 
     List<WorkoutProgram> findActiveByStudentId(UUID studentId);
 
     Optional<WorkoutProgram> findFirstByStudentIdAndActiveTrueOrderByCreatedAtDesc(UUID studentId);
+
+    List<WorkoutProgram> findByStudentIdAndActiveTrue(UUID studentId);
+
+    /** Fichas que o aluno vê em "Meus treinos" (as da academia e as próprias, sem as apagadas). */
+    @Query("""
+            SELECT p FROM WorkoutProgram p
+            WHERE p.student.id = :studentId AND (p.archived IS NULL OR p.archived = false)
+            ORDER BY p.active DESC, p.createdAt DESC
+            """)
+    List<WorkoutProgram> findVisibleByStudentId(UUID studentId);
 }

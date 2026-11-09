@@ -12,6 +12,7 @@ import br.com.focodev.academia.service.StudentProfileService;
 import br.com.focodev.academia.service.TenantService;
 import br.com.focodev.academia.service.WorkoutProgramService;
 import br.com.focodev.academia.service.WorkoutReprocessingService;
+import br.com.focodev.academia.service.WorkoutTemplateService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ public class ApiControllers {
     private final AuthService authService;
     private final AcademiaService academiaService;
     private final WorkoutProgramService workoutProgramService;
+    private final WorkoutTemplateService workoutTemplateService;
     private final TenantService tenantService;
     private final StudentProfileService studentProfileService;
     private final CardioService cardioService;
@@ -53,7 +55,9 @@ public class ApiControllers {
     }
 
     @PostMapping("/auth/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+    public AuthResponse register(@Valid @RequestBody RegisterRequest request,
+                                 jakarta.servlet.http.HttpServletRequest httpRequest) {
+        loginRateLimiter.check(httpRequest);
         return authService.register(request);
     }
 
@@ -189,6 +193,55 @@ public class ApiControllers {
             @RequestParam("file") MultipartFile file
     ) throws IOException {
         return Map.of("url", academiaService.uploadMedia(user, file));
+    }
+
+    @GetMapping("/student/programs")
+    public List<WorkoutProgramResponse> listStudentPrograms(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.listStudentPrograms(user);
+    }
+
+    @PostMapping("/student/programs")
+    public WorkoutProgramResponse createOwnProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProgramRequest request
+    ) {
+        return workoutProgramService.createOwnProgram(user, request);
+    }
+
+    @PutMapping("/student/programs/{id}")
+    public WorkoutProgramResponse updateOwnProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID id,
+            @Valid @RequestBody StudentProgramRequest request
+    ) {
+        return workoutProgramService.updateOwnProgram(user, id, request);
+    }
+
+    @DeleteMapping("/student/programs/{id}")
+    public ResponseEntity<Void> deleteOwnProgram(@AuthenticationPrincipal AuthUser user, @PathVariable UUID id) {
+        workoutProgramService.deleteOwnProgram(user, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/student/programs/{id}/activate")
+    public WorkoutProgramResponse activateProgram(@AuthenticationPrincipal AuthUser user, @PathVariable UUID id) {
+        return workoutProgramService.activateProgram(user, id);
+    }
+
+    @GetMapping("/student/templates")
+    public List<WorkoutTemplateDtos.TemplateSummary> listTemplates(
+            @RequestParam(required = false) WorkoutTemplateDtos.Modality modality,
+            @RequestParam(required = false) WorkoutTemplateDtos.Level level
+    ) {
+        return workoutTemplateService.list(modality, level);
+    }
+
+    @PostMapping("/student/templates/{key}/start")
+    public WorkoutTemplateDtos.StartTemplateResponse startTemplate(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable String key
+    ) {
+        return workoutTemplateService.start(user, key);
     }
 
     @GetMapping("/student/programs/active")

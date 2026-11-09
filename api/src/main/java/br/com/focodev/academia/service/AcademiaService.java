@@ -185,6 +185,9 @@ public class AcademiaService {
         User studentUser = userRepository.findById(student.getId())
                 .orElseThrow(() -> new ApiException("Aluno não encontrado"));
         tenantService.requireActiveAcademy(studentUser);
+        if (studentUser.getAcademy() == null) {
+            throw new ApiException("Sugestões são enviadas para a sua academia. Sua conta não está vinculada a uma.");
+        }
 
         Suggestion suggestion = new Suggestion();
         suggestion.setStudent(studentUser);

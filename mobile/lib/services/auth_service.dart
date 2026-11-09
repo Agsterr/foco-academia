@@ -217,12 +217,50 @@ class AuthService {
   /// Entra de novo com o login lembrado, sem o aluno digitar nada.
   Future<bool> reloginWithSavedCredentials() async {
     final saved = await savedCredentials();
-    if (saved == null || saved.password.isEmpty || saved.slug.isEmpty) return false;
+    // Código da academia vazio = aluno avulso (conta criada no app).
+    if (saved == null || saved.password.isEmpty) return false;
     try {
       await login(saved.email, saved.password, saved.slug, remember: true);
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Cria conta de aluno avulso (sem academia) e já entra.
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'email': email,
+        'password': password,
+        'role': 'ALUNO',
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Não foi possível criar a conta'));
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    await _persistToken(data['token'] as String);
+    academySlug = '';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('academy_slug', '');
+    await OnlineAuthGate.instance.markOnlineAuthSuccess();
+    if (remember) {
+      await _rememberCredentials(email, password);
+    } else {
+      await forgetCredentials();
     }
   }
 
@@ -233,7 +271,8 @@ class AuthService {
       body: jsonEncode({
         'email': email,
         'password': password,
-        'academySlug': slug,
+        // Aluno avulso entra sem código de academia.
+        'academySlug': slug.trim().isEmpty ? null : slug.trim(),
         'deviceId': deviceId,
         'deviceLabel': 'Flutter Android',
         'appClient': 'MOBILE',
@@ -404,4 +443,13 @@ class AuthService {
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+  Future<void> delete(String path) async {
+    final response = await _send(
+      () => http.delete(Uri.parse('$apiBase$path'), headers: _headers()),
+    );
+    if (!_isSuccess(response.statusCode)) {
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
+    }
+  }
+
 }

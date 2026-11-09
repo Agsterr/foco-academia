@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../services/auth_service.dart';
 import 'home_screen.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -147,11 +148,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                             decoration: const InputDecoration(
-                              labelText: 'Código da academia',
-                              hintText: 'ex: minha-academia',
+                              labelText: 'Código da academia (opcional)',
+                              hintText: 'Deixe em branco se treina por conta própria',
                               prefixIcon: Icon(Icons.storefront_outlined),
                             ),
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o código da academia' : null,
                           ),
                           const SizedBox(height: 14),
                           TextFormField(
@@ -227,8 +227,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Text('Entrar'),
                           ),
                           const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            key: const Key('open-register'),
+                            onPressed: _loading
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                                    ),
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: const Text('Criar conta grátis'),
+                          ),
+                          const SizedBox(height: 12),
                           Text(
-                            'Não tem acesso? Peça seu cadastro na recepção da academia.',
+                            'Treina em academia? Use o código e o e-mail que ela cadastrou.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
                           ),

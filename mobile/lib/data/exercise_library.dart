@@ -1,0 +1,92 @@
+/// Biblioteca de exercícios (a mesma do painel do instrutor) para o aluno montar a própria ficha.
+/// Gerada a partir de instrutor/src/lib/exercise-library.ts.
+class LibraryExercise {
+  const LibraryExercise(this.name, this.muscle, this.description, this.sets, this.reps, this.notes);
+  final String name;
+  final String muscle;
+  final String description;
+  final String sets;
+  final String reps;
+  final String notes;
+}
+
+const muscleLabels = {
+  'PEITO': 'Peito', 'COSTAS': 'Costas', 'PERNAS': 'Pernas', 'PANTURRILHA': 'Panturrilha',
+  'GLUTEOS': 'Glúteos', 'OMBROS': 'Ombros', 'BICEPS': 'Bíceps', 'TRICEPS': 'Tríceps',
+  'ABDOMEN': 'Abdômen', 'CARDIO': 'Cardio', 'FUNCIONAL': 'Funcional',
+};
+
+const exerciseLibrary = <LibraryExercise>[
+  LibraryExercise('Supino reto com barra', 'PEITO', 'Deitado no banco, desça a barra até o peito e empurre até quase estender os cotovelos.', '4', '8-10', 'Escápulas retraídas; não quicar a barra no peito.'),
+  LibraryExercise('Supino inclinado com halteres', 'PEITO', 'Banco a ~30–45°. Empurre os halteres para cima alinhados ao peito superior.', '4', '10', 'Controle a descida em 2–3 segundos.'),
+  LibraryExercise('Supino declinado', 'PEITO', 'Banco declinado; desça a barra até a parte inferior do peito e empurre.', '3', '10', 'Trave os pés bem no apoio do banco.'),
+  LibraryExercise('Crucifixo no banco', 'PEITO', 'Abra os braços em arco amplo e feche acima do peito sem bater os pesos.', '3', '12', 'Cotovelos levemente flexionados o tempo todo.'),
+  LibraryExercise('Crossover na polia', 'PEITO', 'Puxe as alças de cima para baixo cruzando à frente do tronco.', '3', '12-15', 'Foque no peitoral, não nos ombros.'),
+  LibraryExercise('Peck deck (voador)', 'PEITO', 'Una os braços à frente do peito na máquina e volte com controle.', '3', '12-15', 'Não bata as alças no fechamento.'),
+  LibraryExercise('Flexão de braço', 'PEITO', 'Corpo alinhado; desça o peito perto do chão e suba empurrando o solo.', '3', '12-15', 'Joelho no chão se precisar manter a forma.'),
+  LibraryExercise('Supino na máquina', 'PEITO', 'Empurre as alças à frente do peito com amplitude confortável.', '3', '10-12', 'Bom para iniciantes — trajetória guiada.'),
+  LibraryExercise('Pullover com halter', 'PEITO', 'Deitado, desça o peso atrás da cabeça e volte até acima do peito.', '3', '12', 'Cotovelos semiflexionados; não arqueie demais a lombar.'),
+  LibraryExercise('Puxada frontal', 'COSTAS', 'Puxe a barra até a clavícula, cotovelos para baixo e para trás.', '4', '10', 'Peito aberto; não incline demais o tronco.'),
+  LibraryExercise('Remada curvada', 'COSTAS', 'Tronco inclinado ~45°. Puxe a barra/halteres até o umbigo.', '4', '8-10', 'Coluna neutra; sem balanço.'),
+  LibraryExercise('Remada unilateral com halter', 'COSTAS', 'Apoie um joelho no banco e puxe o peso até o quadril.', '3', '10-12', 'Evite girar o tronco.'),
+  LibraryExercise('Pulldown com triângulo', 'COSTAS', 'Pegada neutra; puxe até o peito superior.', '3', '12', 'Sinta as escápulas se aproximarem.'),
+  LibraryExercise('Barra fixa (assistida se precisar)', 'COSTAS', 'Puxe o corpo até o queixo passar a barra; desça controlado.', '3', '6-10', 'Use elástico ou máquina assistida se necessário.'),
+  LibraryExercise('Remada baixa no cabo', 'COSTAS', 'Sentado, puxe o cabo até o umbigo mantendo o tronco estável.', '3', '12', 'Peito aberto; não arredonde as costas.'),
+  LibraryExercise('Levantamento terra', 'COSTAS', 'Barra próxima às canelas; suba empurrando o chão com os pés.', '4', '6-8', 'Coluna neutra; comece leve se for iniciante.'),
+  LibraryExercise('Puxada aberta', 'COSTAS', 'Pegada mais larga que os ombros; puxe até o peito.', '3', '10-12', 'Cotovelos para baixo, não para trás demais.'),
+  LibraryExercise('Remada cavalinho (T-bar)', 'COSTAS', 'Tronco inclinado; puxe a barra em direção ao peito/umbigo.', '3', '10', 'Peito aberto; sem balançar o tronco.'),
+  LibraryExercise('Agachamento livre', 'PERNAS', 'Desça até coxas paralelas ao chão, joelhos alinhados aos pés.', '4', '8-10', 'Peso nos calcanhares; peito erguido.'),
+  LibraryExercise('Leg press 45°', 'PERNAS', 'Desça controlado até ~90° nos joelhos e empurre sem travar.', '4', '12', 'Não deixe o quadril levantar do assento.'),
+  LibraryExercise('Cadeira extensora', 'PERNAS', 'Estenda os joelhos até quase travar e desça devagar.', '3', '12-15', 'Útil no final para queimar o quadríceps.'),
+  LibraryExercise('Mesa flexora', 'PERNAS', 'Flexione os joelhos trazendo os calcanhares em direção ao glúteo.', '3', '12', 'Quadril fixo no banco.'),
+  LibraryExercise('Afundo caminhando', 'PERNAS', 'Passo longo à frente, joelho de trás quase toca o chão.', '3', '10', '10 por perna. Tronco ereto.'),
+  LibraryExercise('Stiff (terra romeno)', 'PERNAS', 'Quadril para trás, barra próxima às pernas; sinta o posterior.', '3', '10-12', 'Joelhos levemente flexionados; sem arredondar a lombar.'),
+  LibraryExercise('Hack squat', 'PERNAS', 'Desça na máquina até profundidade confortável e empurre pelos calcanhares.', '3', '10-12', 'Joelho alinhado ao pé; não trave no topo.'),
+  LibraryExercise('Agachamento goblet', 'PERNAS', 'Segure um halter no peito e agache mantendo o tronco ereto.', '3', '12', 'Ótimo para iniciantes e mobilidade.'),
+  LibraryExercise('Passada no lugar', 'PERNAS', 'Alterne as pernas no afundo estático.', '3', '10', '10 por perna. Joelho da frente sobre o tornozelo.'),
+  LibraryExercise('Cadeira adutora', 'PERNAS', 'Una as pernas contra a resistência da máquina.', '3', '12-15', 'Movimento controlado; sem balanço.'),
+  LibraryExercise('Cadeira abdutora', 'PERNAS', 'Abra as pernas contra a resistência da máquina.', '3', '12-15', 'Tronco estável no encosto.'),
+  LibraryExercise('Panturrilha em pé', 'PANTURRILHA', 'Suba na ponta dos pés até contrair e desça completo.', '4', '15-20', 'Amplitude total; pause 1s no topo.'),
+  LibraryExercise('Panturrilha sentado', 'PANTURRILHA', 'Na máquina sentada, estenda os tornozelos e desça com controle.', '4', '15-20', 'Foca o sóleo; amplitude completa.'),
+  LibraryExercise('Panturrilha no leg press', 'PANTURRILHA', 'Só a ponta dos pés na plataforma; empurre e desça.', '3', '15-20', 'Não trave o joelho.'),
+  LibraryExercise('Panturrilha unilateral', 'PANTURRILHA', 'Uma perna de cada vez, subindo na ponta do pé.', '3', '12-15', '12–15 por perna. Equilíbrio firme.'),
+  LibraryExercise('Elevação de quadril (hip thrust)', 'GLUTEOS', 'Costas no banco, empurre o quadril para cima contraído o glúteo.', '3', '12', 'Queixo neutro; não hiperextenda a lombar.'),
+  LibraryExercise('Ponte de glúteo', 'GLUTEOS', 'Deitado, pés no chão; eleve o quadril e contraia.', '3', '15', 'Bom aquecimento ou finalizador.'),
+  LibraryExercise('Abdução de quadril (cabo/elástico)', 'GLUTEOS', 'Afaste a perna lateralmente contra a resistência.', '3', '12-15', 'Tronco estável; movimento no quadril.'),
+  LibraryExercise('Coice no cabo', 'GLUTEOS', 'Estenda o quadril para trás com a perna no cabo.', '3', '12', '12 por perna. Sem arquear a lombar.'),
+  LibraryExercise('Desenvolvimento com halteres', 'OMBROS', 'Empurre os pesos acima da cabeça sem arquear a lombar.', '4', '8-10', 'Core firme; não bata os pesos no topo.'),
+  LibraryExercise('Elevação lateral', 'OMBROS', 'Eleve os braços até a linha dos ombros, leve flexão nos cotovelos.', '3', '12-15', 'Polegares levemente para baixo (jarro).'),
+  LibraryExercise('Elevação frontal', 'OMBROS', 'Levante o peso à frente até a altura dos ombros.', '3', '12', 'Alternado ou com barra — sem balanço.'),
+  LibraryExercise('Face pull', 'OMBROS', 'Puxe a corda em direção ao rosto, cotovelos altos.', '3', '15', 'Ótimo para saúde do ombro e postura.'),
+  LibraryExercise('Desenvolvimento Arnold', 'OMBROS', 'Comece com palmas à frente do rosto e gire ao empurrar para cima.', '3', '10-12', 'Movimento fluido; carga moderada.'),
+  LibraryExercise('Remada alta', 'OMBROS', 'Puxe a barra até a altura do peito, cotovelos altos.', '3', '12', 'Não suba além da linha dos ombros se houver desconforto.'),
+  LibraryExercise('Desenvolvimento na máquina', 'OMBROS', 'Empurre as alças para cima na máquina de ombros.', '3', '10-12', 'Bom para iniciantes.'),
+  LibraryExercise('Crucifixo inverso', 'OMBROS', 'Abra os braços para trás trabalhando o deltoide posterior.', '3', '12-15', 'Peito apoiado se for no banco; sem balanço.'),
+  LibraryExercise('Rosca direta com barra', 'BICEPS', 'Cotovelos fixos ao lado do corpo; suba e desça controlado.', '3', '10-12', 'Não balance o tronco.'),
+  LibraryExercise('Rosca alternada com halteres', 'BICEPS', 'Alterne os braços com leve rotação do punho no topo.', '3', '12', 'Cotovelos estáveis.'),
+  LibraryExercise('Rosca martelo', 'BICEPS', 'Pegada neutra (polegares para cima) durante todo o movimento.', '3', '12', 'Trabalha também o braquial.'),
+  LibraryExercise('Rosca Scott', 'BICEPS', 'Braços apoiados no banco Scott; amplitude completa sem esticar demais.', '3', '10', 'Evite hiperextensão no fundo.'),
+  LibraryExercise('Rosca concentrada', 'BICEPS', 'Cotovelo apoiado na coxa; suba o halter até o peito.', '3', '10-12', 'Isolamento — sem balanço.'),
+  LibraryExercise('Tríceps na polia (corda)', 'TRICEPS', 'Estenda os cotovelos para baixo abrindo a corda no final.', '3', '12-15', 'Cotovelos colados ao tronco.'),
+  LibraryExercise('Tríceps testa', 'TRICEPS', 'Deitado, flexione os cotovelos levando a barra à testa e estenda.', '3', '10-12', 'Cotovelos apontando para o teto.'),
+  LibraryExercise('Tríceps francês', 'TRICEPS', 'Halter atrás da cabeça; estenda os cotovelos sem abrir demais.', '3', '12', 'Cotovelos próximos à orelha.'),
+  LibraryExercise('Tríceps no banco', 'TRICEPS', 'Mãos no banco atrás do corpo; flexione e estenda os cotovelos.', '3', '12', 'Quadril próximo ao banco.'),
+  LibraryExercise('Tríceps coice', 'TRICEPS', 'Tronco inclinado; estenda o cotovelo para trás com o halter.', '3', '12', 'Cotovelo fixo ao lado do tronco.'),
+  LibraryExercise('Prancha', 'ABDOMEN', 'Corpo reto apoiado nos antebraços; contraia o abdômen.', '3', '0', 'Não deixe o quadril cair.'),
+  LibraryExercise('Abdominal crunch', 'ABDOMEN', 'Eleve o tronco enrolando a coluna, sem puxar o pescoço.', '3', '15-20', 'Expire na subida.'),
+  LibraryExercise('Elevação de pernas', 'ABDOMEN', 'Deitado ou pendurado, eleve as pernas até ~90° sem balançar.', '3', '12-15', 'Lombar pressionada no chão se for no solo.'),
+  LibraryExercise('Abdominal bicicleta', 'ABDOMEN', 'Cotovelo ao joelho oposto em movimento alternado.', '3', '20', '20 no total (10 por lado). Ritmo controlado.'),
+  LibraryExercise('Russian twist', 'ABDOMEN', 'Sentado, incline o tronco e gire de um lado para o outro.', '3', '16', '16 toques no chão (8 por lado). Pode usar anilha.'),
+  LibraryExercise('Prancha lateral', 'ABDOMEN', 'Apoiado em um antebraço, corpo alinhado de lado.', '3', '0', '20–40s por lado.'),
+  LibraryExercise('Esteira — caminhada inclinada', 'CARDIO', 'Caminhada em ritmo constante com inclinação moderada.', '1', '0', 'Mantenha conversa possível (zona aeróbica).'),
+  LibraryExercise('Bike ergométrica', 'CARDIO', 'Pedale em cadência estável com resistência confortável.', '1', '0', 'Ajuste o banco para joelho quase estendido.'),
+  LibraryExercise('Elíptico', 'CARDIO', 'Movimento contínuo de pernas e braços sem impacto.', '1', '0', 'Postura ereta; sem apoiar o peso nos braços.'),
+  LibraryExercise('Intervalado caminhada/corrida', 'CARDIO', '2 min caminhada + 1 min corrida leve, repetir.', '1', '0', 'Ajuste o ritmo ao condicionamento do aluno.'),
+  LibraryExercise('Escada / stairclimber', 'CARDIO', 'Suba em ritmo constante sem apoiar o peso nos braços.', '1', '0', 'Postura ereta; passos completos.'),
+  LibraryExercise('Remo ergômetro', 'CARDIO', 'Puxe com as pernas primeiro, depois tronco e braços.', '1', '0', 'Sequência: pernas → tronco → braços.'),
+  LibraryExercise('Pular corda', 'CARDIO', 'Saltos leves e ritmados; pouso na ponta dos pés.', '3', '0', 'Intervalos curtos se for iniciante.'),
+  LibraryExercise('Burpee (adaptado)', 'FUNCIONAL', 'Agache, apoie as mãos, estenda as pernas e volte.', '3', '8-10', 'Pode remover o salto se necessário.'),
+  LibraryExercise('Farmers walk', 'FUNCIONAL', 'Caminhe com pesos nas mãos mantendo tronco ereto.', '3', '0', 'Ombros para baixo; passos curtos.'),
+  LibraryExercise('Kettlebell swing', 'FUNCIONAL', 'Quadril para trás e para frente; o peso sobe pelo impulso do quadril.', '3', '12-15', 'Não levante com os braços — use o quadril.'),
+  LibraryExercise('Mountain climber', 'FUNCIONAL', 'Em prancha, alterne os joelhos em direção ao peito.', '3', '20', 'Quadril estável; 20 no total.'),
+];

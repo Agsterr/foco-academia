@@ -24,8 +24,9 @@ public class TenantActiveFilter extends OncePerRequestFilter {
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof AuthUser authUser) {
             UserRole role = authUser.getRole();
+            boolean missingAcademy = authUser.getAcademyId() == null && role == UserRole.INSTRUTOR;
             if ((role == UserRole.INSTRUTOR || role == UserRole.ALUNO)
-                    && (authUser.getAcademyId() == null || !authUser.isAcademyActive())) {
+                    && (missingAcademy || !authUser.isAcademyActive())) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());

@@ -39,11 +39,7 @@ public class WorkoutProgramService {
                 .orElseThrow(() -> new ApiException("Aluno não encontrado"));
         tenantService.requireStudentInInstructorAcademy(instructorUser, student);
 
-        programRepository.findFirstByStudentIdAndActiveTrueOrderByCreatedAtDesc(student.getId())
-                .ifPresent(existing -> {
-                    existing.setActive(false);
-                    programRepository.save(existing);
-                });
+        deactivateStudentPrograms(student.getId());
 
         WorkoutProgram program = new WorkoutProgram();
         program.setTitle(request.title().trim());
@@ -69,6 +65,132 @@ public class WorkoutProgramService {
         }
 
         return WorkoutProgramResponse.from(programRepository.save(program));
+    }
+
+    @Transactional(readOnly = true)
+    public List<WorkoutProgramResponse> listStudentPrograms(AuthUser student) {
+        User studentUser = requireStudentUser(student);
+        return programRepository.findVisibleByStudentId(studentUser.getId()).stream()
+                .map(program -> buildProgramResponse(program, student))
+                .toList();
+    }
+
+    /** Ficha criada pelo próprio aluno: vira a ficha ativa. */
+    @Transactional
+    public WorkoutProgramResponse createOwnProgram(AuthUser student, StudentProgramRequest request) {
+        return createOwnProgram(student, request, null);
+    }
+
+    @Transactional
+    public WorkoutProgramResponse createOwnProgram(AuthUser student, StudentProgramRequest request, String templateKey) {
+        User studentUser = requireStudentUser(student);
+        deactivateStudentPrograms(studentUser.getId());
+
+        WorkoutProgram program = new WorkoutProgram();
+        program.setTitle(request.title().trim());
+        program.setDescription(request.description());
+        program.setStudent(studentUser);
+        program.setTemplateKey(templateKey);
+        for (WorkoutDayRequest dayRequest : request.days()) {
+            program.getDays().add(mapDay(program, dayRequest));
+        }
+        return buildProgramResponse(programRepository.save(program), student);
+    }
+
+    /**
+     * Editar cria uma nova versão e arquiva a anterior: os treinos já feitos
+     * continuam apontando para os dias antigos.
+     */
+    @Transactional
+    public WorkoutProgramResponse updateOwnProgram(AuthUser student, UUID programId, StudentProgramRequest request) {
+        WorkoutProgram existing = requireOwnProgram(student, programId);
+        boolean wasActive = existing.isActive();
+        existing.setArchived(true);
+        existing.setActive(false);
+        programRepository.save(existing);
+
+        User studentUser = existing.getStudent();
+        if (wasActive) {
+            deactivateStudentPrograms(studentUser.getId());
+        }
+        WorkoutProgram program = new WorkoutProgram();
+        program.setTitle(request.title().trim());
+        program.setDescription(request.description());
+        program.setStudent(studentUser);
+        program.setTemplateKey(existing.getTemplateKey());
+        program.setActive(wasActive);
+        for (WorkoutDayRequest dayRequest : request.days()) {
+            program.getDays().add(mapDay(program, dayRequest));
+        }
+        return buildProgramResponse(programRepository.save(program), student);
+    }
+
+    @Transactional
+    public void deleteOwnProgram(AuthUser student, UUID programId) {
+        WorkoutProgram program = requireOwnProgram(student, programId);
+        program.setArchived(true);
+        program.setActive(false);
+        programRepository.save(program);
+    }
+
+    /** Escolhe qual ficha (própria ou da academia) aparece em Musculação. */
+    @Transactional
+    public WorkoutProgramResponse activateProgram(AuthUser student, UUID programId) {
+        User studentUser = requireStudentUser(student);
+        WorkoutProgram program = programRepository.findById(programId)
+                .orElseThrow(() -> new ApiException("Ficha não encontrada"));
+        if (!program.getStudent().getId().equals(studentUser.getId()) || program.isArchived()) {
+            throw new ApiException("Ficha não encontrada");
+        }
+        deactivateStudentPrograms(studentUser.getId());
+        program.setActive(true);
+        return buildProgramResponse(programRepository.save(program), student);
+    }
+
+    private WorkoutProgram requireOwnProgram(AuthUser student, UUID programId) {
+        User studentUser = requireStudentUser(student);
+        WorkoutProgram program = programRepository.findById(programId)
+                .orElseThrow(() -> new ApiException("Ficha não encontrada"));
+        if (!program.getStudent().getId().equals(studentUser.getId()) || program.isArchived()) {
+            throw new ApiException("Ficha não encontrada");
+        }
+        if (!program.isOwnedByStudent()) {
+            throw new ApiException("Esta ficha foi montada pelo seu instrutor e só ele pode alterá-la.");
+        }
+        return program;
+    }
+
+    private void deactivateStudentPrograms(UUID studentId) {
+        for (WorkoutProgram active : programRepository.findByStudentIdAndActiveTrue(studentId)) {
+            active.setActive(false);
+            programRepository.save(active);
+        }
+    }
+
+    private User requireStudentUser(AuthUser student) {
+        User user = userRepository.findById(student.getId())
+                .orElseThrow(() -> new ApiException("Aluno não encontrado"));
+        if (user.getRole() != UserRole.ALUNO) {
+            throw new ApiException("Acesso negado");
+        }
+        tenantService.requireActiveAcademy(user);
+        return user;
+    }
+
+    private static WorkoutDay mapDay(WorkoutProgram program, WorkoutDayRequest dayRequest) {
+        WorkoutDay day = new WorkoutDay();
+        day.setProgram(program);
+        day.setWeekDay(dayRequest.weekDay());
+        day.setMuscleGroup(dayRequest.muscleGroup());
+        day.setNotes(dayRequest.notes());
+        day.setRestDay(dayRequest.restDay());
+        day.setSortOrder(dayRequest.sortOrder());
+        if (!dayRequest.restDay() && dayRequest.exercises() != null) {
+            for (ExerciseRequest exerciseRequest : dayRequest.exercises()) {
+                day.getExercises().add(mapExercise(day, exerciseRequest));
+            }
+        }
+        return day;
     }
 
     @Transactional(readOnly = true)
@@ -364,7 +486,8 @@ public class WorkoutProgramService {
         if (user.getRole() == UserRole.ALUNO && !program.getStudent().getId().equals(user.getId())) {
             throw new ApiException("Acesso negado");
         }
-        if (user.getRole() == UserRole.INSTRUTOR && !program.getInstructor().getId().equals(user.getId())) {
+        if (user.getRole() == UserRole.INSTRUTOR
+                && (program.getInstructor() == null || !program.getInstructor().getId().equals(user.getId()))) {
             throw new ApiException("Acesso negado");
         }
     }

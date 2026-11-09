@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
 import 'login_screen.dart';
+import 'my_programs_screen.dart';
+import 'templates_screen.dart';
 import 'workout_day_screen.dart';
 
 class WorkoutsScreen extends StatefulWidget {
@@ -42,7 +44,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
         _stats = results[1] as StudentStats;
         _loading = false;
         if (_program == null) {
-          _error = 'Nenhuma ficha semanal ativa';
+          _error = 'Você ainda não tem um treino ativo. Monte o seu ou escolha um treino pronto.';
         }
       });
     } on SessionExpiredException {
@@ -58,6 +60,13 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
         _error = e.toString();
       });
     }
+  }
+
+  Future<void> _openMyPrograms() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MyProgramsScreen()),
+    );
+    if (mounted) _load(silent: true);
   }
 
   Future<void> _openDay(WorkoutDay day) async {
@@ -77,6 +86,12 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
       appBar: AppBar(
         title: const Text('Musculação'),
         actions: [
+          IconButton(
+            key: const Key('open-my-programs'),
+            tooltip: 'Meus treinos',
+            onPressed: _loading ? null : _openMyPrograms,
+            icon: const Icon(Icons.list_alt_rounded),
+          ),
           IconButton(
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -139,10 +154,33 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.white24, style: BorderStyle.solid),
                       ),
-                      child: Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white54),
+                      child: Column(
+                        children: [
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white54),
+                          ),
+                          if (_program == null) ...[
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
+                                );
+                                if (mounted) _load(silent: true);
+                              },
+                              icon: const Icon(Icons.auto_awesome_rounded),
+                              label: const Text('Ver treinos prontos'),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _openMyPrograms,
+                              icon: const Icon(Icons.edit_note_rounded),
+                              label: const Text('Montar meu treino'),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   if (_program != null)

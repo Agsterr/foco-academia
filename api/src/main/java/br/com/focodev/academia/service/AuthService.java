@@ -37,9 +37,37 @@ public class AuthService {
     @Value("${app.jwt.refresh-grace-days:30}")
     private long refreshGraceDays;
 
+    /** Cadastro público só de aluno avulso (sem academia). Instrutor e academia são criados pelo admin. */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        throw new ApiException("Cadastro público desativado. Peça ao instrutor ou administrador para criar sua conta.");
+        if (request.role() != null && request.role() != UserRole.ALUNO) {
+            throw new ApiException("Cadastro público disponível apenas para alunos.");
+        }
+        String email = request.email().trim().toLowerCase();
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new ApiException("Já existe uma conta com este e-mail. Entre com sua senha.");
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setName(request.name().trim());
+        user.setPhone(request.phone());
+        user.setRole(UserRole.ALUNO);
+        user.setLastLoginAt(Instant.now());
+        user = userRepository.save(user);
+
+        if (request.deviceId() != null && !request.deviceId().isBlank()) {
+            deviceService.registerDevice(
+                    user,
+                    request.deviceId(),
+                    request.deviceLabel(),
+                    request.appClient(),
+                    request.appVersion()
+            );
+        }
+
+        return new AuthResponse(jwtService.generateToken(new AuthUser(user)), UserResponse.from(user));
     }
 
     @Transactional
@@ -55,7 +83,12 @@ public class AuthService {
             throw new ApiException("Conta desativada");
         }
 
-        if (user.getRole() == UserRole.ADMIN) {
+        boolean independentStudent = user.getRole() == UserRole.ALUNO && user.getAcademy() == null;
+        if (independentStudent) {
+            if (request.academySlug() != null && !request.academySlug().isBlank()) {
+                throw new ApiException("Sua conta não é vinculada a uma academia. Deixe o código da academia em branco.");
+            }
+        } else if (user.getRole() == UserRole.ADMIN) {
             if (request.academySlug() != null && !request.academySlug().isBlank()) {
                 throw new ApiException("Administrador da plataforma não usa código de academia");
             }
@@ -113,8 +146,9 @@ public class AuthService {
         tenantService.requireActiveAcademy(user);
 
         AuthUser authUser = new AuthUser(user);
+        boolean missingAcademy = authUser.getAcademyId() == null && authUser.getRole() == UserRole.INSTRUTOR;
         if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)
-                && (authUser.getAcademyId() == null || !authUser.isAcademyActive())) {
+                && (missingAcademy || !authUser.isAcademyActive())) {
             throw new ApiException("Academia desativada ou não vinculada", HttpStatus.FORBIDDEN);
         }
         if ((authUser.getRole() == UserRole.INSTRUTOR || authUser.getRole() == UserRole.ALUNO)

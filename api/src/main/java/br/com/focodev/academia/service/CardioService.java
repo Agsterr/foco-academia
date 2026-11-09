@@ -72,6 +72,33 @@ public class CardioService {
         return toWorkoutResponse(workoutRepository.save(workout));
     }
 
+    /** Treino outdoor que o próprio aluno começou a partir de um treino pronto. */
+    @Transactional
+    public CardioDtos.CardioWorkoutResponse createOwnWorkout(
+            AuthUser student,
+            String title,
+            CardioType type,
+            List<CardioDtos.CardioIntervalDto> intervals
+    ) {
+        User user = requireStudent(student);
+        workoutRepository.findByStudentIdAndActiveTrueOrderByCreatedAtDesc(user.getId())
+                .forEach(w -> {
+                    w.setActive(false);
+                    workoutRepository.save(w);
+                });
+
+        CardioWorkout workout = new CardioWorkout();
+        workout.setStudent(user);
+        workout.setTitle(title);
+        workout.setType(type);
+        try {
+            workout.setIntervalsJson(objectMapper.writeValueAsString(intervals));
+        } catch (JsonProcessingException e) {
+            throw new ApiException("Intervalos inválidos");
+        }
+        return toWorkoutResponse(workoutRepository.save(workout));
+    }
+
     @Transactional
     public CardioDtos.CardioWorkoutResponse updateWorkout(
             AuthUser instructor,
@@ -409,7 +436,7 @@ public class CardioService {
         User instructorUser = tenantService.requireInstructor(instructor);
         CardioWorkout workout = workoutRepository.findById(workoutId)
                 .orElseThrow(() -> new ApiException("Treino outdoor não encontrado"));
-        if (!workout.getInstructor().getId().equals(instructorUser.getId())) {
+        if (workout.getInstructor() == null || !workout.getInstructor().getId().equals(instructorUser.getId())) {
             throw new ApiException("Acesso negado");
         }
         return workout;

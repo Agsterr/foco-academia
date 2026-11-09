@@ -17,6 +17,8 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class DeviceService {
 
+    static final int INDEPENDENT_STUDENT_DEVICE_LIMIT = 3;
+
     private final DeviceSessionRepository deviceSessionRepository;
 
     @Transactional
@@ -40,9 +42,11 @@ public class DeviceService {
         }
 
         Academy academy = user.getAcademy();
-        if (academy == null) {
+        if (academy == null && user.getRole() != UserRole.ALUNO) {
             throw new ApiException("Usuário sem academia vinculada");
         }
+        // Aluno avulso não tem academia que defina o limite de aparelhos.
+        int deviceLimit = academy != null ? academy.getDeviceLimitPerUser() : INDEPENDENT_STUDENT_DEVICE_LIMIT;
 
         String normalizedDeviceId = deviceId.trim();
         String normalizedVersion = normalizeAppVersion(appVersion);
@@ -70,9 +74,9 @@ public class DeviceService {
         }
 
         long count = deviceSessionRepository.countByUserId(user.getId());
-        if (count >= academy.getDeviceLimitPerUser()) {
+        if (count >= deviceLimit) {
             throw new ApiException(
-                    "Limite de " + academy.getDeviceLimitPerUser() + " dispositivos atingido. "
+                    "Limite de " + deviceLimit + " dispositivos atingido. "
                             + "Remova um dispositivo antigo ou peça ao administrador para aumentar o limite."
             );
         }

@@ -62,6 +62,10 @@ public class TenantService {
             return;
         }
         if (user.getAcademy() == null) {
+            // Aluno avulso (conta criada no app, sem academia): usa os próprios treinos.
+            if (user.getRole() == UserRole.ALUNO) {
+                return;
+            }
             throw new ApiException("Usuário sem academia vinculada");
         }
         if (!user.getAcademy().isActive()) {
