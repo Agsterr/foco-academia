@@ -33,6 +33,7 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final DeviceService deviceService;
     private final TenantService tenantService;
+    private final br.com.focodev.academia.billing.BillingService billingService;
 
     @Value("${app.jwt.refresh-grace-days:30}")
     private long refreshGraceDays;
@@ -56,6 +57,7 @@ public class AuthService {
         user.setRole(UserRole.ALUNO);
         user.setLastLoginAt(Instant.now());
         user = userRepository.save(user);
+        billingService.startTrial(user);
 
         if (request.deviceId() != null && !request.deviceId().isBlank()) {
             deviceService.registerDevice(

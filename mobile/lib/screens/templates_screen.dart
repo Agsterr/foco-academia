@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/workout_service.dart';
 import 'cardio_screen.dart';
 import 'login_screen.dart';
+import 'premium_screen.dart';
 import 'workouts_screen.dart';
 
 /// Treinos prontos por modalidade (musculação, corrida, spinning, bike) e nível.
@@ -103,6 +104,12 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         MaterialPageRoute(
           builder: (_) => kind == 'CARDIO' ? const CardioScreen() : const WorkoutsScreen(),
         ),
+      );
+    } on PaymentRequiredException catch (e) {
+      if (!mounted) return;
+      setState(() => _starting = null);
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => PremiumScreen(reason: e.message)),
       );
     } on SessionExpiredException {
       if (!mounted) return;

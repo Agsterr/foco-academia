@@ -5,6 +5,7 @@ import 'screens/home_screen.dart';
 import 'screens/online_reconnect_screen.dart';
 import 'services/auth_service.dart';
 import 'services/online_auth_gate.dart';
+import 'services/subscription_service.dart';
 import 'services/sync_service.dart';
 import 'presentation/widgets/app_update_listener.dart';
 
@@ -41,6 +42,8 @@ class _BootstrapState extends State<_Bootstrap> {
   @override
   void initState() {
     super.initState();
+    // Compras do Google Play concluídas com o app fechado chegam por aqui.
+    SubscriptionService.instance.listen();
     _bootstrap();
   }
 

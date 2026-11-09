@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/ui/insets.dart';
 import '../data/exercise_library.dart';
+import '../services/auth_service.dart';
 import '../services/workout_service.dart';
+import 'premium_screen.dart';
 
 /// Montagem de ficha própria: dias da semana, exercícios da biblioteca (ou digitados), séries e repetições.
 class ProgramEditorScreen extends StatefulWidget {
@@ -81,6 +83,12 @@ class _ProgramEditorScreenState extends State<ProgramEditorScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pop(true);
+    } on PaymentRequiredException catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => PremiumScreen(reason: e.message)),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);

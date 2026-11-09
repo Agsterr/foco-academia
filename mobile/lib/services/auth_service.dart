@@ -44,6 +44,15 @@ class SecureCredentialStore implements CredentialStore {
   Future<void> deletePassword() => _storage.delete(key: _key);
 }
 
+/// Recurso do Foco Premium sem assinatura ativa (a API responde 402).
+class PaymentRequiredException implements Exception {
+  PaymentRequiredException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   AuthService._();
   static final instance = AuthService._();
@@ -422,6 +431,9 @@ class AuthService {
         body: jsonEncode(body),
       ),
     );
+    if (response.statusCode == 402) {
+      throw PaymentRequiredException(_errorMessage(response, 'Recurso do Foco Premium.'));
+    }
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }

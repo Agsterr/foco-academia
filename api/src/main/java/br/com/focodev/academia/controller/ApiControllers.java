@@ -1,5 +1,7 @@
 package br.com.focodev.academia.controller;
 
+import br.com.focodev.academia.billing.BillingDtos;
+import br.com.focodev.academia.billing.BillingService;
 import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
@@ -35,6 +37,7 @@ public class ApiControllers {
     private final AcademiaService academiaService;
     private final WorkoutProgramService workoutProgramService;
     private final WorkoutTemplateService workoutTemplateService;
+    private final BillingService billingService;
     private final TenantService tenantService;
     private final StudentProfileService studentProfileService;
     private final CardioService cardioService;
@@ -205,6 +208,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @Valid @RequestBody StudentProgramRequest request
     ) {
+        billingService.requirePremium(user);
         return workoutProgramService.createOwnProgram(user, request);
     }
 
@@ -241,7 +245,30 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @PathVariable String key
     ) {
+        billingService.requirePremium(user);
         return workoutTemplateService.start(user, key);
+    }
+
+    @GetMapping("/student/subscription")
+    public BillingDtos.SubscriptionStatus subscriptionStatus(@AuthenticationPrincipal AuthUser user) {
+        return billingService.status(user);
+    }
+
+    @PostMapping("/student/subscription/google-play")
+    public BillingDtos.SubscriptionStatus googlePlayPurchase(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody BillingDtos.GooglePlayPurchaseRequest request
+    ) {
+        return billingService.applyGooglePlayPurchase(user, request);
+    }
+
+    @PostMapping("/admin/users/{id}/subscription/grant")
+    public ResponseEntity<Void> grantSubscription(
+            @PathVariable UUID id,
+            @Valid @RequestBody BillingDtos.GrantRequest request
+    ) {
+        billingService.grant(id, request.days());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/student/programs/active")
