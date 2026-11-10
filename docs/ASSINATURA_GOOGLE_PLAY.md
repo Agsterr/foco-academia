@@ -9,6 +9,9 @@ Mensalidade da academia: **R$ 149/mês até 100 alunos, instrutores ilimitados**
 (`ACADEMY_MONTHLY_PRICE` / `ACADEMY_INCLUDED_STUDENTS` no `.env`). O painel admin mostra o plano
 e avisa quando a academia passa do limite. A cobrança da academia é feita fora do app (Pix/boleto).
 
+Personal autônomo (instrutor que trabalha sozinho): **R$ 39,90/mês até 30 alunos**
+(`PERSONAL_MONTHLY_PRICE` / `PERSONAL_INCLUDED_STUDENTS`), cobrado do mesmo jeito.
+
 ## O que é premium
 
 - **Aluno de academia:** tudo liberado (a academia paga). Não vê cobrança.

@@ -198,6 +198,8 @@ class ManagerIntegrationTest {
         mockMvc.perform(get("/api/manager/dashboard").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.personal").value(true))
+                .andExpect(jsonPath("$.planMonthlyPrice").value(39.9))
+                .andExpect(jsonPath("$.planIncludedStudents").value(30))
                 .andExpect(jsonPath("$.instructors").value(1))
                 .andExpect(jsonPath("$.students").value(1));
         mockMvc.perform(get("/api/manager/access").header("Authorization", "Bearer " + token))

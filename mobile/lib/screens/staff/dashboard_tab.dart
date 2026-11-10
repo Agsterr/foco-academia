@@ -470,7 +470,7 @@ class _PlanCard extends StatelessWidget {
       child: ListTile(
         leading: Icon(over ? Icons.warning_amber_rounded : Icons.workspace_premium_rounded,
             color: over ? Colors.amber : Theme.of(context).colorScheme.primary),
-        title: const Text('Plano da academia'),
+        title: Text(d.personal ? 'Seu plano de personal' : 'Plano da academia'),
         subtitle: Text(
           '$price${d.students} de ${d.planIncludedStudents} alunos incluídos'
           '${over ? '\nVocê passou do limite do plano. Fale com a Foco para ajustar.' : ''}',

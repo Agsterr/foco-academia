@@ -188,8 +188,8 @@ public class AdminService {
         long instructors = userRepository.countByAcademyIdAndRole(academy.getId(), UserRole.INSTRUTOR);
         long students = userRepository.countByAcademyIdAndRole(academy.getId(), UserRole.ALUNO);
         return AcademyResponse.from(academy, instructors, students,
-                billingProperties.academyMonthlyPriceOrDefault(),
-                billingProperties.academyIncludedStudentsOrDefault());
+                billingProperties.planMonthlyPrice(academy),
+                billingProperties.planIncludedStudents(academy));
     }
 
     private AdminUserResponse toAdminUser(User user) {

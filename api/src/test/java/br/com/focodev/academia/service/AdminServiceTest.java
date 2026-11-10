@@ -35,7 +35,7 @@ class AdminServiceTest {
     @org.mockito.Spy
     br.com.focodev.academia.billing.BillingProperties billingProperties =
             new br.com.focodev.academia.billing.BillingProperties(
-                    false, null, null, null, null, new java.math.BigDecimal("149.00"), 100);
+                    false, null, null, null, null, new java.math.BigDecimal("149.00"), 100, null, null);
 
     @InjectMocks AdminService adminService;
 

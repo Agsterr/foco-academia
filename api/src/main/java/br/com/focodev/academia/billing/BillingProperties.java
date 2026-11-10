@@ -15,6 +15,8 @@ import java.util.List;
  * @param googleServiceAccountJson JSON da conta de serviço com acesso à Google Play Developer API
  * @param academyMonthlyPrice     mensalidade da academia (R$), inclui todos os instrutores
  * @param academyIncludedStudents alunos incluídos na mensalidade da academia
+ * @param personalMonthlyPrice     mensalidade do personal autônomo (R$)
+ * @param personalIncludedStudents alunos incluídos na mensalidade do personal
  */
 @ConfigurationProperties(prefix = "app.billing")
 public record BillingProperties(
@@ -24,8 +26,25 @@ public record BillingProperties(
         String googlePackageName,
         String googleServiceAccountJson,
         java.math.BigDecimal academyMonthlyPrice,
-        Integer academyIncludedStudents
+        Integer academyIncludedStudents,
+        java.math.BigDecimal personalMonthlyPrice,
+        Integer personalIncludedStudents
 ) {
+    /** Mensalidade conforme o tipo: academia ou personal autônomo. */
+    public java.math.BigDecimal planMonthlyPrice(br.com.focodev.academia.domain.Academy academy) {
+        if (academy.isPersonal()) {
+            return personalMonthlyPrice != null ? personalMonthlyPrice : new java.math.BigDecimal("39.90");
+        }
+        return academyMonthlyPriceOrDefault();
+    }
+
+    public int planIncludedStudents(br.com.focodev.academia.domain.Academy academy) {
+        if (academy.isPersonal()) {
+            return personalIncludedStudents != null ? personalIncludedStudents : 30;
+        }
+        return academyIncludedStudentsOrDefault();
+    }
+
     public java.math.BigDecimal academyMonthlyPriceOrDefault() {
         return academyMonthlyPrice != null ? academyMonthlyPrice : new java.math.BigDecimal("149.00");
     }
