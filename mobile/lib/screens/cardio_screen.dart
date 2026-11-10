@@ -2602,17 +2602,23 @@ class _MapHud extends StatelessWidget {
               child: FilledButton.tonal(
                 onPressed: onPause,
                 style: FilledButton.styleFrom(
-                  backgroundColor:
-                      paused ? Colors.green.shade800 : Colors.orange.shade800,
+                  backgroundColor: paused ? AppTheme.green : AppTheme.orange,
                   foregroundColor: Colors.white,
                 ),
                 child: Text(paused ? 'Retomar' : 'Pausar'),
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Toque em ⊞ para voltar às estatísticas completas',
-              style: TextStyle(color: Colors.white38, fontSize: 10),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.fullscreen_exit_rounded, color: Colors.white38, size: 14),
+                SizedBox(width: 4),
+                Text(
+                  'Minimize o mapa para ver as estatísticas completas',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
             ),
           ],
         ),

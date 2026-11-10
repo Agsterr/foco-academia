@@ -82,8 +82,21 @@ class RouteMapView extends StatefulWidget {
 
 class _RouteMapViewState extends State<RouteMapView> {
   static const _fallbackCenter = LatLng(-23.5505, -46.6333);
-  static const _trailColor = Color(0xFFFC4C02);
-  static const _mapBg = AppTheme.surfaceHigh;
+  static const _mapBg = AppTheme.background;
+
+  /// Gradiente neon da rota: começa azul e termina laranja (início → fim do percurso).
+  static const _trailGradient = [AppTheme.cyan, AppTheme.violet, AppTheme.pink, AppTheme.orange];
+
+  /// Inverte as cores do mapa e gira o matiz 180° (ruas claras sobre fundo escuro).
+  static const _darkMapFilter = ColorFilter.matrix(<double>[
+    0.574, -1.430, -0.144, 0, 255,
+    -0.426, -0.430, -0.144, 0, 255,
+    -0.426, -1.430, 0.856, 0, 255,
+    0, 0, 0, 1, 0,
+  ]);
+
+  /// Fundo translúcido dos quadros sobre o mapa (legenda, avisos, botões).
+  static const _glass = Color(0xD915142B);
 
   final _mapController = MapController();
   LatLng? _lastFollowed;
@@ -203,25 +216,44 @@ class _RouteMapViewState extends State<RouteMapView> {
   List<Polyline> _buildPolylines(List<LatLng> flat) {
     if (_useLaps) {
       return [
+        // Brilho embaixo de cada volta.
         for (final lap in widget.laps)
           if (lap.points.length >= 2)
             Polyline(
               points: lap.points.map((p) => p.latLng).toList(),
-              strokeWidth: lap.lapNumber == widget.laps.last.lapNumber ? 6 : 4.5,
+              strokeWidth: 16,
+              color: Color(LapDetectorService.colorForLap(lap.lapNumber)).withValues(alpha: 0.22),
+            ),
+        for (final lap in widget.laps)
+          if (lap.points.length >= 2)
+            Polyline(
+              points: lap.points.map((p) => p.latLng).toList(),
+              strokeWidth: lap.lapNumber == widget.laps.last.lapNumber ? 6.5 : 5,
               color: Color(LapDetectorService.colorForLap(lap.lapNumber)),
               borderStrokeWidth: 1.5,
-              borderColor: Colors.white,
+              borderColor: const Color(0xCC0B0A1A),
             ),
       ];
     }
     if (flat.length >= 2) {
       return [
+        // Brilho neon largo e translúcido, com a linha principal em gradiente por cima.
         Polyline(
           points: flat,
-          strokeWidth: 5,
-          color: _trailColor,
-          borderStrokeWidth: 2,
-          borderColor: Colors.white,
+          strokeWidth: 18,
+          color: AppTheme.violet.withValues(alpha: 0.18),
+        ),
+        Polyline(
+          points: flat,
+          strokeWidth: 10,
+          gradientColors: [for (final c in _trailGradient) c.withValues(alpha: 0.35)],
+        ),
+        Polyline(
+          points: flat,
+          strokeWidth: 5.5,
+          gradientColors: _trailGradient,
+          borderStrokeWidth: 1.2,
+          borderColor: const Color(0xCC0B0A1A),
         ),
       ];
     }
@@ -244,30 +276,33 @@ class _RouteMapViewState extends State<RouteMapView> {
         child: Stack(
           alignment: Alignment.center,
           children: [
+            // Halo em volta da posição atual.
             Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(
-                color: Color(0x334285F4),
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-              ),
-            ),
-            if (heading != null)
-              const Icon(
-                Icons.navigation,
-                color: Color(0xFF4285F4),
-                size: 28,
-              )
-            else
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4285F4),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2.5),
+                gradient: RadialGradient(
+                  colors: [AppTheme.cyan.withValues(alpha: 0.45), AppTheme.cyan.withValues(alpha: 0)],
                 ),
               ),
+            ),
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [AppTheme.cyan, AppTheme.violet],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: Colors.white, width: 2.5),
+              ),
+              child: heading != null
+                  ? const Icon(Icons.navigation_rounded, color: Colors.white, size: 15)
+                  : null,
+            ),
           ],
         ),
       ),
@@ -300,33 +335,41 @@ class _RouteMapViewState extends State<RouteMapView> {
         ),
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.focodev.academia.aluno',
-          maxNativeZoom: 19,
+        // Mapa escuro (um filtro só sobre a camada inteira, mais leve que filtrar cada bloco):
+        // a rota neon chama mais atenção.
+        ColorFiltered(
+          colorFilter: _darkMapFilter,
+          child: TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.focodev.academia.aluno',
+            maxNativeZoom: 19,
+          ),
         ),
+        // Leve tom violeta da marca sobre o mapa.
+        IgnorePointer(child: ColoredBox(color: AppTheme.brandDeep.withValues(alpha: 0.10))),
         if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
         MarkerLayer(
           markers: [
             if (latLngs.isNotEmpty && latLngs.length >= 2)
               Marker(
                 point: latLngs.first,
-                width: 18,
-                height: 18,
+                width: 28,
+                height: 28,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E),
+                    gradient: AppTheme.freshGradient,
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
+                  child: const Icon(Icons.flag_rounded, color: Colors.white, size: 15),
                 ),
               ),
             if (live != null) _buildLiveMarker(live),
             if (live == null && latLngs.isNotEmpty)
               Marker(
                 point: latLngs.last,
-                width: 28,
-                height: 28,
+                width: 32,
+                height: 32,
                 child: Container(
                   decoration: BoxDecoration(
                     color: _useLaps
@@ -335,10 +378,12 @@ class _RouteMapViewState extends State<RouteMapView> {
                               widget.laps.last.lapNumber,
                             ),
                           )
-                        : _trailColor,
+                        : null,
+                    gradient: _useLaps ? null : AppTheme.fireGradient,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
+                    border: Border.all(color: Colors.white, width: 2.5),
                   ),
+                  child: const Icon(Icons.sports_score_rounded, color: Colors.white, size: 17),
                 ),
               ),
           ],
@@ -357,8 +402,8 @@ class _RouteMapViewState extends State<RouteMapView> {
             top: 8,
             left: 8,
             child: Material(
-              color: const Color(0xCC0F172A),
-              borderRadius: BorderRadius.circular(8),
+              color: _glass,
+              borderRadius: BorderRadius.circular(14),
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -479,8 +524,8 @@ class _RouteMapViewState extends State<RouteMapView> {
             right: 10,
             bottom: 10,
             child: Material(
-              color: const Color(0xCC0F172A),
-              borderRadius: BorderRadius.circular(8),
+              color: _glass,
+              borderRadius: BorderRadius.circular(14),
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -497,13 +542,17 @@ class _RouteMapViewState extends State<RouteMapView> {
             left: 10,
             bottom: status != null && status.isNotEmpty ? 44 : 10,
             child: Material(
-              color: const Color(0x990F172A),
-              borderRadius: BorderRadius.circular(6),
+              color: _glass,
+              borderRadius: BorderRadius.circular(10),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Text(
-                  'Botão ⊞ para mapa grande',
-                  style: TextStyle(color: Colors.white60, fontSize: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.fullscreen_rounded, color: Colors.white70, size: 14),
+                    SizedBox(width: 4),
+                    Text('Mapa em tela cheia', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                  ],
                 ),
               ),
             ),
@@ -522,8 +571,8 @@ class _RouteMapViewState extends State<RouteMapView> {
       height: widget.height,
       width: double.infinity,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.outline),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.violet.withValues(alpha: 0.45), width: 1.4),
         color: _mapBg,
       ),
       clipBehavior: Clip.antiAlias,
@@ -548,8 +597,8 @@ class _MapFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: active ? const Color(0xE02563EB) : const Color(0xCC0F172A),
-      shape: const CircleBorder(),
+      color: active ? AppTheme.brand : _RouteMapViewState._glass,
+      shape: const CircleBorder(side: BorderSide(color: Color(0x33FFFFFF))),
       child: IconButton(
         tooltip: tooltip,
         iconSize: 22,

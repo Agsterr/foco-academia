@@ -37,7 +37,8 @@ const _fontDir = String.fromEnvironment('FONT_DIR');
 const _outDir = String.fromEnvironment('SHOTS_DIR', defaultValue: 'build/play_store');
 
 /// 1080 × 1920 (9:16), dentro do que a Play Store aceita para celular.
-const _physical = Size(1080, 1920);
+/// O site usa telas mais altas (`--dart-define=SHOT_HEIGHT=2250`).
+const _physical = Size(1080, int.fromEnvironment('SHOT_HEIGHT', defaultValue: 1920) * 1.0);
 const _dpr = 2.625;
 
 Future<void> _loadFonts() async {
