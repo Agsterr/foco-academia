@@ -6,6 +6,7 @@ Prontas para enviar em **Play Console → Presença na loja → Página principa
 |---|---|
 | `celular_01_inicio.png` … `celular_08_cadastro.png` | Capturas de tela do **telefone** (1080 × 1920, 9:16). A loja aceita de 2 a 8; a ordem do nome é a ordem sugerida. |
 | `banner_1024x500.png` | **Gráfico de recursos** (obrigatório, 1024 × 500). |
+| `icone_512.png` | **Ícone do app** (obrigatório, 512 × 512, PNG). Vai quadrado: a loja arredonda os cantos sozinha. |
 
 As telas são do app de verdade (tema novo), com dados de demonstração.
 
