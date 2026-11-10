@@ -21,6 +21,10 @@ jobs:
     name: Build APK e publicar
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # O Cloudflare (Bot Fight Mode) devolve 403 para IPs do GitHub Actions.
+      # Por isso a API é acessada por túnel SSH até o nginx do Hetzner.
+      API_URL: http://127.0.0.1:18088
 
     steps:
       - name: Checkout
@@ -29,9 +33,27 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - name: Aguardar API
+      - name: Abrir túnel SSH para a API
         env:
-          API_URL: https://academia.focodev.com.br
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HETZNER_SSH_KEY" ] || [ -z "$HETZNER_HOST" ]; then
+            echo "Defina HETZNER_SSH_KEY e HETZNER_HOST nos secrets do repositorio."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$HETZNER_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HETZNER_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -f -N -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=40 -o TCPKeepAlive=yes \
+            -L 18088:127.0.0.1:8088 "${HETZNER_USER:-root}@${HETZNER_HOST}"
+          echo "Túnel SSH aberto em 127.0.0.1:18088 -> servidor:8088"
+
+      - name: Aguardar API
         run: |
           for i in $(seq 1 30); do
             if curl -fsS "${API_URL}/api/health" >/dev/null; then
@@ -47,8 +69,6 @@ jobs:
       - name: Ajustar versionCode
         id: version
         working-directory: mobile
-        env:
-          API_URL: https://academia.focodev.com.br
         run: |
           set -euo pipefail
           VERSION_LINE=$(grep '^version:' pubspec.yaml | awk '{print $2}')
@@ -130,7 +150,6 @@ jobs:
 
       - name: Publicar APK na API
         env:
-          API_URL: https://academia.focodev.com.br
           DEPLOY_TOKEN: ${{ secrets.APP_RELEASE_DEPLOY_TOKEN }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
@@ -170,7 +189,6 @@ jobs:
 
       - name: Verificar versão publicada
         env:
-          API_URL: https://academia.focodev.com.br
           VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           RESP=$(curl -fsS "${API_URL}/api/app/version")
