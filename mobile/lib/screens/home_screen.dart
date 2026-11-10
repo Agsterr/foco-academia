@@ -21,6 +21,8 @@ import 'workouts_screen.dart';
 import 'premium_screen.dart';
 import 'templates_screen.dart';
 import '../services/subscription_service.dart';
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -178,18 +180,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Escondido nas capturas da Play Store (`--dart-define=PLAY_SCREENSHOTS=true`).
+  static const _screenshotMode = bool.fromEnvironment('PLAY_SCREENSHOTS');
+
+  Future<void> _open(Widget screen, {bool reloadStats = false}) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    if (reloadStats) {
+      await _checkActiveRun();
+      await _loadTodayStats();
+    }
+  }
+
+  String get _greeting {
+    final hour = DateTime.now().hour;
+    final part = hour < 12 ? 'Bom dia' : (hour < 18 ? 'Boa tarde' : 'Boa noite');
+    final name = AuthService.instance.userName?.trim().split(' ').first;
+    return name == null || name.isEmpty ? part : '$part, $name';
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Foco Academia'),
+        titleSpacing: 16,
+        title: const Row(
+          children: [
+            IconBadge(icon: Icons.fitness_center_rounded, gradient: AppTheme.brandGradient, size: 34, glow: false),
+            SizedBox(width: 10),
+            Text('Foco Academia'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Sincronizar',
             onPressed: _sync,
-            icon: const Icon(Icons.sync),
+            icon: const Icon(Icons.sync_rounded),
           ),
           IconButton(
             tooltip: 'Sair',
@@ -198,166 +225,152 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (!context.mounted) return;
               await _goToLogin();
             },
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),
       body: SafeArea(
         child: ListView(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + bottomInset),
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + bottomInset),
           children: [
+            Text(_greeting, style: Theme.of(context).textTheme.headlineSmall),
+            const Text('Bora treinar? Escolha o que vai fazer hoje.', style: TextStyle(color: AppTheme.muted)),
+            const SizedBox(height: 16),
             _TodaySummaryCard(
               caloriesToday: _caloriesToday,
               kmToday: _kmToday,
               minutesToday: _minutesToday,
               totalKm: _totalKm,
             ),
-            const SizedBox(height: 10),
             if (_hasActiveRun) ...[
-              _MenuCard(
-                color: const Color(0xFF14532D),
-                icon: Icons.restore,
-                iconColor: Colors.lightGreenAccent,
+              const SizedBox(height: 12),
+              VibrantTile(
+                icon: Icons.restore_rounded,
+                gradient: AppTheme.freshGradient,
                 title: 'Corrida interrompida',
                 subtitle: 'Toque para retomar o rastreamento GPS',
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const CardioScreen(autoResume: true),
-                    ),
-                  );
-                  await _checkActiveRun();
-                  await _loadTodayStats();
-                },
+                onTap: () => _open(const CardioScreen(autoResume: true), reloadStats: true),
               ),
-              const SizedBox(height: 8),
             ],
-            _MenuCard(
-              icon: Icons.person_outline,
-              title: 'Perfil físico',
-              subtitle: 'Peso, altura, idade e objetivo',
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                );
-                await _loadTodayStats();
-              },
+            const SectionHeader('Treinar'),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.3,
+              children: [
+                FeatureTile(
+                  icon: Icons.fitness_center_rounded,
+                  gradient: AppTheme.fireGradient,
+                  title: 'Musculação',
+                  subtitle: 'Ficha da semana, séries e calorias',
+                  onTap: () => _open(const WorkoutsScreen(), reloadStats: true),
+                ),
+                FeatureTile(
+                  icon: Icons.directions_run_rounded,
+                  gradient: AppTheme.freshGradient,
+                  title: 'Treino outdoor',
+                  subtitle: 'GPS, ritmo, splits e voz',
+                  onTap: () => _open(const CardioScreen(), reloadStats: true),
+                ),
+                FeatureTile(
+                  icon: Icons.auto_awesome_rounded,
+                  gradient: AppTheme.berryGradient,
+                  title: 'Treinos prontos',
+                  subtitle: 'Musculação, corrida, spinning e bike',
+                  onTap: () => _open(const TemplatesScreen(), reloadStats: true),
+                ),
+                FeatureTile(
+                  icon: Icons.map_rounded,
+                  gradient: AppTheme.oceanGradient,
+                  title: 'Histórico',
+                  subtitle: 'Calendário, rotas e replay',
+                  onTap: () => _open(const CardioHistoryScreen()),
+                ),
+                FeatureTile(
+                  icon: Icons.insights_rounded,
+                  gradient: AppTheme.goldGradient,
+                  title: 'Estatísticas',
+                  subtitle: 'Calorias, km e rankings',
+                  onTap: () => _open(const CalorieStatsScreen()),
+                ),
+                FeatureTile(
+                  icon: Icons.monitor_weight_rounded,
+                  gradient: AppTheme.nightGradient,
+                  title: 'Evolução',
+                  subtitle: 'Peso, gráfico e balança',
+                  onTap: () => _open(const WeightScreen()),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.bar_chart,
-              title: 'Estatísticas',
-              subtitle: 'Calorias, km, rankings e períodos',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CalorieStatsScreen()),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.monitor_weight_outlined,
-              title: 'Evolução e peso',
-              subtitle: 'Gráfico, balança Bluetooth e import do relógio',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const WeightScreen()),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.directions_run,
-              title: 'Treino outdoor',
-              subtitle: 'GPS, ritmo, calorias, splits e backup',
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CardioScreen()),
-                );
-                await _checkActiveRun();
-                await _loadTodayStats();
-              },
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.history,
-              title: 'Histórico e Replay',
-              subtitle: 'Calendário Seg–Dom, constância e rotas',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CardioHistoryScreen()),
-              ),
-            ),
-            if (kDebugMode) ...[
-              const SizedBox(height: 8),
-              _MenuCard(
-                icon: Icons.bug_report_outlined,
-                title: 'Debug GPS',
-                subtitle: 'Telemetria para testes de campo (dev)',
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const GpsDebugScreen()),
+            if (_subscription != null && !_subscription!.viaAcademy) ...[
+              const SizedBox(height: 16),
+              HeroCard(
+                key: const Key('premium-card'),
+                gradient: AppTheme.goldGradient,
+                padding: const EdgeInsets.all(18),
+                onTap: () async {
+                  await _open(const PremiumScreen());
+                  await _loadSubscription();
+                },
+                child: Row(
+                  children: [
+                    const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 40),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Foco Premium',
+                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                          Text(_subscription!.summary, style: const TextStyle(color: Colors.white)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
+                  ],
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.sync,
+            const SectionHeader('Sua conta', gradient: AppTheme.oceanGradient),
+            VibrantTile(
+              icon: Icons.person_rounded,
+              gradient: AppTheme.berryGradient,
+              title: 'Perfil físico',
+              subtitle: 'Peso, altura, idade e objetivo',
+              onTap: () => _open(const ProfileScreen(), reloadStats: true),
+            ),
+            VibrantTile(
+              icon: Icons.cloud_sync_rounded,
+              gradient: AppTheme.oceanGradient,
               title: 'Sincronizar dados',
-              subtitle: _status.isEmpty
-                  ? 'Toque para enviar dados offline'
-                  : _status,
+              subtitle: _status.isEmpty ? 'Envia o que ficou salvo sem internet' : _status,
               onTap: _sync,
             ),
-            const SizedBox(height: 8),
-            if (_subscription != null && !_subscription!.viaAcademy) ...[
-              _MenuCard(
-                key: const Key('premium-card'),
-                icon: Icons.workspace_premium_rounded,
-                iconColor: Colors.amberAccent,
-                title: 'Foco Premium',
-                subtitle: _subscription!.summary,
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PremiumScreen()),
-                  );
-                  await _loadSubscription();
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-            _MenuCard(
-              icon: Icons.auto_awesome_rounded,
-              iconColor: Colors.amberAccent,
-              title: 'Treinos prontos',
-              subtitle: 'Musculação, corrida, spinning e bike por nível',
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
-                );
-                await _loadTodayStats();
-              },
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: Icons.fitness_center,
-              title: 'Musculação',
-              subtitle: 'Ficha semanal, séries e calorias',
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const WorkoutsScreen()),
-                );
-                await _loadTodayStats();
-              },
-            ),
-            const SizedBox(height: 8),
-            _MenuCard(
-              icon: _checkingUpdate ? null : Icons.system_update,
+            VibrantTile(
+              icon: Icons.system_update_rounded,
+              gradient: AppTheme.freshGradient,
               leading: _checkingUpdate
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      width: 46,
+                      height: 46,
+                      child: Padding(padding: EdgeInsets.all(11), child: CircularProgressIndicator(strokeWidth: 2.4)),
                     )
                   : null,
               title: 'Atualização do app',
               subtitle: 'Versão instalada: $_versionLabel',
               onTap: _checkingUpdate ? null : _checkUpdate,
             ),
+            if (kDebugMode && !_screenshotMode)
+              VibrantTile(
+                icon: Icons.bug_report_rounded,
+                gradient: AppTheme.fireGradient,
+                title: 'Debug GPS',
+                subtitle: 'Telemetria para testes de campo (dev)',
+                onTap: () => _open(const GpsDebugScreen()),
+              ),
             const SizedBox(height: 16),
             Text(
               'v$_versionLabel',
@@ -386,140 +399,75 @@ class _TodaySummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: const Color(0xFF0F172A),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Hoje',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
+    return HeroCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.today_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 6),
+              Text('Hoje', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _StatCell(icon: Icons.local_fire_department_rounded, value: '$caloriesToday', label: 'kcal')),
+              Expanded(child: _StatCell(icon: Icons.route_rounded, value: _decimal(kmToday), label: 'km')),
+              Expanded(child: _StatCell(icon: Icons.timer_rounded, value: '$minutesToday', label: 'min')),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(height: 10),
-            Row(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: _StatCell(
-                    value: '$caloriesToday',
-                    label: 'kcal',
-                    labelColor: Colors.orangeAccent,
-                  ),
-                ),
-                Expanded(
-                  child: _StatCell(
-                    value: kmToday.toStringAsFixed(1),
-                    label: 'km hoje',
-                    labelColor: Colors.lightBlueAccent,
-                  ),
-                ),
-                Expanded(
-                  child: _StatCell(
-                    value: '$minutesToday',
-                    label: 'min',
-                    labelColor: Colors.amberAccent,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.route, size: 16, color: Colors.tealAccent),
+                const Icon(Icons.emoji_events_rounded, size: 18, color: Colors.white),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    'Total percorrido: ${totalKm.toStringAsFixed(1)} km',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.tealAccent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    'Total percorrido: ${_decimal(totalKm)} km',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'Estimativa MET — atualize o peso no perfil para mais precisão',
-              style: TextStyle(color: Colors.white38, fontSize: 11),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _StatCell extends StatelessWidget {
-  const _StatCell({
-    required this.value,
-    required this.label,
-    required this.labelColor,
-  });
+/// 5.2 → "5,2" (formato brasileiro).
+String _decimal(double value) => value.toStringAsFixed(1).replaceAll('.', ',');
 
+class _StatCell extends StatelessWidget {
+  const _StatCell({required this.icon, required this.value, required this.label});
+
+  final IconData icon;
   final String value;
   final String label;
-  final Color labelColor;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 22),
+        const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
         ),
-        Text(label, style: TextStyle(color: labelColor, fontSize: 12)),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
       ],
-    );
-  }
-}
-
-class _MenuCard extends StatelessWidget {
-  const _MenuCard({
-    super.key,
-    this.icon,
-    this.leading,
-    this.iconColor,
-    this.color,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-  });
-
-  final IconData? icon;
-  final Widget? leading;
-  final Color? iconColor;
-  final Color? color;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      color: color,
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        visualDensity: VisualDensity.compact,
-        leading: leading ??
-            (icon != null ? Icon(icon, color: iconColor) : null),
-        title: Text(title),
-        subtitle: Text(
-          subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
     );
   }
 }

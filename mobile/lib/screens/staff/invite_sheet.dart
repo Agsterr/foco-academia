@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/ui/vibrant.dart';
 import '../../services/staff_service.dart';
 import 'staff_home_screen.dart';
 
@@ -125,13 +126,12 @@ class _CreateInviteSheetState extends State<_CreateInviteSheet> {
           Text(_error!, style: TextStyle(color: scheme.error)),
         ],
         const SizedBox(height: 18),
-        FilledButton.icon(
+        GradientButton(
           key: const Key('create-invite'),
           onPressed: _saving ? null : _create,
-          icon: _saving
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.link_rounded),
-          label: const Text('Gerar link de convite'),
+          loading: _saving,
+          icon: Icons.link_rounded,
+          label: 'Gerar link de convite',
         ),
       ],
     );
@@ -164,6 +164,8 @@ class InviteResult extends StatelessWidget {
             children: [
               Text('Código', style: TextStyle(color: scheme.onSurfaceVariant)),
               const SizedBox(height: 4),
+              const IconBadge(icon: Icons.mark_email_read_rounded, gradient: AppTheme.brandGradient, size: 52),
+              const SizedBox(height: 10),
               SelectableText(
                 invite.formattedCode,
                 key: const Key('invite-code'),
@@ -181,11 +183,12 @@ class InviteResult extends StatelessWidget {
           style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
         ),
         const SizedBox(height: 16),
-        FilledButton.icon(
+        GradientButton(
           key: const Key('share-invite'),
           onPressed: () => shareInvite(invite),
-          icon: const Icon(Icons.send_rounded),
-          label: const Text('Enviar (WhatsApp e outros)'),
+          icon: Icons.send_rounded,
+          gradient: AppTheme.freshGradient,
+          label: 'Enviar (WhatsApp e outros)',
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(

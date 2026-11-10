@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/staff_service.dart';
 import '../login_screen.dart';
@@ -260,6 +261,44 @@ class AsyncListViewState<T> extends State<AsyncListView<T>> {
           ),
         );
       },
+    );
+  }
+}
+
+const _avatarGradients = [
+  AppTheme.brandGradient,
+  AppTheme.fireGradient,
+  AppTheme.oceanGradient,
+  AppTheme.freshGradient,
+  AppTheme.goldGradient,
+  AppTheme.berryGradient,
+  AppTheme.nightGradient,
+];
+
+/// Inicial da pessoa num círculo colorido (a cor vem do nome, sempre a mesma para cada pessoa).
+class PersonAvatar extends StatelessWidget {
+  const PersonAvatar({super.key, required this.name, this.dimmed = false, this.size = 44});
+
+  final String name;
+  final bool dimmed;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = _avatarGradients[name.codeUnits.fold<int>(0, (a, b) => a + b) % _avatarGradients.length];
+    return Opacity(
+      opacity: dimmed ? 0.4 : 1,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(gradient: gradient, shape: BoxShape.circle),
+        child: Center(
+          child: Text(
+            name.isEmpty ? '?' : name.characters.first.toUpperCase(),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.4),
+          ),
+        ),
+      ),
     );
   }
 }

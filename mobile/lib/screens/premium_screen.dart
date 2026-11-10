@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
 import '../core/ui/insets.dart';
 import '../services/subscription_service.dart';
 
@@ -123,16 +124,12 @@ class _PremiumScreenState extends State<PremiumScreen> {
           : ListView(
               padding: scrollablePadding(context, all: 20),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.brandGradient,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
+                HeroCard(
+                  gradient: AppTheme.goldGradient,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 36),
+                      const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 44),
                       const SizedBox(height: 10),
                       const Text(
                         'Treine com um plano',
@@ -151,10 +148,20 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   Text(widget.reason!, style: const TextStyle(color: Colors.amberAccent)),
                 ],
                 const SizedBox(height: 16),
-                for (final (icon, title, subtitle) in _benefits)
+                for (final (i, (icon, title, subtitle)) in _benefits.indexed)
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(icon, color: AppTheme.accent),
+                    leading: IconBadge(
+                      icon: icon,
+                      gradient: const [
+                        AppTheme.fireGradient,
+                        AppTheme.berryGradient,
+                        AppTheme.oceanGradient,
+                        AppTheme.freshGradient,
+                      ][i % 4],
+                      size: 42,
+                      glow: false,
+                    ),
                     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: Text(subtitle),
                   ),
@@ -173,7 +180,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white24),
+                      border: Border.all(color: AppTheme.outline),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: const Text(
@@ -188,7 +195,10 @@ class _PremiumScreenState extends State<PremiumScreen> {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: FilledButton(
                         key: Key('buy-${plan.id}'),
-                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(60),
+                          backgroundColor: plan.yearly ? AppTheme.orange : AppTheme.brand,
+                        ),
                         onPressed: _buying ? null : () => _buy(plan),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,

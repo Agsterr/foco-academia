@@ -132,7 +132,7 @@ class _InstructorsTabState extends State<InstructorsTab> {
         itemBuilder: (context, i, _) => Card(
           child: ListTile(
             onTap: () => _actions(i),
-            leading: CircleAvatar(child: Text(i.name.isEmpty ? '?' : i.name.characters.first.toUpperCase())),
+            leading: PersonAvatar(name: i.name, dimmed: !i.active),
             title: Text(i.active ? i.name : '${i.name} (desativado)'),
             subtitle: Text(
               '${i.students} alunos · ${i.sessions30d} treinos em 30 dias'

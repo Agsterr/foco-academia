@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
+
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
@@ -64,51 +67,51 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                   child: ListView(
                     padding: scrollablePadding(context),
                     children: [
-                      const Text('Quilômetros', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                      const SectionHeader('Quilômetros', gradient: AppTheme.oceanGradient),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _Tile('Total', '${s.totalKm.toStringAsFixed(1)} km')),
+                          Expanded(child: _Tile('Total', '${s.totalKm.toStringAsFixed(1)} km', icon: Icons.route_rounded)),
                           const SizedBox(width: 8),
-                          Expanded(child: _Tile('Hoje', '${s.kmToday.toStringAsFixed(1)} km')),
+                          Expanded(child: _Tile('Hoje', '${s.kmToday.toStringAsFixed(1)} km', icon: Icons.route_rounded)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _Tile('7 dias', '${s.kmLast7Days.toStringAsFixed(1)} km')),
+                          Expanded(child: _Tile('7 dias', '${s.kmLast7Days.toStringAsFixed(1)} km', icon: Icons.route_rounded)),
                           const SizedBox(width: 8),
-                          Expanded(child: _Tile('30 dias', '${s.kmLast30Days.toStringAsFixed(1)} km')),
+                          Expanded(child: _Tile('30 dias', '${s.kmLast30Days.toStringAsFixed(1)} km', icon: Icons.route_rounded)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Expanded(child: _Tile('12 meses', '${s.kmLast12Months.toStringAsFixed(1)} km')),
+                          Expanded(child: _Tile('12 meses', '${s.kmLast12Months.toStringAsFixed(1)} km', icon: Icons.route_rounded)),
                           const SizedBox(width: 8),
-                          Expanded(child: _Tile('Corridas', '${s.cardioSessions}')),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Calorias', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(child: _Tile('Hoje', '${s.caloriesToday} kcal')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _Tile('7 dias', '${s.caloriesLast7Days} kcal')),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(child: _Tile('30 dias', '${s.caloriesLast30Days} kcal')),
-                          const SizedBox(width: 8),
-                          Expanded(child: _Tile('12 meses', '${s.caloriesLast12Months} kcal')),
+                          Expanded(child: _Tile('Corridas', '${s.cardioSessions}', gradient: AppTheme.freshGradient, icon: Icons.directions_run_rounded)),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const Text('Km por dia (7 dias)', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SectionHeader('Calorias', gradient: AppTheme.fireGradient),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _Tile('Hoje', '${s.caloriesToday} kcal', gradient: AppTheme.fireGradient, icon: Icons.local_fire_department_rounded)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _Tile('7 dias', '${s.caloriesLast7Days} kcal', gradient: AppTheme.fireGradient, icon: Icons.local_fire_department_rounded)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _Tile('30 dias', '${s.caloriesLast30Days} kcal', gradient: AppTheme.fireGradient, icon: Icons.local_fire_department_rounded)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _Tile('12 meses', '${s.caloriesLast12Months} kcal', gradient: AppTheme.fireGradient, icon: Icons.local_fire_department_rounded)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const SectionHeader('Km por dia (7 dias)', gradient: AppTheme.oceanGradient),
                       const SizedBox(height: 8),
                       ...s.weekly.map((b) {
                         final maxKm = s.weekly.map((e) => e.km).fold<double>(0, (a, v) => v > a ? v : a);
@@ -125,7 +128,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                                   value: maxKm > 0 ? (b.km / maxKm).clamp(0.0, 1.0) : 0,
                                   minHeight: 10,
                                   borderRadius: BorderRadius.circular(4),
-                                  color: Colors.lightBlueAccent,
+                                  color: AppTheme.cyan,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -142,7 +145,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                         );
                       }),
                       const SizedBox(height: 16),
-                      const Text('Km por mês', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SectionHeader('Km por mês', gradient: AppTheme.brandGradient),
                       const SizedBox(height: 8),
                       ...s.monthly.reversed.take(6).map((b) {
                         final maxKm = s.monthly.map((e) => e.km).fold<double>(0, (a, v) => v > a ? v : a);
@@ -176,7 +179,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                         );
                       }),
                       const SizedBox(height: 16),
-                      const Text('Histórico de distâncias', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SectionHeader('Histórico de distâncias', gradient: AppTheme.freshGradient),
                       const SizedBox(height: 8),
                       if (s.recentDistances.isEmpty)
                         const Text(
@@ -189,9 +192,9 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E1E1E),
+                              color: AppTheme.surface,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.white24),
+                              border: Border.all(color: AppTheme.outline),
                             ),
                             child: Row(
                               children: [
@@ -215,7 +218,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                                       '${r.distanceKm.toStringAsFixed(2)} km',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
-                                        color: Colors.lightBlueAccent,
+                                        color: AppTheme.cyan,
                                       ),
                                     ),
                                     if (r.caloriesKcal != null)
@@ -230,15 +233,15 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
                           ),
                         ),
                       const SizedBox(height: 16),
-                      const Text('Ranking pessoal', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SectionHeader('Ranking pessoal', gradient: AppTheme.goldGradient),
                       const SizedBox(height: 8),
-                      _Tile('Maior distância', '${s.maxDistanceKm.toStringAsFixed(2)} km'),
+                      _Tile('Maior distância', '${s.maxDistanceKm.toStringAsFixed(2)} km', gradient: AppTheme.goldGradient, icon: Icons.route_rounded),
                       const SizedBox(height: 8),
-                      _Tile('Maior gasto calórico', '${s.maxCaloriesSingleSession} kcal'),
+                      _Tile('Maior gasto calórico', '${s.maxCaloriesSingleSession} kcal', gradient: AppTheme.goldGradient, icon: Icons.local_fire_department_rounded),
                       const SizedBox(height: 8),
-                      _Tile('Maior duração', '${s.maxDurationMinutes} min'),
+                      _Tile('Maior duração', '${s.maxDurationMinutes} min', gradient: AppTheme.goldGradient, icon: Icons.timer_rounded),
                       const SizedBox(height: 8),
-                      _Tile('Sequência', '${s.currentStreakDays} dias'),
+                      _Tile('Sequência', '${s.currentStreakDays} dias', gradient: AppTheme.goldGradient, icon: Icons.bolt_rounded),
                       const SizedBox(height: 12),
                       Text(
                         s.estimateDisclaimer,
@@ -252,27 +255,43 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile(this.label, this.value);
+  const _Tile(this.label, this.value, {this.gradient = AppTheme.oceanGradient, this.icon});
 
   final String label;
   final String value;
+  final Gradient gradient;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
+    final glow = AppTheme.glowOf(gradient);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white24),
+        gradient: LinearGradient(
+          colors: [glow.withValues(alpha: 0.22), AppTheme.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: glow.withValues(alpha: 0.35)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          if (icon != null) ...[
+            Icon(icon, color: glow, size: 22),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: AppTheme.muted, fontSize: 12)),
+                Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
         ],
       ),
     );

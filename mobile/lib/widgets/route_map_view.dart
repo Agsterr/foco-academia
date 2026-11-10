@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -82,7 +83,7 @@ class RouteMapView extends StatefulWidget {
 class _RouteMapViewState extends State<RouteMapView> {
   static const _fallbackCenter = LatLng(-23.5505, -46.6333);
   static const _trailColor = Color(0xFFFC4C02);
-  static const _mapBg = Color(0xFF1E293B);
+  static const _mapBg = AppTheme.surfaceHigh;
 
   final _mapController = MapController();
   LatLng? _lastFollowed;
@@ -522,7 +523,7 @@ class _RouteMapViewState extends State<RouteMapView> {
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
+        border: Border.all(color: AppTheme.outline),
         color: _mapBg,
       ),
       clipBehavior: Clip.antiAlias,
