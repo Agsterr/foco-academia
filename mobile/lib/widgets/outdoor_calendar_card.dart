@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 
 import '../services/outdoor_consistency.dart';
 
@@ -22,7 +23,7 @@ class OutdoorCalendarCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
@@ -119,7 +120,7 @@ class OutdoorCalendarCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: selected
                             ? const Color(0xFF1E3A5F)
-                            : const Color(0xFF121212),
+                            : AppTheme.surface,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: selected
@@ -229,7 +230,7 @@ class _WeekDayCell extends StatelessWidget {
       bg = const Color(0xFF1E3A5F);
       fg = Colors.lightBlueAccent;
     } else {
-      bg = const Color(0xFF27272A);
+      bg = AppTheme.surfaceHigh;
       fg = Colors.white38;
     }
 
@@ -380,7 +381,7 @@ class _MiniStat extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF121212),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(

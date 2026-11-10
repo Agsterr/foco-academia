@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -1806,7 +1807,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       },
       child: Scaffold(
       resizeToAvoidBottomInset: true,
-      backgroundColor: expanded ? const Color(0xFF1E293B) : null,
+      backgroundColor: expanded ? AppTheme.surfaceHigh : null,
       appBar: expanded
           ? null
           : AppBar(
@@ -2078,7 +2079,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.white24),
+                                border: Border.all(color: AppTheme.outline),
                               ),
                               child: Text(
                                 _running
@@ -2266,6 +2267,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           child: FilledButton(
                             key: const Key('outdoor-start-button'),
                             style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.green,
+                              foregroundColor: const Color(0xFF052E1B),
                               minimumSize: const Size.fromHeight(48),
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
@@ -2289,8 +2292,8 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                           child: FilledButton(
                             style: FilledButton.styleFrom(
                               backgroundColor: _manualPaused
-                                  ? Colors.green
-                                  : Colors.orange,
+                                  ? AppTheme.green
+                                  : AppTheme.orange,
                               minimumSize: const Size.fromHeight(48),
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
@@ -2306,7 +2309,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                         Expanded(
                           child: FilledButton(
                             style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red,
+                              backgroundColor: AppTheme.red,
                               minimumSize: const Size.fromHeight(48),
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
@@ -2330,7 +2333,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
                 if (expanded)
                   Positioned.fill(
                     child: Material(
-                      color: const Color(0xFF1E293B),
+                      color: AppTheme.surfaceHigh,
                       child: RouteMapView(
                         key: _routeMapKey,
                         points: mapPoints,
@@ -2599,17 +2602,23 @@ class _MapHud extends StatelessWidget {
               child: FilledButton.tonal(
                 onPressed: onPause,
                 style: FilledButton.styleFrom(
-                  backgroundColor:
-                      paused ? Colors.green.shade800 : Colors.orange.shade800,
+                  backgroundColor: paused ? AppTheme.green : AppTheme.orange,
                   foregroundColor: Colors.white,
                 ),
                 child: Text(paused ? 'Retomar' : 'Pausar'),
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Toque em ⊞ para voltar às estatísticas completas',
-              style: TextStyle(color: Colors.white38, fontSize: 10),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.fullscreen_exit_rounded, color: Colors.white38, size: 14),
+                SizedBox(width: 4),
+                Text(
+                  'Minimize o mapa para ver as estatísticas completas',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ],
             ),
           ],
         ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
 import '../services/auth_service.dart';
 import 'app_home.dart';
 import 'staff/staff_home_screen.dart' show friendlyError;
@@ -194,16 +194,12 @@ class _InviteScreenState extends State<InviteScreen> {
                         ),
                       ],
                       const SizedBox(height: 18),
-                      FilledButton(
+                      GradientButton(
                         key: const Key('invite-accept'),
                         onPressed: _loading ? null : _accept,
-                        child: _loading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                              )
-                            : Text(_hasAccount ? 'Vincular minha conta' : 'Aceitar convite'),
+                        loading: _loading,
+                        icon: _hasAccount ? Icons.link_rounded : Icons.celebration_rounded,
+                        label: _hasAccount ? 'Vincular minha conta' : 'Aceitar convite',
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -249,16 +245,16 @@ class _InviteHeader extends StatelessWidget {
         : teacher != null
             ? 'Treine com $teacher${personal ? '' : ' na $academy'}'
             : 'Treine na $academy';
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: AppTheme.brandGradient,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return HeroCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(instructor ? Icons.badge_rounded : Icons.fitness_center_rounded, color: Colors.white, size: 30),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(16)),
+            child: Icon(instructor ? Icons.badge_rounded : Icons.fitness_center_rounded, color: Colors.white, size: 28),
+          ),
           const SizedBox(height: 10),
           Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),

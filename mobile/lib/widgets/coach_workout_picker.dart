@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 
 import '../services/cardio_service.dart';
 
@@ -35,7 +36,7 @@ class CoachWorkoutPicker extends StatelessWidget {
         ...workouts.take(8).map((w) {
           final selected = w.id == selectedId;
           return Card(
-            color: selected ? const Color(0xFF334155) : const Color(0xFF1E293B),
+            color: selected ? const Color(0xFF334155) : AppTheme.surfaceHigh,
             margin: const EdgeInsets.only(bottom: 6),
             child: ListTile(
               dense: true,

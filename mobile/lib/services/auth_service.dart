@@ -72,6 +72,9 @@ class AuthService {
   String? academySlug;
   String? deviceId;
 
+  /// Nome da pessoa logada (saudação da tela inicial).
+  String? userName;
+
   /// ALUNO, INSTRUTOR ou GESTOR (nulo em sessões antigas, até [ensureRole]).
   String? role;
 
@@ -84,6 +87,7 @@ class AuthService {
     token = prefs.getString('token');
     academySlug = prefs.getString('academy_slug');
     role = prefs.getString('user_role');
+    userName = prefs.getString('user_name');
     deviceId = prefs.getString('device_id') ?? await _newDeviceId();
     await prefs.setString('device_id', deviceId!);
     return token != null;
@@ -139,6 +143,12 @@ class AuthService {
   }
 
   Future<void> _persistRole(Object? user) async {
+    final name = user is Map ? user['name'] as String? : null;
+    if (name != null && name.isNotEmpty) {
+      userName = name;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_name', name);
+    }
     final value = user is Map ? user['role'] as String? : null;
     if (value == null || value.isEmpty) return;
     role = value;
@@ -148,7 +158,7 @@ class AuthService {
 
   /// Sessões abertas antes do perfil existir no app: descobre o papel pela API.
   Future<void> ensureRole() async {
-    if (role != null || token == null) return;
+    if ((role != null && userName != null) || token == null) return;
     try {
       await _persistRole(await get('/api/auth/me'));
     } catch (_) {
@@ -414,9 +424,11 @@ class AuthService {
   Future<void> logout() async {
     token = null;
     role = null;
+    userName = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     await prefs.remove('user_role');
+    await prefs.remove('user_name');
   }
 
   Future<void> heartbeat() async {

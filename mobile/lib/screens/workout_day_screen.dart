@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
+
 import '../services/auth_service.dart';
 import '../services/calorie_estimator.dart';
 import '../services/calories_service.dart';
@@ -210,11 +213,12 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
             child: Column(
               children: [
                 const SizedBox(height: 24),
-                const Icon(Icons.emoji_events, size: 64, color: Colors.amber),
+                const Center(child: IconBadge(icon: Icons.emoji_events_rounded, gradient: AppTheme.goldGradient, size: 96)),
+                const SizedBox(height: 8),
                 const SizedBox(height: 12),
                 const Text(
                   'Parabéns!',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.greenAccent),
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppTheme.lime),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -315,73 +319,80 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
         child: ListView(
           padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + bottomInset),
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
+            HeroCard(
+              gradient: AppTheme.fireGradient,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        weekDayLabel(day.weekDay),
-                        style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 13),
-                      ),
-                      if (day.notes != null && day.notes!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(day.notes!, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-                      ],
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text('Cronômetro', style: TextStyle(color: Colors.white54, fontSize: 11)),
-                      Text(
-                        formatDuration(_elapsed),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.amberAccent,
-                          fontFeatures: [FontFeature.tabularFigures()],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              weekDayLabel(day.weekDay).toUpperCase(),
+                              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1),
+                            ),
+                            Text(
+                              formatDuration(_elapsed),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 40,
+                                fontWeight: FontWeight.w800,
+                                height: 1.1,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            if (day.notes != null && day.notes!.isNotEmpty)
+                              Text(day.notes!, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        started
-                            ? '${CalorieEstimator.strengthKcal(weightKg: _weightKg, durationSeconds: _elapsed, intensity: _intensity)} kcal*'
-                            : '0 kcal*',
-                        style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.local_fire_department_rounded, color: Colors.white),
+                            Text(
+                              started
+                                  ? '${CalorieEstimator.strengthKcal(weightKg: _weightKg, durationSeconds: _elapsed, intensity: _intensity)}'
+                                  : '0',
+                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                            ),
+                            const Text('kcal*', style: TextStyle(color: Colors.white, fontSize: 11)),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Progresso', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                Text(
-                  '$doneSets/$totalSets séries (${(progress * 100).round()}%)',
-                  style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 13),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 8,
-                backgroundColor: Colors.white12,
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Progresso', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(
+                        '$doneSets/$totalSets séries · ${(progress * 100).round()}%',
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 10,
+                      color: Colors.white,
+                      backgroundColor: Colors.white.withValues(alpha: 0.25),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 16),
@@ -390,9 +401,9 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade700),
-                  color: Colors.amber.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppTheme.amber.withValues(alpha: 0.6)),
+                  color: AppTheme.amber.withValues(alpha: 0.12),
                 ),
                 child: const Text(
                   'Este dia não tem exercícios cadastrados. '
@@ -406,25 +417,43 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
               final exercise = entry.value;
               final sets = exercise.setCount;
               final done = completedSets[exercise.id] ?? <int>{};
+              final allDone = sets > 0 && done.length >= sets;
+              final gradient = _exerciseGradients[index % _exerciseGradients.length];
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
-                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: allDone ? AppTheme.green.withValues(alpha: 0.7) : AppTheme.outline),
+                  color: AppTheme.surface,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Exercício ${index + 1}',
-                      style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 12),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      exercise.name,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            gradient: allDone ? AppTheme.freshGradient : gradient,
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Center(
+                            child: allDone
+                                ? const Icon(Icons.check_rounded, color: Colors.white)
+                                : Text('${index + 1}',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            exercise.name,
+                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
                     ),
                     if (exercise.description != null && exercise.description!.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -435,13 +464,14 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                     ],
                     const SizedBox(height: 8),
                     Wrap(
-                      spacing: 12,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
-                        Text('$sets séries', style: const TextStyle(fontSize: 13)),
+                        _InfoPill(icon: Icons.layers_rounded, text: '$sets séries', color: AppTheme.glowOf(gradient)),
                         if (exercise.reps != null && exercise.reps!.isNotEmpty)
-                          Text('${exercise.reps} reps', style: const TextStyle(fontSize: 13)),
+                          _InfoPill(icon: Icons.repeat_rounded, text: '${exercise.reps} reps', color: AppTheme.cyan),
                         if (exercise.duration != null && exercise.duration!.isNotEmpty)
-                          Text(exercise.duration!, style: const TextStyle(fontSize: 13)),
+                          _InfoPill(icon: Icons.timer_rounded, text: exercise.duration!, color: AppTheme.amber),
                       ],
                     ),
                     ExerciseMediaView(
@@ -455,12 +485,12 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Colors.purple.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(8),
+                          color: AppTheme.violet.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
                           'Variação: ${exercise.variationNotes}',
-                          style: const TextStyle(color: Colors.purpleAccent, fontSize: 13),
+                          style: const TextStyle(color: Color(0xFFC4B5FD), fontSize: 13),
                         ),
                       ),
                     ],
@@ -505,22 +535,27 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
             }),
             const SizedBox(height: 8),
             if (!started)
-              FilledButton(
+              GradientButton(
                 onPressed: _saving ? null : _startSession,
-                child: Text(_saving ? 'Iniciando...' : 'Iniciar treino'),
+                loading: _saving,
+                icon: Icons.play_arrow_rounded,
+                gradient: AppTheme.fireGradient,
+                label: 'Iniciar treino',
               )
             else if (!_showFinish)
-              FilledButton(
+              GradientButton(
                 onPressed: canFinish ? () => setState(() => _showFinish = true) : null,
-                child: Text(hasExercises ? 'Finalizar treino' : 'Finalizar mesmo sem exercícios'),
+                icon: Icons.flag_rounded,
+                gradient: AppTheme.freshGradient,
+                label: hasExercises ? 'Finalizar treino' : 'Finalizar mesmo sem exercícios',
               )
             else ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
-                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: AppTheme.outline),
+                  color: AppTheme.surface,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -570,10 +605,12 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                    GradientButton(
+                      gradient: AppTheme.freshGradient,
+                      icon: Icons.celebration_rounded,
                       onPressed: _saving ? null : _finish,
-                      child: Text(_saving ? 'Salvando...' : 'Confirmar e celebrar'),
+                      loading: _saving,
+                      label: 'Confirmar e celebrar',
                     ),
                   ],
                 ),
@@ -605,36 +642,80 @@ class _SetChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(14),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 72),
+        constraints: const BoxConstraints(minWidth: 76),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: done ? Colors.green : Colors.white24),
-            color: done ? Colors.green.withValues(alpha: 0.2) : Colors.black26,
+            borderRadius: BorderRadius.circular(14),
+            gradient: done ? AppTheme.freshGradient : null,
+            border: done ? null : Border.all(color: AppTheme.outline),
+            color: done ? null : AppTheme.surfaceHigh,
           ),
           child: Column(
             children: [
-              Text(
-                '${done ? '✓' : '○'} Série $setNumber',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: done ? Colors.greenAccent : Colors.white70,
-                  fontWeight: FontWeight.w500,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    size: 16,
+                    color: done ? const Color(0xFF052E1B) : Colors.white54,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Série $setNumber',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: done ? const Color(0xFF052E1B) : Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
               if (elapsedMs != null) ...[
                 const SizedBox(height: 2),
                 Text(
                   '+${formatElapsed(elapsedMs)}',
-                  style: const TextStyle(fontSize: 10, color: Colors.white38),
+                  style: TextStyle(fontSize: 10, color: done ? const Color(0xFF064E2B) : Colors.white38),
                 ),
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+const _exerciseGradients = [
+  AppTheme.fireGradient,
+  AppTheme.berryGradient,
+  AppTheme.oceanGradient,
+  AppTheme.goldGradient,
+  AppTheme.nightGradient,
+];
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({required this.icon, required this.text, required this.color});
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 5),
+          Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }
@@ -652,8 +733,8 @@ class _MiniStat extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white24),
-        color: const Color(0xFF1E1E1E),
+        border: Border.all(color: AppTheme.outline),
+        color: AppTheme.surface,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

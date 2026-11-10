@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
 import '../services/auth_service.dart';
 import '../services/invite_link.dart';
 import 'app_home.dart';
@@ -94,22 +95,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: Stack(
+      body: GlowBackground(
+        child: Stack(
         children: [
-          Positioned(
-            top: -120,
-            right: -80,
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [AppTheme.brand.withValues(alpha: 0.35), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -122,34 +110,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Align(
+                          const Align(
                             alignment: Alignment.centerLeft,
-                            child: Container(
-                              width: 64,
-                              height: 64,
-                              decoration: BoxDecoration(
-                                gradient: AppTheme.brandGradient,
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.brand.withValues(alpha: 0.45),
-                                    blurRadius: 24,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(Icons.fitness_center_rounded, color: Colors.white, size: 32),
-                            ),
+                            child: IconBadge(icon: Icons.fitness_center_rounded, gradient: AppTheme.brandGradient, size: 72),
                           ),
                           const SizedBox(height: 24),
-                          Text(
-                            'Foco Academia',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                          ShaderMask(
+                            shaderCallback: (bounds) => AppTheme.brandGradient.createShader(bounds),
+                            child: Text(
+                              'Foco Academia',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 34,
+                                    color: Colors.white,
+                                  ),
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Entre para ver seus treinos, cardio e evolução.',
-                            style: TextStyle(color: scheme.onSurfaceVariant),
+                            'Treinos, corrida, evolução e sua academia num app só.',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15),
                           ),
                           const SizedBox(height: 32),
                           TextFormField(
@@ -225,15 +205,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                           const SizedBox(height: 18),
-                          FilledButton(
+                          GradientButton(
                             onPressed: _loading ? null : _submit,
-                            child: _loading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                                  )
-                                : const Text('Entrar'),
+                            loading: _loading,
+                            icon: Icons.login_rounded,
+                            label: 'Entrar',
                           ),
                           const SizedBox(height: 16),
                           OutlinedButton.icon(
@@ -279,6 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

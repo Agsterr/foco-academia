@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
+
 import '../core/ui/insets.dart';
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
@@ -25,19 +28,6 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
   late String _modality = widget.initialModality ?? 'MUSCULACAO';
   String? _level;
   String? _starting;
-
-  static const _modalityIcons = {
-    'MUSCULACAO': Icons.fitness_center_rounded,
-    'CORRIDA': Icons.directions_run_rounded,
-    'SPINNING': Icons.pedal_bike_rounded,
-    'BIKE': Icons.directions_bike_rounded,
-  };
-
-  static const _levelColors = {
-    'INICIANTE': Colors.greenAccent,
-    'INTERMEDIARIO': Colors.amberAccent,
-    'AVANCADO': Colors.redAccent,
-  };
 
   @override
   void initState() {
@@ -137,27 +127,27 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
               child: ListView(
                 padding: scrollablePadding(context),
                 children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final entry in templateModalities.entries)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
+                  Row(
+                    children: [
+                      for (final entry in templateModalities.entries)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: _ModalityButton(
                               key: Key('modality-${entry.key}'),
-                              avatar: Icon(_modalityIcons[entry.key], size: 18),
-                              label: Text(entry.value),
+                              label: entry.value,
+                              modality: entry.key,
                               selected: _modality == entry.key,
-                              onSelected: (_) => setState(() => _modality = entry.key),
+                              onTap: () => setState(() => _modality = entry.key),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 4,
                     children: [
                       ChoiceChip(
                         label: const Text('Todos os níveis'),
@@ -179,67 +169,183 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                       child: Text(_error!, textAlign: TextAlign.center),
                     )
                   else
-                    for (final t in _visible)
-                      Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: (_levelColors[t.level] ?? Colors.white).withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      templateLevels[t.level] ?? t.level,
-                                      style: TextStyle(
-                                        color: _levelColors[t.level],
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    t.isCardio
-                                        ? '~${t.sessionMinutes} min'
-                                        : '${t.daysPerWeek}x/semana · ~${t.sessionMinutes} min',
-                                    style: const TextStyle(color: Colors.white54, fontSize: 12),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Text(t.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 6),
-                              Text(t.description, style: const TextStyle(color: Colors.white70)),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.icon(
-                                  key: Key('start-${t.key}'),
-                                  onPressed: _starting != null ? null : () => _start(t),
-                                  icon: _starting == t.key
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.play_arrow_rounded),
-                                  label: const Text('Começar este treino'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    for (final t in _visible) _TemplateCard(
+                      template: t,
+                      starting: _starting == t.key,
+                      onStart: _starting != null ? null : () => _start(t),
+                    ),
                 ],
               ),
             ),
+    );
+  }
+}
+
+const _levelColors = {
+  'INICIANTE': AppTheme.green,
+  'INTERMEDIARIO': AppTheme.amber,
+  'AVANCADO': AppTheme.red,
+};
+
+class _ModalityButton extends StatelessWidget {
+  const _ModalityButton({
+    super.key,
+    required this.label,
+    required this.modality,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String modality;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = gradientForModality(modality);
+    final glow = AppTheme.glowOf(gradient);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        gradient: selected ? gradient : null,
+        color: selected ? null : AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? Colors.transparent : glow.withValues(alpha: 0.35)),
+        boxShadow: selected ? glowShadow(glow) : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              children: [
+                Icon(iconForModality(modality), color: selected ? Colors.white : glow, size: 26),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? Colors.white : AppTheme.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TemplateCard extends StatelessWidget {
+  const _TemplateCard({required this.template, required this.starting, this.onStart});
+
+  final WorkoutTemplate template;
+  final bool starting;
+  final VoidCallback? onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = template;
+    final gradient = gradientForModality(t.modality);
+    final levelColor = _levelColors[t.level] ?? Colors.white;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: AppTheme.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            decoration: BoxDecoration(gradient: gradient),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.22),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(iconForModality(t.modality), color: Colors.white, size: 26),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    t.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, height: 1.2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _Pill(text: templateLevels[t.level] ?? t.level, color: levelColor, icon: Icons.signal_cellular_alt_rounded),
+                    if (!t.isCardio)
+                      _Pill(text: '${t.daysPerWeek}x por semana', color: AppTheme.cyan, icon: Icons.calendar_month_rounded),
+                    _Pill(text: '~${t.sessionMinutes} min', color: AppTheme.amber, icon: Icons.timer_rounded),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(t.description, style: const TextStyle(color: Colors.white70, height: 1.4)),
+                const SizedBox(height: 14),
+                GradientButton(
+                  key: Key('start-${t.key}'),
+                  gradient: gradient,
+                  loading: starting,
+                  onPressed: onStart,
+                  icon: Icons.play_arrow_rounded,
+                  label: 'Começar este treino',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.text, required this.color, required this.icon});
+
+  final String text;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }

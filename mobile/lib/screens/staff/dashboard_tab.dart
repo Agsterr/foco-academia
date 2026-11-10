@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../services/staff_service.dart';
+import '../../core/ui/vibrant.dart';
 import 'staff_home_screen.dart';
 
 /// Painel da academia: números do mês, gráfico de 6 meses, notas e ranking dos instrutores.
@@ -125,18 +126,25 @@ class _KpiGrid extends StatelessWidget {
     final d = dashboard;
     final tiles = [
       _Kpi('Alunos', '${d.students}', Icons.groups_rounded,
-          d.personal ? null : '${d.instructors} instrutor${d.instructors == 1 ? '' : 'es'}'),
-      _Kpi('Treinaram na semana', '${d.activeStudents7d}', Icons.local_fire_department_rounded, null),
-      _Kpi('Treinos em 30 dias', '${d.sessions30d}', Icons.fitness_center_rounded, null),
+          d.personal ? null : '${d.instructors} instrutor${d.instructors == 1 ? '' : 'es'}',
+          gradient: AppTheme.brandGradient),
+      _Kpi('Treinaram na semana', '${d.activeStudents7d}', Icons.local_fire_department_rounded, null,
+          gradient: AppTheme.fireGradient),
+      _Kpi('Treinos em 30 dias', '${d.sessions30d}', Icons.fitness_center_rounded, null,
+          gradient: AppTheme.oceanGradient),
       _Kpi(
         'Nota média',
         d.averageRating30d == null ? '—' : d.averageRating30d!.toStringAsFixed(1).replaceAll('.', ','),
         Icons.star_rounded,
         'de 1 a 5',
+        gradient: AppTheme.goldGradient,
       ),
       _Kpi('Recados pendentes', '${d.pendingSuggestions}', Icons.mark_chat_unread_rounded,
           d.pendingSuggestions > 0 ? 'responda na aba Retorno' : null,
-          highlight: d.pendingSuggestions > 0),
+          gradient: d.pendingSuggestions > 0 ? AppTheme.berryGradient : AppTheme.freshGradient),
+      _Kpi('Engajamento', '${d.students == 0 ? 0 : (d.activeStudents7d * 100 / d.students).round()}%',
+          Icons.trending_up_rounded, 'treinaram em 7 dias',
+          gradient: AppTheme.freshGradient),
     ];
     return LayoutBuilder(
       builder: (context, c) {
@@ -152,30 +160,34 @@ class _KpiGrid extends StatelessWidget {
 }
 
 class _Kpi extends StatelessWidget {
-  const _Kpi(this.label, this.value, this.icon, this.hint, {this.highlight = false});
+  const _Kpi(this.label, this.value, this.icon, this.hint, {required this.gradient});
 
   final String label;
   final String value;
   final IconData icon;
   final String? hint;
-  final bool highlight;
+  final Gradient gradient;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = highlight ? Colors.amber : scheme.primary;
+    final glow = AppTheme.glowOf(gradient);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: highlight ? Colors.amber.withValues(alpha: 0.5) : AppTheme.outline),
+        gradient: LinearGradient(
+          colors: [glow.withValues(alpha: 0.24), AppTheme.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: glow.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 8),
+          IconBadge(icon: icon, gradient: gradient, size: 38),
+          const SizedBox(height: 10),
           Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
           Text(label, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
           if (hint != null)

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
+
 import '../core/ui/insets.dart';
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
@@ -118,12 +121,11 @@ class _MyProgramsScreenState extends State<MyProgramsScreen> {
                 child: ListView(
                   padding: scrollablePadding(context).copyWith(bottom: 96 + systemBottomInset(context)),
                   children: [
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.auto_awesome_rounded, color: Colors.amberAccent),
-                        title: const Text('Treinos prontos'),
-                        subtitle: const Text('Musculação, corrida, spinning e bike por nível'),
-                        trailing: const Icon(Icons.chevron_right),
+                    VibrantTile(
+                        icon: Icons.auto_awesome_rounded,
+                        gradient: AppTheme.berryGradient,
+                        title: 'Treinos prontos',
+                        subtitle: 'Musculação, corrida, spinning e bike por nível',
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const TemplatesScreen()),
@@ -131,7 +133,6 @@ class _MyProgramsScreenState extends State<MyProgramsScreen> {
                           _changed = true;
                           await _load();
                         },
-                      ),
                     ),
                     const SizedBox(height: 12),
                     if (_error != null)
@@ -159,24 +160,31 @@ class _MyProgramsScreenState extends State<MyProgramsScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       shape: p.active
           ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Colors.greenAccent, width: 1.2),
+              borderRadius: BorderRadius.circular(22),
+              side: const BorderSide(color: AppTheme.green, width: 1.4),
             )
           : null,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                IconBadge(
+                  icon: p.ownedByStudent ? Icons.edit_note_rounded : Icons.fitness_center_rounded,
+                  gradient: p.active ? AppTheme.freshGradient : (p.ownedByStudent ? AppTheme.berryGradient : AppTheme.fireGradient),
+                  size: 40,
+                  glow: false,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(p.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                 ),
                 if (p.active)
                   const Padding(
                     padding: EdgeInsets.only(right: 8),
-                    child: Text('Ativo', style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.w700)),
+                    child: Text('Ativo', style: TextStyle(color: AppTheme.green, fontWeight: FontWeight.w700)),
                   ),
               ],
             ),

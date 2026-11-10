@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/theme/app_theme.dart';
 
 import '../services/calorie_estimator.dart';
 import '../services/interval_duration.dart';
@@ -211,7 +212,7 @@ class _OutdoorGoalPlannerState extends State<OutdoorGoalPlanner> {
     ];
 
     return Card(
-      color: const Color(0xFF1E293B),
+      color: AppTheme.surfaceHigh,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(

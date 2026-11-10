@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
+
 import '../services/auth_service.dart';
 import '../services/workout_service.dart';
 import 'login_screen.dart';
@@ -107,13 +110,13 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                 children: [
                   Text(
                     _program?.title ?? 'Minha ficha semanal',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   if (_program?.description != null) ...[
                     const SizedBox(height: 4),
                     Text(
                       _program!.description!,
-                      style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      style: const TextStyle(color: AppTheme.muted, fontSize: 13),
                     ),
                   ],
                   if (_stats != null) ...[
@@ -122,185 +125,76 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                       children: [
                         Expanded(
                           child: _StatCard(
+                            icon: Icons.calendar_month_rounded,
                             value: '${_stats!.daysCompletedThisWeek}',
-                            label: 'dias esta semana',
-                            color: Colors.lightBlueAccent,
+                            label: 'dias na semana',
+                            gradient: AppTheme.oceanGradient,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _StatCard(
+                            icon: Icons.local_fire_department_rounded,
                             value: '${_stats!.currentStreak}',
                             label: 'sequência',
-                            color: Colors.greenAccent,
+                            gradient: AppTheme.fireGradient,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _StatCard(
+                            icon: Icons.emoji_events_rounded,
                             value: '${_stats!.totalWorkoutsCompleted}',
-                            label: 'total',
-                            color: Colors.purpleAccent,
+                            label: 'treinos',
+                            gradient: AppTheme.berryGradient,
                           ),
                         ),
                       ],
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  if (_error != null)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24, style: BorderStyle.solid),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white54),
-                          ),
-                          if (_program == null) ...[
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: () async {
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
-                                );
-                                if (mounted) _load(silent: true);
-                              },
-                              icon: const Icon(Icons.auto_awesome_rounded),
-                              label: const Text('Ver treinos prontos'),
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          children: [
+                            const IconBadge(icon: Icons.fitness_center_rounded, gradient: AppTheme.fireGradient, size: 56),
+                            const SizedBox(height: 14),
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: AppTheme.muted),
                             ),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: _openMyPrograms,
-                              icon: const Icon(Icons.edit_note_rounded),
-                              label: const Text('Montar meu treino'),
-                            ),
+                            if (_program == null) ...[
+                              const SizedBox(height: 16),
+                              GradientButton(
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const TemplatesScreen()),
+                                  );
+                                  if (mounted) _load(silent: true);
+                                },
+                                icon: Icons.auto_awesome_rounded,
+                                label: 'Ver treinos prontos',
+                              ),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: _openMyPrograms,
+                                icon: const Icon(Icons.edit_note_rounded),
+                                label: const Text('Montar meu treino'),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  if (_program != null)
-                    ..._program!.orderedDays.map((day) {
-                      final isRest = day.restDay;
-                      final completed = day.completedThisWeek;
-                      final inProgress = day.activeSessionId != null && !completed;
-                      Color border;
-                      Color? bg;
-                      if (isRest) {
-                        border = Colors.white12;
-                        bg = Colors.white.withValues(alpha: 0.03);
-                      } else if (completed) {
-                        border = Colors.green.shade800;
-                        bg = Colors.green.withValues(alpha: 0.12);
-                      } else if (inProgress) {
-                        border = Colors.amber.shade700;
-                        bg = Colors.amber.withValues(alpha: 0.1);
-                      } else {
-                        border = Colors.white24;
-                        bg = null;
-                      }
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: bg ?? const Color(0xFF1E1E1E),
-                          borderRadius: BorderRadius.circular(12),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: isRest ? null : () => _openDay(day),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: border),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          weekDayLabel(day.weekDay),
-                                          style: const TextStyle(
-                                            color: Colors.lightBlueAccent,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          isRest
-                                              ? 'Descanso'
-                                              : (day.muscleGroup?.isNotEmpty == true
-                                                  ? day.muscleGroup!
-                                                  : 'Treino'),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        if (!isRest) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            day.exercises.isEmpty
-                                                ? 'Sem exercícios'
-                                                : '${day.exercises.length} exercícios',
-                                            style: TextStyle(
-                                              color: day.exercises.isEmpty
-                                                  ? Colors.amberAccent
-                                                  : Colors.white54,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        weekDayShortLabel(day.weekDay),
-                                        style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      if (completed) ...[
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          '✓ Feito',
-                                          style: TextStyle(
-                                            color: Colors.greenAccent,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ] else if (inProgress) ...[
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          'Em andamento',
-                                          style: TextStyle(
-                                            color: Colors.amberAccent,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
+                  ],
+                  if (_program != null) ...[
+                    const SectionHeader('Sua semana', gradient: AppTheme.fireGradient),
+                    for (final (i, day) in _program!.orderedDays.indexed)
+                      _DayCard(day: day, index: i, onTap: day.restDay ? null : () => _openDay(day)),
+                  ],
                 ],
               ),
             ),
@@ -308,36 +202,162 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
   }
 }
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.value,
-    required this.label,
-    required this.color,
-  });
+/// Cores que se alternam entre os dias de treino.
+const _dayGradients = [
+  AppTheme.fireGradient,
+  AppTheme.berryGradient,
+  AppTheme.oceanGradient,
+  AppTheme.freshGradient,
+  AppTheme.goldGradient,
+  AppTheme.nightGradient,
+  AppTheme.brandGradient,
+];
 
-  final String value;
-  final String label;
-  final Color color;
+class _DayCard extends StatelessWidget {
+  const _DayCard({required this.day, required this.index, this.onTap});
+
+  final WorkoutDay day;
+  final int index;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final isRest = day.restDay;
+    final completed = day.completedThisWeek;
+    final inProgress = day.activeSessionId != null && !completed;
+    final gradient = _dayGradients[index % _dayGradients.length];
+    final glow = AppTheme.glowOf(gradient);
+
+    final (String? status, Color statusColor, IconData? statusIcon) = completed
+        ? ('Feito', AppTheme.green, Icons.check_circle_rounded)
+        : inProgress
+            ? ('Em andamento', AppTheme.amber, Icons.play_circle_fill_rounded)
+            : (null, AppTheme.muted, null);
+
+    return Opacity(
+      opacity: isRest ? 0.55 : 1,
+      child: Card(
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(color: completed ? AppTheme.green.withValues(alpha: 0.6) : AppTheme.outline),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    gradient: isRest ? null : gradient,
+                    color: isRest ? AppTheme.surfaceHigh : null,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: isRest ? null : glowShadow(glow, blur: 16, dy: 6),
+                  ),
+                  child: Center(
+                    child: isRest
+                        ? const Icon(Icons.self_improvement_rounded, color: AppTheme.muted)
+                        : Text(
+                            weekDayShortLabel(day.weekDay).toUpperCase(),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        weekDayLabel(day.weekDay),
+                        style: TextStyle(color: isRest ? AppTheme.muted : glow, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        isRest
+                            ? 'Descanso'
+                            : (day.muscleGroup?.isNotEmpty == true ? day.muscleGroup! : 'Treino'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                      if (!isRest)
+                        Text(
+                          day.exercises.isEmpty ? 'Sem exercícios' : '${day.exercises.length} exercícios',
+                          style: TextStyle(
+                            color: day.exercises.isEmpty ? AppTheme.amber : AppTheme.muted,
+                            fontSize: 13,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (status != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, color: statusColor, size: 16),
+                        const SizedBox(width: 4),
+                        Text(status, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  )
+                else if (!isRest)
+                  Icon(Icons.play_circle_fill_rounded, color: glow, size: 32),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.gradient,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Gradient gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    final glow = AppTheme.glowOf(gradient);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [glow.withValues(alpha: 0.28), AppTheme.surface],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border.all(color: glow.withValues(alpha: 0.4)),
       ),
       child: Column(
         children: [
-          Text(
-            value,
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color),
-          ),
-          const SizedBox(height: 2),
+          Icon(icon, color: glow, size: 22),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white54, fontSize: 11),
+            style: const TextStyle(color: AppTheme.muted, fontSize: 11),
           ),
         ],
       ),

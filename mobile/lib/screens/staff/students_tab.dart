@@ -301,17 +301,7 @@ class _StudentCard extends StatelessWidget {
     return Card(
       child: ListTile(
         onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: !s.active
-              ? scheme.surfaceContainerHighest
-              : idle
-                  ? Colors.amber.withValues(alpha: 0.2)
-                  : scheme.primary.withValues(alpha: 0.2),
-          child: Text(
-            s.name.isEmpty ? '?' : s.name.characters.first.toUpperCase(),
-            style: TextStyle(color: idle ? Colors.amber : null, fontWeight: FontWeight.w700),
-          ),
-        ),
+        leading: PersonAvatar(name: s.name, dimmed: !s.active),
         title: Text(
           s.active ? s.name : '${s.name} (desativado)',
           style: TextStyle(color: s.active ? null : scheme.onSurfaceVariant),

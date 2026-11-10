@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_theme.dart';
+import '../core/ui/vibrant.dart';
 import '../services/auth_service.dart';
 import 'app_home.dart';
 
@@ -121,28 +123,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 children: [
                   Text('Você é', style: TextStyle(color: scheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
-                  SegmentedButton<SignupProfile>(
+                  Row(
                     key: const Key('register-profile'),
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(
-                        value: SignupProfile.aluno,
-                        label: Text('Aluno'),
-                        icon: Icon(Icons.directions_run_rounded),
-                      ),
-                      ButtonSegment(
-                        value: SignupProfile.instrutorAutonomo,
-                        label: Text('Personal'),
-                        icon: Icon(Icons.sports_rounded),
-                      ),
-                      ButtonSegment(
-                        value: SignupProfile.academia,
-                        label: Text('Academia'),
-                        icon: Icon(Icons.store_rounded),
-                      ),
+                    children: [
+                      for (final (profile, label, icon, gradient) in [
+                        (SignupProfile.aluno, 'Aluno', Icons.directions_run_rounded, AppTheme.fireGradient),
+                        (SignupProfile.instrutorAutonomo, 'Personal', Icons.sports_rounded, AppTheme.freshGradient),
+                        (SignupProfile.academia, 'Academia', Icons.store_rounded, AppTheme.brandGradient),
+                      ])
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: _ProfileCard(
+                              label: label,
+                              icon: icon,
+                              gradient: gradient,
+                              selected: _profile == profile,
+                              onTap: _loading ? null : () => setState(() => _profile = profile),
+                            ),
+                          ),
+                        ),
                     ],
-                    selected: {_profile},
-                    onSelectionChanged: _loading ? null : (v) => setState(() => _profile = v.first),
                   ),
                   const SizedBox(height: 20),
                   Text(
@@ -250,16 +251,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                   const SizedBox(height: 18),
-                  FilledButton(
+                  GradientButton(
                     key: const Key('register-submit'),
                     onPressed: _loading ? null : _submit,
-                    child: _loading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                          )
-                        : const Text('Criar conta'),
+                    loading: _loading,
+                    icon: Icons.rocket_launch_rounded,
+                    label: 'Criar conta',
                   ),
                   const SizedBox(height: 16),
                   if (_profile == SignupProfile.aluno)
@@ -271,6 +268,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({
+    required this.label,
+    required this.icon,
+    required this.gradient,
+    required this.selected,
+    this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Gradient gradient;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final glow = AppTheme.glowOf(gradient);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        gradient: selected ? gradient : null,
+        color: selected ? null : AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? Colors.transparent : glow.withValues(alpha: 0.35)),
+        boxShadow: selected ? glowShadow(glow) : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              children: [
+                Icon(icon, color: selected ? Colors.white : glow, size: 28),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: selected ? Colors.white : AppTheme.muted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
