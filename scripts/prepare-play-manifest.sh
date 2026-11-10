@@ -14,3 +14,12 @@ sed -i '/android.permission.REQUEST_INSTALL_PACKAGES/d;/android.permission.ACCES
 # garante a remocao mesmo se algum plugin tentar adicionar de volta
 sed -i '0,/<uses-permission /s##<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove"/>\n    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" tools:node="remove"/>\n    <uses-permission #' "$M"
 echo "Manifest da Play preparado: $M"
+
+# Permissoes de midia/armazenamento vem do plugin file_picker, mas o app so usa o
+# seletor de arquivos do sistema (importar treino do relogio): nao precisa delas.
+# Sem elas a Play nao exige a declaracao de "fotos e videos".
+MEDIA_PERMS="READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE"
+for p in $MEDIA_PERMS; do
+  sed -i "0,/<uses-permission /s##<uses-permission android:name=\"android.permission.${p}\" tools:node=\"remove\"/>\n    <uses-permission #" "$M"
+done
+echo "Permissoes de midia removidas do manifest da Play"
