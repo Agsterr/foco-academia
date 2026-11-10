@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/config/app_version.dart';
+import '../../core/config/build_flavor.dart';
 import '../../services/auth_service.dart';
 
 class AppUpdateInfo {
@@ -57,6 +58,8 @@ class AppUpdateService {
   }
 
   Future<AppUpdateInfo?> checkForUpdate() async {
+    // Na Play Store quem atualiza o app é a própria loja.
+    if (kPlayStoreBuild) return null;
     final packageInfo = await PackageInfo.fromPlatform();
     final currentCode = int.tryParse(packageInfo.buildNumber) ?? 0;
     try {

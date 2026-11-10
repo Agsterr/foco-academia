@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../core/config/build_flavor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Estado de energia que costuma matar GPS com a tela apagada.
@@ -186,7 +187,8 @@ class LocationPermissionHelper {
       return false;
     }
 
-    if (!kIsWeb &&
+    if (!kPlayStoreBuild &&
+        !kIsWeb &&
         (Platform.isAndroid || Platform.isIOS) &&
         permission == LocationPermission.whileInUse) {
       if (!context.mounted) return false;
