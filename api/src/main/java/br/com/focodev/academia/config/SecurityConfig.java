@@ -55,6 +55,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/instructor/**").hasRole("INSTRUTOR")
+                        // Gestor da academia, ou instrutor autônomo (dono da própria academia: conferido no serviço).
+                        .requestMatchers("/api/manager/**").hasAnyRole("GESTOR", "INSTRUTOR")
                         .requestMatchers("/api/student/**").hasRole("ALUNO")
                         .anyRequest().authenticated()
                 )

@@ -13,9 +13,41 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val energyChannelName = "com.focodev.academia/energy_settings"
     private val audioRouteChannelName = "com.focodev.academia/audio_route"
+    private val deviceChannelName = "com.focodev.academia/device"
+    private val inviteChannelName = "com.focodev.academia/invite_link"
+    private var inviteChannel: MethodChannel? = null
+
+    /** Link de convite (focoacademia://convite/CODIGO) ainda não lido pelo Flutter. */
+    private var pendingInviteLink: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        pendingInviteLink = inviteLinkFrom(intent)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, deviceChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    // Continua igual se o app for desinstalado e instalado de novo no mesmo celular.
+                    "stableDeviceId" -> result.success(
+                        try {
+                            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                        } catch (_: Exception) {
+                            null
+                        },
+                    )
+                    else -> result.notImplemented()
+                }
+            }
+        inviteChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, inviteChannelName).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "takeInviteLink" -> {
+                        result.success(pendingInviteLink)
+                        pendingInviteLink = null
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, energyChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -37,6 +69,19 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val link = inviteLinkFrom(intent) ?: return
+        setIntent(intent)
+        // App já aberto: avisa o Flutter na hora.
+        inviteChannel?.invokeMethod("inviteLink", link)
+    }
+
+    private fun inviteLinkFrom(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        return if (data.scheme == "focoacademia" || data.path?.startsWith("/convite/") == true) data.toString() else null
     }
 
     /**

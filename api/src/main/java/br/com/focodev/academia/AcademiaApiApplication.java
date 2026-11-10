@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties(AppReleaseProperties.class)
+@EnableConfigurationProperties({AppReleaseProperties.class, br.com.focodev.academia.billing.BillingProperties.class})
 public class AcademiaApiApplication {
 
 	public static void main(String[] args) {

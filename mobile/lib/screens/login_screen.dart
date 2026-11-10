@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import '../services/invite_link.dart';
+import 'app_home.dart';
+import 'invite_screen.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -71,13 +74,20 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => appHome()),
       );
     } catch (e) {
       if (mounted) setState(() => _error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Convite que chegou sem o link abrir o app (ex.: copiou o código da mensagem).
+  Future<void> _enterInviteCode() async {
+    final code = await showDialog<String>(context: context, builder: (_) => const InviteCodeDialog());
+    if (code == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => InviteScreen(code: code)));
   }
 
   @override
@@ -147,11 +157,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                             decoration: const InputDecoration(
-                              labelText: 'Código da academia',
-                              hintText: 'ex: minha-academia',
+                              labelText: 'Código da academia (opcional)',
+                              hintText: 'Deixe em branco se treina por conta própria',
                               prefixIcon: Icon(Icons.storefront_outlined),
                             ),
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o código da academia' : null,
                           ),
                           const SizedBox(height: 14),
                           TextFormField(
@@ -227,10 +236,39 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : const Text('Entrar'),
                           ),
                           const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            key: const Key('open-register'),
+                            onPressed: _loading
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                                    ),
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: const Text('Criar conta grátis'),
+                          ),
+                          const SizedBox(height: 12),
                           Text(
-                            'Não tem acesso? Peça seu cadastro na recepção da academia.',
+                            'Recebeu convite do seu instrutor? Toque no link da mensagem '
+                            'ou em "Tenho um código de convite".',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                          OutlinedButton.icon(
+                            key: const Key('have-invite'),
+                            onPressed: _loading ? null : _enterInviteCode,
+                            icon: const Icon(Icons.mark_email_read_outlined),
+                            label: const Text('Tenho um código de convite'),
+                          ),
+                          TextButton(
+                            key: const Key('register-business'),
+                            onPressed: _loading
+                                ? null
+                                : () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => const RegisterScreen(initialProfile: SignupProfile.academia),
+                                      ),
+                                    ),
+                            child: const Text('Sou academia ou personal'),
                           ),
                         ],
                       ),
@@ -242,6 +280,54 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Digitar o código (ou colar o link inteiro) do convite.
+class InviteCodeDialog extends StatefulWidget {
+  const InviteCodeDialog({super.key});
+
+  @override
+  State<InviteCodeDialog> createState() => _InviteCodeDialogState();
+}
+
+class _InviteCodeDialogState extends State<InviteCodeDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    final code = InviteLinks.codeFrom(text) ?? InviteLinks.normalizeCode(text);
+    if (code.length < 6) {
+      setState(() => _error = 'Digite o código que veio na mensagem (ex.: K7Q2M-X9P3T).');
+      return;
+    }
+    Navigator.pop(context, code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Código do convite'),
+      content: TextField(
+        key: const Key('invite-code-field'),
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        decoration: InputDecoration(hintText: 'K7Q2M-X9P3T ou o link', errorText: _error),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(key: const Key('invite-code-ok'), onPressed: _submit, child: const Text('Continuar')),
+      ],
     );
   }
 }

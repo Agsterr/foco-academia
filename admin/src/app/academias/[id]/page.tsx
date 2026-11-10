@@ -104,6 +104,30 @@ export default function AcademiaDetailPage() {
     <AppShell>
       <h2 className="text-xl font-semibold">{academy.name}</h2>
       <p className="mt-1 text-sm text-emerald-400">Código de login: <code className="rounded bg-slate-800 px-2 py-0.5">{academy.slug}</code></p>
+      <div
+        className={`mt-4 rounded-xl border p-4 ${
+          academy.studentCount > academy.planIncludedStudents
+            ? "border-amber-600 bg-amber-950/40"
+            : "border-slate-800 bg-slate-900"
+        }`}
+      >
+        <p className="text-sm text-slate-400">Plano da academia</p>
+        <p className="mt-1 text-lg font-semibold text-white">
+          {academy.planMonthlyPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês
+          <span className="ml-2 text-sm font-normal text-slate-400">
+            até {academy.planIncludedStudents} alunos · instrutores ilimitados
+          </span>
+        </p>
+        <p className="mt-1 text-sm text-slate-300">
+          {academy.studentCount} de {academy.planIncludedStudents} alunos · {academy.instructorCount}{" "}
+          {academy.instructorCount === 1 ? "instrutor" : "instrutores"}
+        </p>
+        {academy.studentCount > academy.planIncludedStudents && (
+          <p className="mt-2 text-sm text-amber-300">
+            Passou do limite do plano: hora de conversar sobre um plano maior.
+          </p>
+        )}
+      </div>
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
         <p className="text-sm text-slate-400">Configurações da academia</p>
         <div className="flex gap-2 items-center">

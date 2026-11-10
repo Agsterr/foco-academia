@@ -27,9 +27,17 @@ public class WorkoutProgram {
     @Column(length = 2000)
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    /** Nulo quando o próprio aluno criou a ficha (ou a iniciou de um treino pronto). */
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id")
     private User instructor;
+
+    /** Chave do treino pronto de origem (ex.: "musculacao-iniciante"), quando houver. */
+    @Column(length = 80)
+    private String templateKey;
+
+    /** Ficha do aluno apagada/substituída: some da lista, mas o histórico de treinos continua. */
+    private Boolean archived;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "student_id")
@@ -44,4 +52,12 @@ public class WorkoutProgram {
     @OneToMany(mappedBy = "program", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
     private List<WorkoutDay> days = new ArrayList<>();
+
+    public boolean isOwnedByStudent() {
+        return instructor == null;
+    }
+
+    public boolean isArchived() {
+        return Boolean.TRUE.equals(archived);
+    }
 }

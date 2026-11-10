@@ -19,6 +19,13 @@ public interface CardioSessionRepository extends JpaRepository<CardioSession, UU
 
     Optional<CardioSession> findByClientSessionId(String clientSessionId);
 
+    /** Treinos outdoor concluídos pelos alunos de uma academia (painel do gestor). */
+    @Query("""
+            SELECT s FROM CardioSession s JOIN FETCH s.student st
+            WHERE st.academy.id = :academyId AND s.completedAt IS NOT NULL AND s.completedAt >= :since
+            """)
+    List<CardioSession> findCompletedByAcademySince(UUID academyId, Instant since);
+
     long countByStudentIdAndCompletedAtAfter(UUID studentId, Instant after);
 
     List<CardioSession> findByWorkoutId(UUID workoutId);

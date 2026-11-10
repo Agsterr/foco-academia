@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +45,15 @@ class SecureCredentialStore implements CredentialStore {
   Future<void> deletePassword() => _storage.delete(key: _key);
 }
 
+/// Recurso do Foco Premium sem assinatura ativa (a API responde 402).
+class PaymentRequiredException implements Exception {
+  PaymentRequiredException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   AuthService._();
   static final instance = AuthService._();
@@ -61,15 +71,89 @@ class AuthService {
   String? token;
   String? academySlug;
   String? deviceId;
+
+  /// ALUNO, INSTRUTOR ou GESTOR (nulo em sessões antigas, até [ensureRole]).
+  String? role;
+
+  /// Instrutor ou gestor de academia: o app abre o painel da equipe.
+  bool get isStaff => role == 'INSTRUTOR' || role == 'GESTOR';
   Future<bool>? _refreshInFlight;
 
   Future<bool> load() async {
     final prefs = await SharedPreferences.getInstance();
     token = prefs.getString('token');
     academySlug = prefs.getString('academy_slug');
-    deviceId = prefs.getString('device_id') ?? const Uuid().v4();
+    role = prefs.getString('user_role');
+    deviceId = prefs.getString('device_id') ?? await _newDeviceId();
     await prefs.setString('device_id', deviceId!);
     return token != null;
+  }
+
+  static const _deviceChannel = MethodChannel('com.focodev.academia/device');
+
+  /// Identificador do celular que sobrevive a desinstalar e instalar de novo: a conta
+  /// presa a um aparelho continua entrando no mesmo celular depois de reinstalar.
+  static Future<String> _newDeviceId() async {
+    try {
+      final id = await _deviceChannel.invokeMethod<String>('stableDeviceId');
+      if (id != null && id.isNotEmpty) return 'android-$id';
+    } catch (_) {}
+    return const Uuid().v4();
+  }
+
+  /// O que a tela do convite mostra (público, sem login).
+  Future<Map<String, dynamic>> previewInvite(String code) async {
+    final response = await http.get(Uri.parse('$apiBase/api/auth/invites/${Uri.encodeComponent(code)}'));
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Convite não encontrado'));
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Aceita o convite: cria a conta (ou vincula a de aluno avulso) já ligada à academia e entra.
+  Future<void> acceptInvite({
+    required String code,
+    String? name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/invites/${Uri.encodeComponent(code)}/accept'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+        'email': email,
+        'password': password,
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Não foi possível aceitar o convite'));
+    }
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    await _startSession(data, data['academySlug'] as String? ?? '', email, password, remember);
+  }
+
+  Future<void> _persistRole(Object? user) async {
+    final value = user is Map ? user['role'] as String? : null;
+    if (value == null || value.isEmpty) return;
+    role = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_role', value);
+  }
+
+  /// Sessões abertas antes do perfil existir no app: descobre o papel pela API.
+  Future<void> ensureRole() async {
+    if (role != null || token == null) return;
+    try {
+      await _persistRole(await get('/api/auth/me'));
+    } catch (_) {
+      // Sem rede: continua como aluno até a próxima abertura.
+    }
   }
 
   Future<void> _persistToken(String newToken) async {
@@ -217,7 +301,8 @@ class AuthService {
   /// Entra de novo com o login lembrado, sem o aluno digitar nada.
   Future<bool> reloginWithSavedCredentials() async {
     final saved = await savedCredentials();
-    if (saved == null || saved.password.isEmpty || saved.slug.isEmpty) return false;
+    // Código da academia vazio = aluno avulso (conta criada no app).
+    if (saved == null || saved.password.isEmpty) return false;
     try {
       await login(saved.email, saved.password, saved.slug, remember: true);
       return true;
@@ -226,14 +311,21 @@ class AuthService {
     }
   }
 
-  Future<void> login(String email, String password, String slug, {bool remember = true}) async {
+  /// Cria conta de aluno avulso (sem academia) e já entra.
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
     final response = await http.post(
-      Uri.parse('$apiBase/api/auth/login'),
+      Uri.parse('$apiBase/api/auth/register'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
+        'name': name,
         'email': email,
         'password': password,
-        'academySlug': slug,
+        'role': 'ALUNO',
         'deviceId': deviceId,
         'deviceLabel': 'Flutter Android',
         'appClient': 'MOBILE',
@@ -241,11 +333,51 @@ class AuthService {
       }),
     );
     if (response.statusCode != 200) {
-      final body = jsonDecode(response.body);
-      throw Exception(body['message'] ?? 'Erro no login');
+      throw Exception(_errorMessage(response, 'Não foi possível criar a conta'));
     }
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, '', email, password, remember);
+  }
+
+  /// Cria uma academia (o dono vira gestor) ou um instrutor autônomo, e já entra.
+  /// O dono entra depois sem código da academia.
+  Future<void> registerBusiness({
+    required String type,
+    String? academyName,
+    required String name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/register-business'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'type': type,
+        if (academyName != null && academyName.trim().isNotEmpty) 'academyName': academyName.trim(),
+        'name': name,
+        'email': email,
+        'password': password,
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Não foi possível criar a conta'));
+    }
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, '', email, password, remember);
+  }
+
+  Future<void> _startSession(
+    Map<String, dynamic> data,
+    String slug,
+    String email,
+    String password,
+    bool remember,
+  ) async {
     await _persistToken(data['token'] as String);
+    await _persistRole(data['user']);
     academySlug = slug;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('academy_slug', slug);
@@ -257,10 +389,34 @@ class AuthService {
     }
   }
 
+  Future<void> login(String email, String password, String slug, {bool remember = true}) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        // Aluno avulso entra sem código de academia.
+        'academySlug': slug.trim().isEmpty ? null : slug.trim(),
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Erro no login');
+    }
+    await _startSession(jsonDecode(response.body) as Map<String, dynamic>, slug, email, password, remember);
+  }
+
   Future<void> logout() async {
     token = null;
+    role = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
+    await prefs.remove('user_role');
   }
 
   Future<void> heartbeat() async {
@@ -383,6 +539,9 @@ class AuthService {
         body: jsonEncode(body),
       ),
     );
+    if (response.statusCode == 402) {
+      throw PaymentRequiredException(_errorMessage(response, 'Recurso do Foco Premium.'));
+    }
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
@@ -404,4 +563,13 @@ class AuthService {
     if (response.body.isEmpty) return {};
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+  Future<void> delete(String path) async {
+    final response = await _send(
+      () => http.delete(Uri.parse('$apiBase$path'), headers: _headers()),
+    );
+    if (!_isSuccess(response.statusCode)) {
+      throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
+    }
+  }
+
 }

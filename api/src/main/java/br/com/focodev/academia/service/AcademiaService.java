@@ -27,6 +27,7 @@ public class AcademiaService {
     private final PasswordEncoder passwordEncoder;
     private final TenantService tenantService;
     private final MediaStorageService mediaStorageService;
+    private final MediaProcessingService mediaProcessingService;
 
     @Transactional
     public UserResponse createStudent(AuthUser instructor, CreateStudentRequest request) {
@@ -185,6 +186,9 @@ public class AcademiaService {
         User studentUser = userRepository.findById(student.getId())
                 .orElseThrow(() -> new ApiException("Aluno não encontrado"));
         tenantService.requireActiveAcademy(studentUser);
+        if (studentUser.getAcademy() == null) {
+            throw new ApiException("Sugestões são enviadas para a sua academia. Sua conta não está vinculada a uma.");
+        }
 
         Suggestion suggestion = new Suggestion();
         suggestion.setStudent(studentUser);
@@ -230,6 +234,11 @@ public class AcademiaService {
             throw new ApiException("Arquivo vazio");
         }
 
-        return mediaStorageService.store(file);
+        MediaProcessingService.ProcessedMedia media = mediaProcessingService.process(file);
+        try {
+            return mediaStorageService.store(media);
+        } finally {
+            java.nio.file.Files.deleteIfExists(media.path());
+        }
     }
 }

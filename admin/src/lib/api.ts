@@ -11,6 +11,9 @@ export interface Academy {
   createdAt: string;
   instructorCount: number;
   studentCount: number;
+  /** Mensalidade da academia (R$), com todos os instrutores incluídos. */
+  planMonthlyPrice: number;
+  planIncludedStudents: number;
 }
 
 export interface AdminUser {

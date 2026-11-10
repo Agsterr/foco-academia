@@ -20,7 +20,8 @@ public class CardioWorkout {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "instructor_id", nullable = false)
+    /** Nulo quando o aluno iniciou o treino a partir de um treino pronto. */
+    @JoinColumn(name = "instructor_id")
     private User instructor;
 
     @ManyToOne(fetch = FetchType.LAZY)

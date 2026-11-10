@@ -13,7 +13,10 @@ public record WorkoutProgramResponse(
         boolean active,
         Instant createdAt,
         UserResponse student,
-        List<WorkoutDayResponse> days
+        List<WorkoutDayResponse> days,
+        boolean ownedByStudent,
+        String instructorName,
+        String templateKey
 ) {
     public static WorkoutProgramResponse from(WorkoutProgram program) {
         return new WorkoutProgramResponse(
@@ -23,7 +26,10 @@ public record WorkoutProgramResponse(
                 program.isActive(),
                 program.getCreatedAt(),
                 UserResponse.from(program.getStudent()),
-                program.getDays().stream().map(WorkoutDayResponse::from).toList()
+                program.getDays().stream().map(WorkoutDayResponse::from).toList(),
+                program.isOwnedByStudent(),
+                program.getInstructor() != null ? program.getInstructor().getName() : null,
+                program.getTemplateKey()
         );
     }
 
@@ -35,7 +41,10 @@ public record WorkoutProgramResponse(
                 program.isActive(),
                 program.getCreatedAt(),
                 UserResponse.from(program.getStudent()),
-                days
+                days,
+                program.isOwnedByStudent(),
+                program.getInstructor() != null ? program.getInstructor().getName() : null,
+                program.getTemplateKey()
         );
     }
 }

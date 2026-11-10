@@ -38,4 +38,16 @@ public class Academy {
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    /** Quem criou a academia pelo app (gestor, ou o próprio instrutor autônomo). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
+    /** Academia de uma pessoa só: o instrutor autônomo. */
+    private Boolean personal;
+
+    public boolean isPersonal() {
+        return Boolean.TRUE.equals(personal);
+    }
 }

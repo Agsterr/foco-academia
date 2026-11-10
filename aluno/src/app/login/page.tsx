@@ -86,21 +86,22 @@ function LoginForm() {
     <div className="mx-auto flex min-h-full max-w-lg flex-col justify-center px-4 py-8">
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
         <h1 className="text-2xl font-bold text-blue-400">Área do Aluno</h1>
-        <p className="mt-1 text-sm text-slate-400">Acesse seus treinos na sua academia</p>
+        <p className="mt-1 text-sm text-slate-400">
+          Entre com seu e-mail e senha. Recebeu convite do instrutor? Toque no link da mensagem.
+        </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4" autoComplete="off">
           <div>
             <label htmlFor="aluno-academy-slug" className="mb-1 block text-sm text-slate-300">
-              Código da academia
+              Código da academia <span className="text-slate-500">(opcional)</span>
             </label>
             <input
               id="aluno-academy-slug"
               name="aluno-academy-slug"
               value={academySlug}
               onChange={(e) => setSlug(e.target.value.toLowerCase())}
-              placeholder="ex: academia-demo"
+              placeholder="pode deixar em branco"
               className="form-input"
-              required
               autoComplete="off"
             />
             {academyName && <p className="mt-1 text-xs text-blue-300">{academyName}</p>}

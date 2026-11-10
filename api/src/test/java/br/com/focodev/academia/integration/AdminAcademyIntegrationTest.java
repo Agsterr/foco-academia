@@ -65,7 +65,9 @@ class AdminAcademyIntegrationTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.slug").value("academia-integracao"))
-                .andExpect(jsonPath("$.name").value("Academia Integração"));
+                .andExpect(jsonPath("$.name").value("Academia Integração"))
+                .andExpect(jsonPath("$.planMonthlyPrice").value(149.0))
+                .andExpect(jsonPath("$.planIncludedStudents").value(100));
     }
 
     @Test

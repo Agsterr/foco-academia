@@ -8,14 +8,25 @@ import br.com.focodev.academia.domain.UserRole;
 import br.com.focodev.academia.exception.ApiException;
 import br.com.focodev.academia.repository.DeviceSessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
 public class DeviceService {
+
+    static final int INDEPENDENT_STUDENT_DEVICE_LIMIT = 3;
+
+    /** Conta de um aparelho só: o aparelho antigo parado há tanto tempo libera a vaga sozinho. */
+    static final Duration SINGLE_DEVICE_IDLE_RELEASE = Duration.ofDays(7);
+
+    static final String DEVICE_IN_USE_MESSAGE = "Esta conta já está em uso em outro aparelho. "
+            + "Trocou de celular? Peça ao seu instrutor ou à academia para liberar o aparelho "
+            + "(ou ele libera sozinho depois de 7 dias sem uso no aparelho antigo).";
 
     private final DeviceSessionRepository deviceSessionRepository;
 
@@ -40,9 +51,11 @@ public class DeviceService {
         }
 
         Academy academy = user.getAcademy();
-        if (academy == null) {
+        if (academy == null && user.getRole() != UserRole.ALUNO) {
             throw new ApiException("Usuário sem academia vinculada");
         }
+        // Aluno avulso não tem academia que defina o limite de aparelhos.
+        int deviceLimit = academy != null ? academy.getDeviceLimitPerUser() : INDEPENDENT_STUDENT_DEVICE_LIMIT;
 
         String normalizedDeviceId = deviceId.trim();
         String normalizedVersion = normalizeAppVersion(appVersion);
@@ -54,6 +67,11 @@ public class DeviceService {
         }
 
         String normalizedLabel = normalizeDeviceLabel(deviceLabel);
+        if (user.isSingleDevice()) {
+            // Sem atalho por nome do aparelho ("Flutter Android" é igual em todo celular).
+            registerSingleDevice(user, normalizedDeviceId, normalizedLabel, appClient, normalizedVersion);
+            return;
+        }
         if (normalizedLabel != null) {
             var sameEquipment = deviceSessionRepository.findByUserIdAndDeviceLabel(user.getId(), normalizedLabel);
             if (sameEquipment.isPresent()) {
@@ -70,9 +88,9 @@ public class DeviceService {
         }
 
         long count = deviceSessionRepository.countByUserId(user.getId());
-        if (count >= academy.getDeviceLimitPerUser()) {
+        if (count >= deviceLimit) {
             throw new ApiException(
-                    "Limite de " + academy.getDeviceLimitPerUser() + " dispositivos atingido. "
+                    "Limite de " + deviceLimit + " dispositivos atingido. "
                             + "Remova um dispositivo antigo ou peça ao administrador para aumentar o limite."
             );
         }
@@ -83,6 +101,31 @@ public class DeviceService {
         session.setDeviceLabel(normalizedLabel);
         session.setAppClient(appClient != null ? appClient : AppClientType.WEB);
         session.setAppVersion(normalizedVersion);
+        session.setLastSeenAt(Instant.now());
+        deviceSessionRepository.save(session);
+    }
+
+    private void registerSingleDevice(
+            User user,
+            String deviceId,
+            String deviceLabel,
+            AppClientType appClient,
+            String appVersion
+    ) {
+        Instant idleLimit = Instant.now().minus(SINGLE_DEVICE_IDLE_RELEASE);
+        for (DeviceSession other : deviceSessionRepository.findByUserIdOrderByLastSeenAtDesc(user.getId())) {
+            if (other.getLastSeenAt() == null || other.getLastSeenAt().isBefore(idleLimit)) {
+                deviceSessionRepository.delete(other);
+            } else {
+                throw new ApiException(DEVICE_IN_USE_MESSAGE, HttpStatus.FORBIDDEN);
+            }
+        }
+        DeviceSession session = new DeviceSession();
+        session.setUser(user);
+        session.setDeviceId(deviceId);
+        session.setDeviceLabel(deviceLabel);
+        session.setAppClient(appClient != null ? appClient : AppClientType.WEB);
+        session.setAppVersion(appVersion);
         session.setLastSeenAt(Instant.now());
         deviceSessionRepository.save(session);
     }

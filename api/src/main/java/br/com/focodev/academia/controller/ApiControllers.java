@@ -1,5 +1,7 @@
 package br.com.focodev.academia.controller;
 
+import br.com.focodev.academia.billing.BillingDtos;
+import br.com.focodev.academia.billing.BillingService;
 import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
 import br.com.focodev.academia.service.AcademiaService;
@@ -12,6 +14,7 @@ import br.com.focodev.academia.service.StudentProfileService;
 import br.com.focodev.academia.service.TenantService;
 import br.com.focodev.academia.service.WorkoutProgramService;
 import br.com.focodev.academia.service.WorkoutReprocessingService;
+import br.com.focodev.academia.service.WorkoutTemplateService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -33,6 +36,8 @@ public class ApiControllers {
     private final AuthService authService;
     private final AcademiaService academiaService;
     private final WorkoutProgramService workoutProgramService;
+    private final WorkoutTemplateService workoutTemplateService;
+    private final BillingService billingService;
     private final TenantService tenantService;
     private final StudentProfileService studentProfileService;
     private final CardioService cardioService;
@@ -53,7 +58,9 @@ public class ApiControllers {
     }
 
     @PostMapping("/auth/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+    public AuthResponse register(@Valid @RequestBody RegisterRequest request,
+                                 jakarta.servlet.http.HttpServletRequest httpRequest) {
+        loginRateLimiter.check(httpRequest);
         return authService.register(request);
     }
 
@@ -189,6 +196,79 @@ public class ApiControllers {
             @RequestParam("file") MultipartFile file
     ) throws IOException {
         return Map.of("url", academiaService.uploadMedia(user, file));
+    }
+
+    @GetMapping("/student/programs")
+    public List<WorkoutProgramResponse> listStudentPrograms(@AuthenticationPrincipal AuthUser user) {
+        return workoutProgramService.listStudentPrograms(user);
+    }
+
+    @PostMapping("/student/programs")
+    public WorkoutProgramResponse createOwnProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody StudentProgramRequest request
+    ) {
+        billingService.requirePremium(user);
+        return workoutProgramService.createOwnProgram(user, request);
+    }
+
+    @PutMapping("/student/programs/{id}")
+    public WorkoutProgramResponse updateOwnProgram(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable UUID id,
+            @Valid @RequestBody StudentProgramRequest request
+    ) {
+        return workoutProgramService.updateOwnProgram(user, id, request);
+    }
+
+    @DeleteMapping("/student/programs/{id}")
+    public ResponseEntity<Void> deleteOwnProgram(@AuthenticationPrincipal AuthUser user, @PathVariable UUID id) {
+        workoutProgramService.deleteOwnProgram(user, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/student/programs/{id}/activate")
+    public WorkoutProgramResponse activateProgram(@AuthenticationPrincipal AuthUser user, @PathVariable UUID id) {
+        return workoutProgramService.activateProgram(user, id);
+    }
+
+    @GetMapping("/student/templates")
+    public List<WorkoutTemplateDtos.TemplateSummary> listTemplates(
+            @RequestParam(required = false) WorkoutTemplateDtos.Modality modality,
+            @RequestParam(required = false) WorkoutTemplateDtos.Level level
+    ) {
+        return workoutTemplateService.list(modality, level);
+    }
+
+    @PostMapping("/student/templates/{key}/start")
+    public WorkoutTemplateDtos.StartTemplateResponse startTemplate(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable String key
+    ) {
+        billingService.requirePremium(user);
+        return workoutTemplateService.start(user, key);
+    }
+
+    @GetMapping("/student/subscription")
+    public BillingDtos.SubscriptionStatus subscriptionStatus(@AuthenticationPrincipal AuthUser user) {
+        return billingService.status(user);
+    }
+
+    @PostMapping("/student/subscription/google-play")
+    public BillingDtos.SubscriptionStatus googlePlayPurchase(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody BillingDtos.GooglePlayPurchaseRequest request
+    ) {
+        return billingService.applyGooglePlayPurchase(user, request);
+    }
+
+    @PostMapping("/admin/users/{id}/subscription/grant")
+    public ResponseEntity<Void> grantSubscription(
+            @PathVariable UUID id,
+            @Valid @RequestBody BillingDtos.GrantRequest request
+    ) {
+        billingService.grant(id, request.days());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/student/programs/active")

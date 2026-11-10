@@ -78,9 +78,18 @@ class AuthServiceTest {
     }
 
     @Test
-    void register_isDisabled() {
+    void register_onlyAllowsStudents() {
         assertThrows(ApiException.class, () -> authService.register(
-                new RegisterRequest("a@test.com", "senha123", "Nome", null, UserRole.ALUNO)));
+                new RegisterRequest("a@test.com", "senha123", "Nome", null, UserRole.INSTRUTOR, null, null, null, null)));
+        assertThrows(ApiException.class, () -> authService.register(
+                new RegisterRequest("a@test.com", "senha123", "Nome", null, UserRole.ADMIN, null, null, null, null)));
+    }
+
+    @Test
+    void register_rejectsExistingEmail() {
+        when(userRepository.existsByEmailIgnoreCase("a@test.com")).thenReturn(true);
+        assertThrows(ApiException.class, () -> authService.register(
+                new RegisterRequest("A@test.com", "senha123", "Nome", null, null, null, null, null, null)));
     }
 
     @Test

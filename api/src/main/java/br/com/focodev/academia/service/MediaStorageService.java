@@ -1,9 +1,7 @@
 package br.com.focodev.academia.service;
 
-import br.com.focodev.academia.exception.ApiException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -42,17 +40,23 @@ public class MediaStorageService {
 
     private volatile S3Client s3Client;
 
-    public String store(MultipartFile file) throws IOException {
-        String filename = buildFilename(file);
-
+    /** Guarda a mídia já preparada (comprimida) e devolve a URL pública. */
+    public String store(MediaProcessingService.ProcessedMedia media) throws IOException {
+        String filename = UUID.randomUUID() + media.extension();
         if (isR2Enabled()) {
-            uploadToR2(file, filename);
+            PutObjectRequest request = PutObjectRequest.builder()
+                    .bucket(r2Bucket)
+                    .key(filename)
+                    .contentType(media.contentType())
+                    // Arquivo nunca muda (nome único): o Cloudflare pode guardar em cache por 1 ano.
+                    .cacheControl("public, max-age=31536000, immutable")
+                    .build();
+            getS3Client().putObject(request, RequestBody.fromFile(media.path()));
             return r2PublicBaseUrl.replaceAll("/$", "") + "/" + filename;
         }
-
         Path directory = Paths.get(uploadDir).toAbsolutePath().normalize();
         Files.createDirectories(directory);
-        Files.copy(file.getInputStream(), directory.resolve(filename));
+        Files.copy(media.path(), directory.resolve(filename));
         return "/api/media/" + filename;
     }
 
@@ -62,21 +66,6 @@ public class MediaStorageService {
                 && !r2AccessKeyId.isBlank()
                 && !r2SecretAccessKey.isBlank()
                 && !r2PublicBaseUrl.isBlank();
-    }
-
-    private void uploadToR2(MultipartFile file, String filename) throws IOException {
-        String contentType = file.getContentType();
-        if (contentType == null || contentType.isBlank()) {
-            contentType = "application/octet-stream";
-        }
-
-        PutObjectRequest request = PutObjectRequest.builder()
-                .bucket(r2Bucket)
-                .key(filename)
-                .contentType(contentType)
-                .build();
-
-        getS3Client().putObject(request, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
     }
 
     private S3Client getS3Client() {
@@ -97,18 +86,5 @@ public class MediaStorageService {
             }
         }
         return s3Client;
-    }
-
-    private static String buildFilename(MultipartFile file) {
-        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
-        String extension = "";
-        int dot = original.lastIndexOf('.');
-        if (dot > 0) {
-            extension = original.substring(dot);
-        }
-        if (extension.length() > 10) {
-            throw new ApiException("Extensão de arquivo inválida");
-        }
-        return UUID.randomUUID() + extension;
     }
 }

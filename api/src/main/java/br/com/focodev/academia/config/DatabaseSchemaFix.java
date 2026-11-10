@@ -24,8 +24,12 @@ public class DatabaseSchemaFix {
             jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
             jdbcTemplate.execute("""
                     ALTER TABLE users ADD CONSTRAINT users_role_check
-                    CHECK (role IN ('ADMIN', 'INSTRUTOR', 'ALUNO'))
+                    CHECK (role IN ('ADMIN', 'INSTRUTOR', 'ALUNO', 'GESTOR'))
                     """);
+
+            // Fichas e treinos outdoor criados pelo próprio aluno não têm instrutor.
+            dropNotNull("workout_programs", "instructor_id");
+            dropNotNull("cardio_workouts", "instructor_id");
 
             jdbcTemplate.execute("ALTER TABLE academies ADD COLUMN IF NOT EXISTS slug VARCHAR(64)");
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
@@ -44,5 +48,13 @@ public class DatabaseSchemaFix {
                 jdbcTemplate.update("UPDATE academies SET slug = ? WHERE id = ?::uuid", slug, id);
             }
         };
+    }
+
+    private void dropNotNull(String table, String column) {
+        try {
+            jdbcTemplate.execute("ALTER TABLE " + table + " ALTER COLUMN " + column + " DROP NOT NULL");
+        } catch (Exception ignored) {
+            // Coluna já aceita nulo (ou o banco de teste já foi criado assim).
+        }
     }
 }

@@ -191,6 +191,9 @@ class WorkoutProgram {
     this.description,
     this.active = true,
     this.days = const [],
+    this.ownedByStudent = false,
+    this.instructorName,
+    this.templateKey,
   });
 
   final String id;
@@ -198,6 +201,21 @@ class WorkoutProgram {
   final String? description;
   final bool active;
   final List<WorkoutDay> days;
+
+  /// Ficha montada pelo próprio aluno (ou iniciada de um treino pronto).
+  final bool ownedByStudent;
+  final String? instructorName;
+  final String? templateKey;
+
+  /// Rótulo de origem mostrado na lista "Meus treinos".
+  String get originLabel {
+    if (!ownedByStudent) {
+      return instructorName == null ? 'Da academia' : 'Da academia · $instructorName';
+    }
+    return templateKey == null ? 'Criado por você' : 'Treino pronto';
+  }
+
+  int get trainingDays => days.where((d) => !d.restDay).length;
 
   factory WorkoutProgram.fromJson(Map<String, dynamic> json) {
     return WorkoutProgram(
@@ -209,6 +227,9 @@ class WorkoutProgram {
               ?.map((e) => WorkoutDay.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      ownedByStudent: json['ownedByStudent'] as bool? ?? false,
+      instructorName: json['instructorName'] as String?,
+      templateKey: json['templateKey'] as String?,
     );
   }
 
@@ -322,9 +343,155 @@ class SessionComplete {
   }
 }
 
+/// Treino pronto do catálogo (musculação, corrida, spinning ou bike, por nível).
+class WorkoutTemplate {
+  const WorkoutTemplate({
+    required this.key,
+    required this.title,
+    required this.modality,
+    required this.level,
+    required this.kind,
+    required this.description,
+    required this.daysPerWeek,
+    required this.sessionMinutes,
+  });
+
+  final String key;
+  final String title;
+  final String modality;
+  final String level;
+
+  /// PROGRAM (vira ficha semanal) ou CARDIO (vira treino outdoor de corrida).
+  final String kind;
+  final String description;
+  final int daysPerWeek;
+  final int sessionMinutes;
+
+  bool get isCardio => kind == 'CARDIO';
+
+  factory WorkoutTemplate.fromJson(Map<String, dynamic> json) => WorkoutTemplate(
+        key: json['key'] as String,
+        title: json['title'] as String? ?? '',
+        modality: json['modality'] as String? ?? 'MUSCULACAO',
+        level: json['level'] as String? ?? 'INICIANTE',
+        kind: json['kind'] as String? ?? 'PROGRAM',
+        description: json['description'] as String? ?? '',
+        daysPerWeek: (json['daysPerWeek'] as num?)?.toInt() ?? 0,
+        sessionMinutes: (json['sessionMinutes'] as num?)?.toInt() ?? 0,
+      );
+}
+
+const templateModalities = {
+  'MUSCULACAO': 'Musculação',
+  'CORRIDA': 'Corrida',
+  'SPINNING': 'Spinning',
+  'BIKE': 'Bike',
+};
+
+const templateLevels = {
+  'INICIANTE': 'Iniciante',
+  'INTERMEDIARIO': 'Intermediário',
+  'AVANCADO': 'Avançado',
+};
+
+/// Exercício na montagem de uma ficha própria.
+class ExerciseDraft {
+  ExerciseDraft({required this.name, this.sets = 3, this.reps = '12', this.duration, this.description});
+
+  String name;
+  int sets;
+  String reps;
+  String? duration;
+  String? description;
+
+  /// "12" vira repetições; texto como "30 s" ou "8-10" vai no campo de duração/observação.
+  Map<String, dynamic> toJson(int order) {
+    final repsNumber = int.tryParse(reps.trim());
+    final freeText = repsNumber == null && reps.trim().isNotEmpty ? reps.trim() : null;
+    final durationText = (duration != null && duration!.isNotEmpty) ? duration : freeText;
+    return {
+      'name': name,
+      if (description != null && description!.isNotEmpty) 'description': description,
+      'sets': sets,
+      if (repsNumber != null) 'reps': repsNumber,
+      if (durationText != null) 'duration': durationText,
+      'sortOrder': order,
+    };
+  }
+}
+
+/// Dia na montagem de uma ficha própria.
+class DayDraft {
+  DayDraft({required this.weekDay, this.title = '', List<ExerciseDraft>? exercises})
+      : exercises = exercises ?? [];
+
+  final String weekDay;
+  String title;
+  final List<ExerciseDraft> exercises;
+
+  bool get isRest => exercises.isEmpty;
+}
+
 class WorkoutService {
   WorkoutService._();
   static final instance = WorkoutService._();
+
+  /// Todas as fichas que o aluno vê: as da academia e as próprias.
+  Future<List<WorkoutProgram>> listPrograms() async {
+    final data = await AuthService.instance.getList('/api/student/programs');
+    return data.map((e) => WorkoutProgram.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Map<String, dynamic> programBody(String title, List<DayDraft> days) => {
+        'title': title.trim(),
+        'days': [
+          for (final (i, d) in days.indexed)
+            {
+              'weekDay': d.weekDay,
+              'muscleGroup': d.isRest ? 'Descanso' : (d.title.trim().isEmpty ? null : d.title.trim()),
+              'restDay': d.isRest,
+              'sortOrder': i + 1,
+              'exercises': [
+                for (final (j, e) in d.exercises.indexed) e.toJson(j + 1),
+              ],
+            },
+        ],
+      };
+
+  Future<WorkoutProgram> createProgram(String title, List<DayDraft> days) async {
+    final data = await AuthService.instance.post('/api/student/programs', programBody(title, days));
+    return WorkoutProgram.fromJson(data);
+  }
+
+  /// Instrutor monta a ficha do aluno; ela passa a ser a ficha ativa dele.
+  Future<void> createProgramForStudent(String studentId, String title, List<DayDraft> days) async {
+    await AuthService.instance.post('/api/instructor/programs', {
+      ...programBody(title, days),
+      'studentId': studentId,
+    });
+  }
+
+  Future<WorkoutProgram> updateProgram(String id, String title, List<DayDraft> days) async {
+    final data = await AuthService.instance.put('/api/student/programs/$id', programBody(title, days));
+    return WorkoutProgram.fromJson(data);
+  }
+
+  Future<void> deleteProgram(String id) => AuthService.instance.delete('/api/student/programs/$id');
+
+  Future<void> activateProgram(String id) async {
+    await AuthService.instance.post('/api/student/programs/$id/activate', {});
+  }
+
+  Future<List<WorkoutTemplate>> listTemplates() async {
+    final data = await AuthService.instance.getList('/api/student/templates');
+    return data.map((e) => WorkoutTemplate.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Começa um treino pronto: devolve "PROGRAM" ou "CARDIO".
+  Future<String> startTemplate(String key) async {
+    final data = await AuthService.instance.post('/api/student/templates/$key/start', {});
+    return data['kind'] as String? ?? 'PROGRAM';
+  }
 
   Future<WorkoutProgram?> getActiveProgram() async {
     try {

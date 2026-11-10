@@ -14,9 +14,13 @@ public record AcademyResponse(
         boolean appBlocked,
         Instant createdAt,
         long instructorCount,
-        long studentCount
+        long studentCount,
+        /** Mensalidade da academia (R$), com todos os instrutores incluídos. */
+        java.math.BigDecimal planMonthlyPrice,
+        int planIncludedStudents
 ) {
-    public static AcademyResponse from(Academy academy, long instructors, long students) {
+    public static AcademyResponse from(Academy academy, long instructors, long students,
+                                       java.math.BigDecimal monthlyPrice, int includedStudents) {
         return new AcademyResponse(
                 academy.getId(),
                 academy.getName(),
@@ -26,7 +30,9 @@ public record AcademyResponse(
                 academy.isAppBlocked(),
                 academy.getCreatedAt(),
                 instructors,
-                students
+                students,
+                monthlyPrice,
+                includedStudents
         );
     }
 }

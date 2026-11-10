@@ -78,16 +78,15 @@ function LoginForm() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4" autoComplete="off">
           <div>
             <label htmlFor="instrutor-academy-slug" className="mb-1 block text-sm text-slate-300">
-              Código da academia
+              Código da academia <span className="text-slate-500">(opcional)</span>
             </label>
             <input
               id="instrutor-academy-slug"
               name="instrutor-academy-slug"
               value={academySlug}
               onChange={(e) => setSlug(e.target.value.toLowerCase())}
-              placeholder="ex: academia-demo"
+              placeholder="pode deixar em branco"
               className="form-input"
-              required
               autoComplete="off"
             />
             {academyName && <p className="mt-1 text-xs text-violet-300">{academyName}</p>}

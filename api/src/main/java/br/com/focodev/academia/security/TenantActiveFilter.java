@@ -24,15 +24,17 @@ public class TenantActiveFilter extends OncePerRequestFilter {
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof AuthUser authUser) {
             UserRole role = authUser.getRole();
-            if ((role == UserRole.INSTRUTOR || role == UserRole.ALUNO)
-                    && (authUser.getAcademyId() == null || !authUser.isAcademyActive())) {
+            boolean staff = role == UserRole.INSTRUTOR || role == UserRole.GESTOR;
+            boolean missingAcademy = authUser.getAcademyId() == null && staff;
+            if ((staff || role == UserRole.ALUNO)
+                    && (missingAcademy || !authUser.isAcademyActive())) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());
                 response.getWriter().write("{\"message\":\"Academia desativada ou não vinculada\"}");
                 return;
             }
-            if ((role == UserRole.INSTRUTOR || role == UserRole.ALUNO) && authUser.isAcademyAppBlocked()) {
+            if ((staff || role == UserRole.ALUNO) && authUser.isAcademyAppBlocked()) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding(StandardCharsets.UTF_8.name());

@@ -18,6 +18,9 @@ import 'online_reconnect_screen.dart';
 import 'profile_screen.dart';
 import 'weight_screen.dart';
 import 'workouts_screen.dart';
+import 'premium_screen.dart';
+import 'templates_screen.dart';
+import '../services/subscription_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -46,7 +49,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _loadVersion();
       _checkActiveRun();
       _loadTodayStats();
+      _loadSubscription();
     });
+  }
+
+  SubscriptionStatus? _subscription;
+
+  Future<void> _loadSubscription() async {
+    try {
+      final status = await SubscriptionService.instance.status();
+      if (mounted) setState(() => _subscription = status);
+    } catch (_) {
+      // Sem rede: o cartão some até a próxima abertura.
+    }
   }
 
   Future<void> _loadTodayStats() async {
@@ -289,6 +304,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               onTap: _sync,
             ),
             const SizedBox(height: 8),
+            if (_subscription != null && !_subscription!.viaAcademy) ...[
+              _MenuCard(
+                key: const Key('premium-card'),
+                icon: Icons.workspace_premium_rounded,
+                iconColor: Colors.amberAccent,
+                title: 'Foco Premium',
+                subtitle: _subscription!.summary,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const PremiumScreen()),
+                  );
+                  await _loadSubscription();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+            _MenuCard(
+              icon: Icons.auto_awesome_rounded,
+              iconColor: Colors.amberAccent,
+              title: 'Treinos prontos',
+              subtitle: 'Musculação, corrida, spinning e bike por nível',
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
+                );
+                await _loadTodayStats();
+              },
+            ),
+            const SizedBox(height: 8),
             _MenuCard(
               icon: Icons.fitness_center,
               title: 'Musculação',
@@ -438,6 +482,7 @@ class _StatCell extends StatelessWidget {
 
 class _MenuCard extends StatelessWidget {
   const _MenuCard({
+    super.key,
     this.icon,
     this.leading,
     this.iconColor,
