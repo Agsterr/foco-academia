@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../services/auth_service.dart';
+import '../services/invite_link.dart';
 import 'app_home.dart';
+import 'invite_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -79,6 +81,13 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Convite que chegou sem o link abrir o app (ex.: copiou o código da mensagem).
+  Future<void> _enterInviteCode() async {
+    final code = await showDialog<String>(context: context, builder: (_) => const InviteCodeDialog());
+    if (code == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => InviteScreen(code: code)));
   }
 
   @override
@@ -239,10 +248,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Treina em academia? Use o código e o e-mail que ela cadastrou. '
-                            'Dono de academia ou personal entra só com e-mail e senha.',
+                            'Recebeu convite do seu instrutor? Toque no link da mensagem '
+                            'ou em "Tenho um código de convite".',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                          OutlinedButton.icon(
+                            key: const Key('have-invite'),
+                            onPressed: _loading ? null : _enterInviteCode,
+                            icon: const Icon(Icons.mark_email_read_outlined),
+                            label: const Text('Tenho um código de convite'),
                           ),
                           TextButton(
                             key: const Key('register-business'),
@@ -265,6 +280,54 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Digitar o código (ou colar o link inteiro) do convite.
+class InviteCodeDialog extends StatefulWidget {
+  const InviteCodeDialog({super.key});
+
+  @override
+  State<InviteCodeDialog> createState() => _InviteCodeDialogState();
+}
+
+class _InviteCodeDialogState extends State<InviteCodeDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    final code = InviteLinks.codeFrom(text) ?? InviteLinks.normalizeCode(text);
+    if (code.length < 6) {
+      setState(() => _error = 'Digite o código que veio na mensagem (ex.: K7Q2M-X9P3T).');
+      return;
+    }
+    Navigator.pop(context, code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Código do convite'),
+      content: TextField(
+        key: const Key('invite-code-field'),
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        decoration: InputDecoration(hintText: 'K7Q2M-X9P3T ou o link', errorText: _error),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(key: const Key('invite-code-ok'), onPressed: _submit, child: const Text('Continuar')),
+      ],
     );
   }
 }

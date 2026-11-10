@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/staff_service.dart';
+import 'invite_sheet.dart';
 import 'person_form.dart';
 import 'staff_home_screen.dart';
 
@@ -16,6 +17,70 @@ class InstructorsTab extends StatefulWidget {
 
 class _InstructorsTabState extends State<InstructorsTab> {
   final _listKey = GlobalKey<AsyncListViewState<InstructorStats>>();
+
+  Future<void> _add() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.link_rounded),
+              title: const Text('Convidar por link (recomendado)'),
+              subtitle: const Text('O instrutor toca no link e cria a própria senha'),
+              onTap: () => Navigator.pop(context, 'invite'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Cadastrar com e-mail e senha'),
+              onTap: () => Navigator.pop(context, 'create'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'invite') await showCreateInvite(context, service: widget.service, role: 'INSTRUTOR');
+    if (choice == 'create') await _create();
+  }
+
+  Future<void> _actions(InstructorStats i) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(title: Text(i.name, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(i.email)),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.phonelink_erase_rounded),
+              title: const Text('Liberar aparelho'),
+              subtitle: const Text('Trocou de celular: libera para entrar no novo'),
+              onTap: () => Navigator.pop(context, 'release'),
+            ),
+            ListTile(
+              leading: Icon(i.active ? Icons.block_rounded : Icons.check_circle_outline_rounded),
+              title: Text(i.active ? 'Desativar instrutor' : 'Reativar instrutor'),
+              onTap: () => Navigator.pop(context, 'active'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == 'active') await _toggle(i);
+    if (choice == 'release') {
+      try {
+        await widget.service.releaseDevices(i.id);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aparelho liberado.')));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    }
+  }
 
   Future<void> _create() async {
     final created = await showPersonForm(
@@ -56,17 +121,17 @@ class _InstructorsTabState extends State<InstructorsTab> {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('new-instructor'),
-        onPressed: _create,
+        onPressed: _add,
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('Instrutor'),
       ),
       body: AsyncListView<InstructorStats>(
         key: _listKey,
         load: widget.service.instructors,
-        empty: 'Nenhum instrutor ainda. Toque em "Instrutor" para cadastrar.',
+        empty: 'Nenhum instrutor ainda. Toque em "Instrutor" para convidar.',
         itemBuilder: (context, i, _) => Card(
           child: ListTile(
-            onTap: () => _toggle(i),
+            onTap: () => _actions(i),
             leading: CircleAvatar(child: Text(i.name.isEmpty ? '?' : i.name.characters.first.toUpperCase())),
             title: Text(i.active ? i.name : '${i.name} (desativado)'),
             subtitle: Text(

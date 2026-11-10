@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -83,9 +84,58 @@ class AuthService {
     token = prefs.getString('token');
     academySlug = prefs.getString('academy_slug');
     role = prefs.getString('user_role');
-    deviceId = prefs.getString('device_id') ?? const Uuid().v4();
+    deviceId = prefs.getString('device_id') ?? await _newDeviceId();
     await prefs.setString('device_id', deviceId!);
     return token != null;
+  }
+
+  static const _deviceChannel = MethodChannel('com.focodev.academia/device');
+
+  /// Identificador do celular que sobrevive a desinstalar e instalar de novo: a conta
+  /// presa a um aparelho continua entrando no mesmo celular depois de reinstalar.
+  static Future<String> _newDeviceId() async {
+    try {
+      final id = await _deviceChannel.invokeMethod<String>('stableDeviceId');
+      if (id != null && id.isNotEmpty) return 'android-$id';
+    } catch (_) {}
+    return const Uuid().v4();
+  }
+
+  /// O que a tela do convite mostra (público, sem login).
+  Future<Map<String, dynamic>> previewInvite(String code) async {
+    final response = await http.get(Uri.parse('$apiBase/api/auth/invites/${Uri.encodeComponent(code)}'));
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Convite não encontrado'));
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  /// Aceita o convite: cria a conta (ou vincula a de aluno avulso) já ligada à academia e entra.
+  Future<void> acceptInvite({
+    required String code,
+    String? name,
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$apiBase/api/auth/invites/${Uri.encodeComponent(code)}/accept'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+        'email': email,
+        'password': password,
+        'deviceId': deviceId,
+        'deviceLabel': 'Flutter Android',
+        'appClient': 'MOBILE',
+        'appVersion': AppUpdateService.loginAppVersion(),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorMessage(response, 'Não foi possível aceitar o convite'));
+    }
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    await _startSession(data, data['academySlug'] as String? ?? '', email, password, remember);
   }
 
   Future<void> _persistRole(Object? user) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/staff_service.dart';
 import '../program_editor_screen.dart';
+import 'invite_sheet.dart';
 import 'person_form.dart';
 import 'staff_home_screen.dart';
 
@@ -33,13 +34,54 @@ class _StudentsTabState extends State<StudentsTab> {
 
   void _reload() => _listKey.currentState?.reload();
 
-  Future<void> _create() async {
-    List<InstructorStats> instructors = const [];
-    if (!widget.personal) {
-      try {
-        instructors = (await widget.service.instructors()).where((i) => i.active).toList();
-      } catch (_) {}
+  Future<List<InstructorStats>> _activeInstructors() async {
+    if (!widget.manager || widget.personal) return const [];
+    try {
+      return (await widget.service.instructors()).where((i) => i.active).toList();
+    } catch (_) {
+      return const [];
     }
+  }
+
+  /// Convite por link é o caminho principal; o gestor também pode cadastrar com senha.
+  Future<void> _add() async {
+    if (!widget.manager) return _invite();
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('add-by-invite'),
+              leading: const Icon(Icons.link_rounded),
+              title: const Text('Convidar por link (recomendado)'),
+              subtitle: const Text('O aluno toca no link e a conta já vem pronta'),
+              onTap: () => Navigator.pop(context, 'invite'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_1_rounded),
+              title: const Text('Cadastrar com e-mail e senha'),
+              subtitle: const Text('Você cria a conta e passa a senha'),
+              onTap: () => Navigator.pop(context, 'create'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == 'invite') await _invite();
+    if (choice == 'create') await _create();
+  }
+
+  Future<void> _invite() async {
+    final instructors = await _activeInstructors();
+    if (!mounted) return;
+    await showCreateInvite(context, service: widget.service, role: 'ALUNO', instructors: instructors);
+  }
+
+  Future<void> _create() async {
+    final instructors = await _activeInstructors();
     if (!mounted) return;
     final created = await showPersonForm(
       context,
@@ -59,18 +101,18 @@ class _StudentsTabState extends State<StudentsTab> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     return Scaffold(
-      floatingActionButton: widget.manager
-          ? FloatingActionButton.extended(
-              key: const Key('new-student'),
-              onPressed: _create,
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: const Text('Aluno'),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton.extended(
+        key: const Key('new-student'),
+        onPressed: _add,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: Text(widget.manager ? 'Aluno' : 'Convidar aluno'),
+      ),
       body: AsyncListView<StaffStudent>(
         key: _listKey,
         load: () => widget.service.students(manager: widget.manager),
-        empty: widget.manager ? 'Nenhum aluno ainda. Toque em "Aluno" para cadastrar.' : 'Nenhum aluno ligado a você ainda.',
+        empty: widget.manager
+            ? 'Nenhum aluno ainda. Toque em "Aluno" para convidar.'
+            : 'Nenhum aluno ligado a você ainda. Toque em "Convidar aluno" e mande o link.',
         filter: (s) =>
             (_query.isEmpty || s.name.toLowerCase().contains(_query) || s.email.toLowerCase().contains(_query)) &&
             (!_onlyIdle || s.inactiveFor(now)),
@@ -92,7 +134,14 @@ class _StudentsTabState extends State<StudentsTab> {
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    ActionChip(
+                      key: const Key('open-invites'),
+                      avatar: const Icon(Icons.mark_email_unread_outlined, size: 18),
+                      label: const Text('Convites pendentes'),
+                      onPressed: () => showOpenInvites(context, service: widget.service),
+                    ),
                     ChoiceChip(
                       label: Text('Todos (${all.length})'),
                       selected: !_onlyIdle,
@@ -145,6 +194,13 @@ class _StudentsTabState extends State<StudentsTab> {
                 title: const Text('Trocar instrutor'),
                 onTap: () => Navigator.pop(context, 'instructor'),
               ),
+            ListTile(
+              key: const Key('release-device'),
+              leading: const Icon(Icons.phonelink_erase_rounded),
+              title: const Text('Liberar aparelho'),
+              subtitle: const Text('Trocou de celular: libera para entrar no novo'),
+              onTap: () => Navigator.pop(context, 'release'),
+            ),
             if (widget.manager)
               ListTile(
                 leading: Icon(s.active ? Icons.block_rounded : Icons.check_circle_outline_rounded),
@@ -165,6 +221,8 @@ class _StudentsTabState extends State<StudentsTab> {
         if (saved == true) _snack('Ficha enviada para ${s.name}.');
       case 'instructor':
         await _changeInstructor(s);
+      case 'release':
+        await _run(() => widget.service.releaseDevices(s.id), 'Aparelho liberado. ${s.name} já pode entrar no celular novo.');
       case 'active':
         await _run(() => widget.service.setActive(s.id, !s.active), s.active ? 'Aluno desativado.' : 'Aluno reativado.');
     }

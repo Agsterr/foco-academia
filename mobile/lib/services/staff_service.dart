@@ -264,6 +264,43 @@ class SuggestionEntry {
       );
 }
 
+/// Convite por link ainda não usado.
+class StaffInvite {
+  const StaffInvite({
+    required this.id,
+    required this.code,
+    required this.url,
+    required this.role,
+    this.name,
+    this.instructorName,
+    this.expiresAt,
+    required this.shareText,
+  });
+
+  final String id;
+  final String code;
+  final String url;
+  final String role;
+  final String? name;
+  final String? instructorName;
+  final DateTime? expiresAt;
+  final String shareText;
+
+  /// "K7Q2M-X9P3T".
+  String get formattedCode => code.length == 10 ? '${code.substring(0, 5)}-${code.substring(5)}' : code;
+
+  factory StaffInvite.fromJson(Map<String, dynamic> j) => StaffInvite(
+        id: j['id'] as String,
+        code: j['code'] as String,
+        url: j['url'] as String? ?? '',
+        role: j['role'] as String? ?? 'ALUNO',
+        name: j['name'] as String?,
+        instructorName: j['instructorName'] as String?,
+        expiresAt: _date(j['expiresAt']),
+        shareText: j['shareText'] as String? ?? '',
+      );
+}
+
 /// Chamadas do painel da academia e do instrutor.
 class StaffService {
   StaffService._();
@@ -326,4 +363,21 @@ class StaffService {
 
   Future<void> setActive(String userId, bool active) =>
       _api.post('/api/manager/members/$userId/active?value=$active', {});
+
+  /// [role] ALUNO ou INSTRUTOR.
+  Future<StaffInvite> createInvite({required String role, String? name, String? instructorId}) async =>
+      StaffInvite.fromJson(await _api.post('/api/manager/invites', {
+        'role': role,
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+        if (instructorId != null) 'instructorId': instructorId,
+      }));
+
+  Future<List<StaffInvite>> openInvites() async => [
+        for (final e in await _api.getList('/api/manager/invites')) StaffInvite.fromJson(e as Map<String, dynamic>),
+      ];
+
+  Future<void> revokeInvite(String id) => _api.delete('/api/manager/invites/$id');
+
+  /// Trocou de celular: libera para a pessoa entrar no aparelho novo.
+  Future<void> releaseDevices(String userId) => _api.post('/api/manager/members/$userId/devices/release', {});
 }
