@@ -48,4 +48,14 @@ public class User {
     private Instant createdAt = Instant.now();
 
     private boolean active = true;
+
+    /**
+     * Conta presa a um aparelho por vez (quem entra por convite ou é cadastrado pela academia):
+     * outro aparelho só entra quando o instrutor libera ou o antigo fica 7 dias sem uso.
+     */
+    private Boolean singleDevice;
+
+    public boolean isSingleDevice() {
+        return Boolean.TRUE.equals(singleDevice);
+    }
 }

@@ -274,7 +274,7 @@ public class ManagerService {
         throw new ApiException("Disponível só para o gestor da academia.", HttpStatus.FORBIDDEN);
     }
 
-    private static boolean isManager(User user) {
+    static boolean isManager(User user) {
         Academy academy = user.getAcademy();
         boolean owner = academy != null && academy.getOwner() != null && academy.getOwner().getId().equals(user.getId());
         return user.getRole() == UserRole.GESTOR || (user.getRole() == UserRole.INSTRUTOR && owner);
@@ -295,6 +295,8 @@ public class ManagerService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(role);
         user.setAcademy(academy);
+        // Conta criada pela academia: um aparelho por vez.
+        user.setSingleDevice(true);
         return userRepository.save(user);
     }
 

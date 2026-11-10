@@ -101,18 +101,11 @@ public class AuthService {
             if (request.academySlug() != null && !request.academySlug().isBlank()) {
                 throw new ApiException("Administrador da plataforma não usa código de academia");
             }
+        } else if (slugBlank && user.getAcademy() != null) {
+            // O e-mail é único: a academia sai da própria conta, sem precisar digitar o código.
+            tenantService.requireActiveAcademy(user);
         } else {
-            if (request.academySlug() == null || request.academySlug().isBlank()) {
-                if (user.getRole() == UserRole.INSTRUTOR) {
-                    throw new ApiException(
-                            "Este e-mail é de instrutor. Acesse instrutor-academia.focodev.com.br e informe o código da academia."
-                    );
-                }
-                if (user.getRole() == UserRole.ALUNO) {
-                    throw new ApiException(
-                            "Este e-mail é de aluno. Acesse academia.focodev.com.br e informe o código da academia."
-                    );
-                }
+            if (slugBlank) {
                 throw new ApiException("Código da academia é obrigatório");
             }
             Academy academy = tenantService.requireActiveAcademyBySlug(request.academySlug());
