@@ -266,6 +266,13 @@ class CardioFeedback {
     }
   }
 
+  /// Fala uma frase curta pelo mesmo caminho de áudio do treino outdoor (usado pelos treinos em casa).
+  static Future<void> say(String text) => _speak(text);
+
+  /// Um bipe curto, para contagem regressiva.
+  static Future<void> beep({int frequencyHz = 880, int durationMs = 140}) =>
+      _playTone(frequencyHz, durationMs: durationMs);
+
   /// [count] bipes genéricos (ex.: início / fim).
   static Future<void> playBeeps(int count) async {
     final n = count.clamp(1, 5);
