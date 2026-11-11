@@ -49,4 +49,4 @@ Treinos, corrida e evolução. Painel completo para academias e personais.
 > • Convide alunos e instrutores com um link: a conta já vem pronta
 > • Segurança: cada conta funciona em um aparelho por vez
 >
-> Alunos que treinam sozinhos têm 7 dias grátis do Foco Premium.
+> Alunos que treinam sozinhos têm 15 dias grátis do Foco Premium.
