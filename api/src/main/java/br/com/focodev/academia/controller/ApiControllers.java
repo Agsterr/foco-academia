@@ -4,6 +4,7 @@ import br.com.focodev.academia.billing.BillingDtos;
 import br.com.focodev.academia.billing.BillingService;
 import br.com.focodev.academia.dto.*;
 import br.com.focodev.academia.security.AuthUser;
+import br.com.focodev.academia.service.AccountDeletionService;
 import br.com.focodev.academia.service.AcademiaService;
 import br.com.focodev.academia.service.AuthService;
 import br.com.focodev.academia.service.CalorieStatsService;
@@ -34,6 +35,7 @@ import java.util.UUID;
 public class ApiControllers {
 
     private final AuthService authService;
+    private final AccountDeletionService accountDeletionService;
     private final AcademiaService academiaService;
     private final WorkoutProgramService workoutProgramService;
     private final WorkoutTemplateService workoutTemplateService;
@@ -196,6 +198,16 @@ public class ApiControllers {
             @RequestParam("file") MultipartFile file
     ) throws IOException {
         return Map.of("url", academiaService.uploadMedia(user, file));
+    }
+
+    /** Exclusão de conta pelo aluno (Google Play / LGPD). Pede a senha para confirmar. */
+    @DeleteMapping("/student/account")
+    public ResponseEntity<Void> deleteMyAccount(
+            @AuthenticationPrincipal AuthUser user,
+            @RequestBody Map<String, String> body
+    ) {
+        accountDeletionService.deleteStudentAccount(user, body == null ? null : body.get("password"));
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/student/programs")

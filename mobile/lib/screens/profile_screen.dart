@@ -120,6 +120,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _confirmDeleteAccount() async {
+    final passwordCtrl = TextEditingController();
+    String? error;
+    var busy = false;
+    final deleted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Excluir conta?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Seus treinos, rotas de GPS, peso, perfil e assinatura neste app serão '
+                'apagados para sempre. Se você assina o Foco Premium, cancele também '
+                'na Google Play (Pagamentos e assinaturas).',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordCtrl,
+                obscureText: true,
+                enabled: !busy,
+                decoration: const InputDecoration(
+                  labelText: 'Digite sua senha para confirmar',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!, style: const TextStyle(color: Colors.redAccent)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (passwordCtrl.text.isEmpty) {
+                        setLocal(() => error = 'Digite sua senha');
+                        return;
+                      }
+                      setLocal(() {
+                        busy = true;
+                        error = null;
+                      });
+                      final result = await AuthService.instance.deleteAccount(passwordCtrl.text);
+                      if (result == null) {
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } else {
+                        setLocal(() {
+                          busy = false;
+                          error = result;
+                        });
+                      }
+                    },
+              child: Text(busy ? 'Excluindo...' : 'Excluir conta'),
+            ),
+          ],
+        ),
+      ),
+    );
+    passwordCtrl.dispose();
+    if (deleted == true && mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -222,6 +300,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: _saving ? null : _save,
                   child: Text(_saving ? 'Salvando...' : 'Salvar'),
                 ),
+                if (AuthService.instance.role == 'ALUNO') ...[
+                  const SizedBox(height: 32),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _confirmDeleteAccount,
+                    icon: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
+                    label: const Text(
+                      'Excluir minha conta',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                  const Text(
+                    'Apaga seus treinos, rotas de GPS, peso e perfil. Não dá para desfazer.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ],
               ],
             ),
     );

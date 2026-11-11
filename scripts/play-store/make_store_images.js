@@ -58,8 +58,8 @@ ${fontFace}
 body{width:1024px;height:500px;overflow:hidden;font-family:Poppins;color:#fff;position:relative;
 background:linear-gradient(120deg,#5B3DF5 0%,#C04DFF 45%,#FF4D9D 75%,#FF7A1A 100%)}
 .blob{position:absolute;border-radius:50%;background:rgba(255,255,255,.14)}
-.logo{position:absolute;left:64px;top:92px;width:96px;height:96px;border-radius:30px;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center}
-.logo svg{width:60px;height:60px}
+.logo{position:absolute;left:64px;top:92px;width:96px;height:96px;border-radius:30px;background:#140A33;display:flex;align-items:center;justify-content:center}
+.logo svg{width:68px;height:68px}
 .name{position:absolute;left:64px;top:216px;font-size:54px;font-weight:800;letter-spacing:-1.5px;line-height:1}
 .tag{position:absolute;left:66px;top:296px;width:470px;font-size:25px;font-weight:600;line-height:1.35;opacity:.97}
 .phone{position:absolute;width:250px;height:445px;border-radius:36px;background:#0B0A1A;padding:9px;box-shadow:0 24px 50px rgba(0,0,0,.45),0 0 0 3px rgba(255,255,255,.3)}
@@ -68,7 +68,7 @@ background:linear-gradient(120deg,#5B3DF5 0%,#C04DFF 45%,#FF4D9D 75%,#FF7A1A 100
 </style></head><body>
 <div class="blob" style="width:420px;height:420px;top:-200px;left:300px"></div>
 <div class="blob" style="width:300px;height:300px;bottom:-160px;left:-80px;opacity:.6"></div>
-<div class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29z"/></svg></div>
+<div class="logo"><svg viewBox="260 175 600 680"><defs><linearGradient id="n" gradientUnits="userSpaceOnUse" x1="300" y1="215" x2="760" y2="815"><stop offset="0" stop-color="#22D3EE"/><stop offset=".5" stop-color="#8B5CF6"/><stop offset="1" stop-color="#FF4D9D"/></linearGradient></defs><g fill="url(#n)"><rect x="300" y="215" width="150" height="600" rx="75"/><rect x="300" y="215" width="440" height="150" rx="75"/><rect x="300" y="450" width="350" height="140" rx="70"/></g><circle cx="760" cy="740" r="62" fill="#B4F02B"/></svg></div>
 <div class="name">Foco Academia</div>
 <div class="tag">Treinos, corrida e evolução para alunos. Painel completo para academias e personais.</div>
 <div class="phone" style="left:580px;top:70px;transform:rotate(-6deg)"><div><img src="file://${left}"></div></div>

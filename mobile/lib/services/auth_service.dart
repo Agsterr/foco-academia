@@ -431,6 +431,25 @@ class AuthService {
     await prefs.remove('user_name');
   }
 
+  /// Exclui a conta do aluno (apaga dados pessoais e anonimiza). Pede a senha para confirmar.
+  /// Retorna null em caso de sucesso, ou a mensagem de erro.
+  Future<String?> deleteAccount(String password) async {
+    if (token == null) return 'Sessão expirada. Entre novamente.';
+    try {
+      final request = http.Request('DELETE', Uri.parse('$apiBase/api/student/account'))
+        ..headers.addAll(_headers())
+        ..body = jsonEncode({'password': password});
+      final response = await http.Response.fromStream(await request.send());
+      if (_isSuccess(response.statusCode)) {
+        await logout();
+        return null;
+      }
+      return _errorMessage(response, 'Não foi possível excluir a conta. Tente de novo.');
+    } catch (_) {
+      return 'Sem conexão. Tente de novo.';
+    }
+  }
+
   Future<void> heartbeat() async {
     if (token == null || deviceId == null) return;
     try {
