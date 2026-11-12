@@ -213,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             IconBadge(icon: Icons.fitness_center_rounded, gradient: AppTheme.brandGradient, size: 34, glow: false),
             SizedBox(width: 10),
-            Text('Foco Academia'),
+            Flexible(child: Text('Foco Academia', maxLines: 1, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: [
@@ -288,7 +288,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 1.3,
+              // Celulares estreitos (360 dp) precisam de atalhos mais altos para o texto caber.
+              childAspectRatio: MediaQuery.sizeOf(context).width < 340
+                  ? 1.0
+                  : (MediaQuery.sizeOf(context).width < 380 ? 1.15 : 1.3),
               children: [
                 FeatureTile(
                   icon: Icons.fitness_center_rounded,

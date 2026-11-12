@@ -33,7 +33,7 @@ class _FakeStore implements StoreGateway {
 }
 
 PurchaseDetails _purchase(PurchaseStatus status) => PurchaseDetails(
-      productID: 'foco_premium_mensal',
+      productID: 'foco_academia_mensal',
       purchaseID: 'GPA.123',
       verificationData: PurchaseVerificationData(
         localVerificationData: '{}',
@@ -83,7 +83,7 @@ void main() {
 
     expect(sentToken, 'token-da-compra');
     expect(events, contains('ok'));
-    expect(store.completed, ['foco_premium_mensal']);
+    expect(store.completed, ['foco_academia_mensal']);
     expect(SubscriptionService.instance.last?.subscribed, isTrue);
   });
 
@@ -104,7 +104,7 @@ void main() {
     expect(store.completed, isEmpty);
 
     await deliver(_purchase(PurchaseStatus.canceled), client);
-    expect(store.completed, ['foco_premium_mensal']);
+    expect(store.completed, ['foco_academia_mensal']);
   });
 
   test('resumo do cartão conforme o motivo do acesso', () {

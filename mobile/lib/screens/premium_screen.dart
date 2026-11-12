@@ -59,7 +59,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
     try {
       available = await _service.store.isAvailable();
       if (available) {
-        plans = await _service.store.plans(status?.productIds ?? const ['foco_premium_mensal', 'foco_premium_anual']);
+        plans = await _service.store.plans(status?.productIds ?? const ['foco_academia_mensal']);
       }
     } catch (_) {
       available = false;

@@ -19,7 +19,8 @@ As telas são do app de verdade (tema novo), com dados de demonstração.
      --dart-define=FONT_DIR=$(dirname $(which flutter))/cache/artifacts/material_fonts \
      --dart-define=SHOTS_DIR=/tmp/telas --dart-define=PLAY_SCREENSHOTS=true
    ```
-   (No CI esse teste fica pulado, porque não recebe `FONT_DIR`.)
+   (No CI esse teste fica pulado, porque não recebe `FONT_DIR`.) Para as imagens do site, rode também com
+   `--dart-define=SHOT_HEIGHT=2340`.
 2. Celular, fundo e frase (precisa do Playwright com Chromium):
    ```bash
    node scripts/play-store/make_store_images.js /tmp/telas docs/play-store mobile/assets/fonts
@@ -30,7 +31,7 @@ As telas são do app de verdade (tema novo), com dados de demonstração.
 **Nome:** Foco Academia
 
 **Descrição curta (até 80 caracteres):**
-Treinos, corrida e evolução. Painel completo para academias e personais.
+Treino em casa, corrida e evolução. Painel para academias e personais.
 
 **Descrição completa:**
 
@@ -38,6 +39,8 @@ Treinos, corrida e evolução. Painel completo para academias e personais.
 >
 > **Para quem treina**
 > • Ficha da semana com cada exercício, séries e cronômetro
+> • **Treino em casa**, sem equipamento: 12 treinos do leve ao extremo, com cada exercício desenhado, cronômetro, descanso e Tabata
+> • Calorias, nível, sequência de dias, meta da semana e conquistas a cada treino
 > • Treinos prontos de musculação, corrida, spinning e bike, do iniciante ao avançado
 > • Monte os seus próprios treinos
 > • Treino outdoor com GPS, ritmo, voz e mapa da rota

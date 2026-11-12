@@ -16,7 +16,10 @@ import 'package:foco_academia_mobile/core/theme/app_theme.dart';
 import 'package:foco_academia_mobile/screens/calorie_stats_screen.dart';
 import 'package:foco_academia_mobile/screens/cardio_history_screen.dart';
 import 'package:foco_academia_mobile/screens/cardio_screen.dart';
+import 'package:foco_academia_mobile/data/home_workouts.dart';
 import 'package:foco_academia_mobile/screens/home_screen.dart';
+import 'package:foco_academia_mobile/screens/home_workout_player_screen.dart';
+import 'package:foco_academia_mobile/screens/home_workouts_screen.dart';
 import 'package:foco_academia_mobile/screens/my_programs_screen.dart';
 import 'package:foco_academia_mobile/screens/premium_screen.dart';
 import 'package:foco_academia_mobile/screens/profile_screen.dart';
@@ -29,9 +32,12 @@ import 'package:foco_academia_mobile/screens/templates_screen.dart';
 import 'package:foco_academia_mobile/screens/workout_day_screen.dart';
 import 'package:foco_academia_mobile/screens/workouts_screen.dart';
 import 'package:foco_academia_mobile/services/auth_service.dart';
+import 'package:foco_academia_mobile/services/home_workout_progress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite_dev.dart' show sqfliteDatabaseFactoryDefault;
 
 const _fontDir = String.fromEnvironment('FONT_DIR');
 const _outDir = String.fromEnvironment('SHOTS_DIR', defaultValue: 'build/play_store');
@@ -332,6 +338,30 @@ Future<void> _shot(
   await tester.pumpWidget(const SizedBox());
 }
 
+
+/// Histórico de demonstração do treino em casa: 4 dias seguidos antes de hoje (nível 2, sequência).
+Future<void> _seedHomeWorkouts() async {
+  final now = DateTime.now();
+  const plan = [
+    ('leve-corpo', 'Despertar do corpo', 'leve', 1260, 118, 12, 96),
+    ('medio-pernas', 'Pernas de aço', 'medio', 1180, 176, 12, 130),
+    ('medio-core', 'Core firme', 'medio', 1180, 164, 12, 130),
+    ('alto-hiit', 'HIIT queima-gordura', 'alto', 800, 238, 15, 190),
+  ];
+  for (final (i, w) in plan.indexed) {
+    await HomeWorkoutProgress.instance.record(HomeWorkoutLog(
+      workoutId: w.$1,
+      title: w.$2,
+      level: w.$3,
+      at: DateTime(now.year, now.month, now.day - (4 - i), 18, 30),
+      seconds: w.$4,
+      kcal: w.$5,
+      exercises: w.$6,
+      xp: w.$7,
+    ));
+  }
+}
+
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 300));
@@ -343,6 +373,28 @@ void main() {
   final skip = _fontDir.isEmpty;
 
   setUp(() {
+    // O mapa (flutter_map) pede uma pasta de cache ao path_provider; no teste não há plugin.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => Directory.systemTemp.path,
+    );
+    // A tela de outdoor consulta o SQLite (corrida interrompida); no teste responde "sem dados".
+    databaseFactory = sqfliteDatabaseFactoryDefault;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('com.tekartik.sqflite'),
+      (call) async {
+        switch (call.method) {
+          case 'getDatabasesPath':
+            return Directory.systemTemp.path;
+          case 'openDatabase':
+            return 1;
+          case 'query':
+            return <String, Object?>{'columns': <String>[], 'rows': <Object?>[]};
+          default:
+            return null;
+        }
+      },
+    );
     SharedPreferences.setMockInitialValues({});
     AuthService.instance
       ..token = 't'
@@ -380,6 +432,36 @@ void main() {
     });
     AuthService.instance.role = 'ALUNO';
     await _shot(tester, '08_aceitar_convite', const InviteScreen(code: 'K7Q2MX9P3T'));
+
+
+    // Treino em casa: lista com progresso, prévia, exercício desenhado e resumo.
+    await _seedHomeWorkouts();
+    final hiit = homeWorkoutById('alto-hiit');
+    await _shot(tester, '11_treino_em_casa', const HomeWorkoutsScreen());
+    await _shot(tester, '12_treino_em_casa_previa', HomeWorkoutDetailScreen(workout: hiit, weightKg: 78));
+    await _shot(
+      tester,
+      '13_treino_em_casa_exercicio',
+      HomeWorkoutPlayerScreen(workout: hiit, enableAudio: false, enableWakelock: false, weightKg: 78),
+      interact: (t) async {
+        // Prepare-se -> 1º exercício -> descanso -> 2º exercício (agachamento com salto, na pose agachada).
+        for (var i = 0; i < 3; i++) {
+          await t.tap(find.byKey(const Key('hw-skip')));
+          await t.pump();
+        }
+        await t.pump(const Duration(milliseconds: 20));
+      },
+    );
+    await _shot(
+      tester,
+      '14_treino_em_casa_resumo',
+      HomeWorkoutPlayerScreen(workout: hiit, enableAudio: false, enableWakelock: false, weightKg: 78),
+      interact: (t) async {
+        // Passa o treino inteiro de uma vez (o relógio de teste dispara todos os segundos).
+        await t.pump(Duration(seconds: 5 + hiit.totalSeconds));
+        await _settle(t);
+      },
+    );
 
     AuthService.instance.token = null;
     await _shot(tester, '09_login', const LoginScreen());

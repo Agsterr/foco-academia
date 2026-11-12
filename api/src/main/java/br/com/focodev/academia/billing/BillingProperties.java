@@ -60,7 +60,7 @@ public record BillingProperties(
     public List<String> productIdsOrDefault() {
         return productIds != null && !productIds.isEmpty()
                 ? productIds
-                : List.of("foco_premium_mensal", "foco_premium_anual");
+                : List.of("foco_academia_mensal");
     }
 
     public String packageNameOrDefault() {
