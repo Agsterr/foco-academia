@@ -6,6 +6,7 @@ import '../data/services/app_update_service.dart';
 import '../presentation/widgets/app_update_prompt.dart';
 import '../services/active_run_store.dart';
 import '../services/auth_service.dart';
+import '../services/home_workout_progress.dart';
 import '../services/online_auth_gate.dart';
 import '../services/profile_service.dart';
 import '../services/sync_service.dart';
@@ -13,6 +14,7 @@ import 'calorie_stats_screen.dart';
 import 'cardio_history_screen.dart';
 import 'cardio_screen.dart';
 import 'gps_debug_screen.dart';
+import 'home_workouts_screen.dart';
 import 'login_screen.dart';
 import 'online_reconnect_screen.dart';
 import 'profile_screen.dart';
@@ -70,11 +72,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final stats = await ProfileService.instance.getCalorieStats();
       if (!mounted) return;
+      final home = await HomeWorkoutProgress.instance.loadStats();
+      if (!mounted) return;
       setState(() {
-        _caloriesToday = stats.caloriesToday;
+        _caloriesToday = stats.caloriesToday + home.kcalToday;
         _kmToday = stats.kmToday;
         _totalKm = stats.totalKm;
-        _minutesToday = stats.minutesToday;
+        _minutesToday = stats.minutesToday + home.minutesToday;
       });
     } catch (_) {}
   }
@@ -253,6 +257,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ],
             const SectionHeader('Treinar'),
+            HeroCard(
+              key: const Key('home-workouts-card'),
+              gradient: AppTheme.freshGradient,
+              padding: const EdgeInsets.all(18),
+              onTap: () => _open(const HomeWorkoutsScreen(), reloadStats: true),
+              child: const Row(
+                children: [
+                  Icon(Icons.home_rounded, color: Colors.white, size: 42),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Treino em casa',
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                        Text('Sem equipamento · do leve ao extremo · calorias, nível e conquistas',
+                            style: TextStyle(color: Colors.white, fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right_rounded, color: Colors.white),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
