@@ -165,6 +165,32 @@ jobs:
           path: mobile/build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
 
+      # Publica o AAB na Google Play a cada push na main.
+      # Faixa padrão: teste fechado (alpha). Troque PLAY_TRACK nas variáveis do repositório
+      # (internal | alpha | beta | production) sem mexer no código.
+      # A conta de serviço só tem permissão de faixas de teste; produção exige liberar na Play Console.
+      - name: Verificar credencial da Play
+        id: play
+        env:
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$PLAY_JSON" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secret PLAY_SERVICE_ACCOUNT_JSON ausente: AAB não enviado à Play."
+          fi
+
+      - name: Enviar AAB para a Google Play
+        if: steps.play.outputs.ok == 'true'
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.focodev.academia.aluno
+          releaseFiles: mobile/build/app/outputs/bundle/release/app-release.aab
+          track: ${{ vars.PLAY_TRACK || 'alpha' }}
+          status: completed
+          releaseName: ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
+
       - name: Publicar APK na API
         env:
           DEPLOY_TOKEN: ${{ secrets.APP_RELEASE_DEPLOY_TOKEN }}
