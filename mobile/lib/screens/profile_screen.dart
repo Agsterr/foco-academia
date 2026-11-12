@@ -5,6 +5,7 @@ import '../services/health_sync_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
+import '../core/ui/error_text.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -82,7 +83,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
     }
   }
@@ -114,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -5,6 +5,7 @@ import '../services/weight_service.dart';
 import '../services/watch_import_service.dart';
 import '../services/auth_service.dart';
 import '../core/ui/insets.dart';
+import '../core/ui/error_text.dart';
 
 class WeightScreen extends StatefulWidget {
   const WeightScreen({super.key});
@@ -53,7 +54,7 @@ class _WeightScreenState extends State<WeightScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
     }
   }
@@ -71,7 +72,7 @@ class _WeightScreenState extends State<WeightScreen> {
       setState(() => _status = 'Peso $value kg salvo');
       await _load();
     } catch (e) {
-      setState(() => _status = 'Erro: $e');
+      setState(() => _status = 'Erro: ${errorText(e)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

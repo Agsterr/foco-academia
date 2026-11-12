@@ -10,6 +10,7 @@ import '../services/gps_tracking_engine.dart';
 import '../services/run_export_service.dart';
 import '../widgets/route_map_view.dart';
 import '../core/ui/insets.dart';
+import '../core/ui/error_text.dart';
 
 /// Replay da corrida: marcador percorre a rota na velocidade real.
 class RunReplayScreen extends StatefulWidget {
@@ -56,7 +57,7 @@ class _RunReplayScreenState extends State<RunReplayScreen> {
       if (!mounted) return;
       setState(() {
         _insightsLoading = false;
-        _insightsError = e.toString();
+        _insightsError = errorText(e);
       });
     }
   }

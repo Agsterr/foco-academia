@@ -39,6 +39,7 @@ import '../widgets/outdoor_goal_planner.dart';
 import '../widgets/route_map_view.dart';
 import '../screens/online_reconnect_screen.dart';
 import '../services/checkpoint_schedule.dart';
+import '../core/ui/error_text.dart';
 
 class CardioScreen extends StatefulWidget {
   const CardioScreen({super.key, this.autoResume = false});
@@ -540,7 +541,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
       await _offerResumeIfNeeded();
     }
@@ -1359,7 +1360,7 @@ class _CardioScreenState extends State<CardioScreen> with WidgetsBindingObserver
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao exportar: $e')),
+        SnackBar(content: Text('Falha ao exportar: ${errorText(e)}')),
       );
     }
   }

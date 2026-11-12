@@ -9,6 +9,7 @@ import 'login_screen.dart';
 import 'my_programs_screen.dart';
 import 'templates_screen.dart';
 import 'workout_day_screen.dart';
+import '../core/ui/error_text.dart';
 
 class WorkoutsScreen extends StatefulWidget {
   const WorkoutsScreen({super.key});
@@ -60,7 +61,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
     }
   }
