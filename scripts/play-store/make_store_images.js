@@ -10,13 +10,13 @@ fs.mkdirSync(OUT, { recursive: true });
 
 const slides = [
   ['01_inicio', 'Seu treino do dia<br>num toque', 'Calorias, km e tudo que você precisa na tela inicial', 'linear-gradient(160deg,#7C5CFF 0%,#C04DFF 50%,#FF4D9D 100%)'],
+  ['11_treino_em_casa', 'Treino em casa,<br>do leve ao extremo', 'Sem equipamento, com nível, XP e meta da semana', 'linear-gradient(160deg,#14D2C4 0%,#22D97A 55%,#B4F02B 100%)'],
+  ['13_treino_em_casa_exercicio', 'Veja o exercício<br>e o tempo certo', 'Cada movimento desenhado, com cronômetro e descanso', 'linear-gradient(160deg,#8B5CF6 0%,#FF4D9D 100%)'],
+  ['14_treino_em_casa_resumo', 'Calorias, nível<br>e conquistas', 'Sequência de dias, XP e medalhas a cada treino', 'linear-gradient(160deg,#FF7A1A 0%,#FF4D9D 100%)'],
   ['02_ficha', 'A ficha da semana<br>na palma da mão', 'Montada pelo seu instrutor, com cada dia colorido', 'linear-gradient(160deg,#FF4D5E 0%,#FF7A1A 55%,#FFB020 100%)'],
-  ['03_treino', 'Marque cada série<br>e veja o progresso', 'Cronômetro, calorias e comemoração no final', 'linear-gradient(160deg,#FF7A1A 0%,#FF4D9D 100%)'],
-  ['04_treinos_prontos', 'Treinos prontos<br>para todo nível', 'Musculação, corrida, spinning e bike', 'linear-gradient(160deg,#14D2C4 0%,#22D97A 55%,#B4F02B 100%)'],
+  ['04_treinos_prontos', 'Treinos prontos<br>para todo nível', 'Musculação, corrida, spinning e bike', 'linear-gradient(160deg,#3D8BFF 0%,#22C7F5 100%)'],
   ['05_painel_academia', 'Sua academia<br>em números', 'Alunos ativos, notas, recados e gráficos', 'linear-gradient(160deg,#5B3DF5 0%,#3D8BFF 100%)'],
-  ['06_alunos', 'Acompanhe cada<br>aluno de perto', 'Veja quem está treinando e quem sumiu', 'linear-gradient(160deg,#3D8BFF 0%,#22C7F5 100%)'],
   ['07_convite', 'Convide alunos<br>com um link', 'A conta já vem pronta e fica em um só aparelho', 'linear-gradient(160deg,#22D97A 0%,#14D2C4 100%)'],
-  ['10_cadastro', 'Aluno, personal<br>ou academia', 'Um app só para treinar e para gerenciar', 'linear-gradient(160deg,#FF4D9D 0%,#8B5CF6 100%)'],
 ];
 
 const fontFace = ['Regular:400', 'SemiBold:600', 'Bold:700', 'ExtraBold:800']
