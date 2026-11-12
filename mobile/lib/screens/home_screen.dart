@@ -213,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           children: [
             IconBadge(icon: Icons.fitness_center_rounded, gradient: AppTheme.brandGradient, size: 34, glow: false),
             SizedBox(width: 10),
-            Text('Foco Academia'),
+            Flexible(child: Text('Foco Academia', maxLines: 1, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: [

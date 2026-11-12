@@ -36,6 +36,8 @@ import 'package:foco_academia_mobile/services/home_workout_progress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite_dev.dart' show sqfliteDatabaseFactoryDefault;
 
 const _fontDir = String.fromEnvironment('FONT_DIR');
 const _outDir = String.fromEnvironment('SHOTS_DIR', defaultValue: 'build/play_store');
@@ -371,6 +373,28 @@ void main() {
   final skip = _fontDir.isEmpty;
 
   setUp(() {
+    // O mapa (flutter_map) pede uma pasta de cache ao path_provider; no teste não há plugin.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => Directory.systemTemp.path,
+    );
+    // A tela de outdoor consulta o SQLite (corrida interrompida); no teste responde "sem dados".
+    databaseFactory = sqfliteDatabaseFactoryDefault;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('com.tekartik.sqflite'),
+      (call) async {
+        switch (call.method) {
+          case 'getDatabasesPath':
+            return Directory.systemTemp.path;
+          case 'openDatabase':
+            return 1;
+          case 'query':
+            return <String, Object?>{'columns': <String>[], 'rows': <Object?>[]};
+          default:
+            return null;
+        }
+      },
+    );
     SharedPreferences.setMockInitialValues({});
     AuthService.instance
       ..token = 't'
