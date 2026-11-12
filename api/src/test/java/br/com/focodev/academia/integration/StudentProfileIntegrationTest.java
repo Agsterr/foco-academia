@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -61,5 +62,38 @@ class StudentProfileIntegrationTest {
                         .content("{\"studentId\":\"" + fixture.student().getId() + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Treino rápido — Emagrecimento"));
+    }
+
+    @Test
+    void firstProfileSaveCreatesTheProfileForStudentsWithoutOnboarding() throws Exception {
+        // Conta criada pelo app: não há registro de perfil e ler o perfil continua falhando
+        // (o painel web usa essa mensagem para mandar o aluno ao onboarding).
+        mockMvc.perform(get("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Perfil não encontrado"));
+
+        // Salvar só parte dos dados cria o perfil, sem concluir o cadastro.
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"heightCm\":170}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.heightCm").value(170.0))
+                .andExpect(jsonPath("$.onboardingCompleted").value(false));
+
+        // Com altura, peso e objetivo o cadastro fica completo e o painel web não pede onboarding de novo.
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"weightKg\":70,\"goal\":\"EMAGRECER\",\"activityLevel\":\"MODERADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentWeightKg").value(70.0))
+                .andExpect(jsonPath("$.onboardingCompleted").value(true));
+
+        mockMvc.perform(get("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.heightCm").value(170.0));
     }
 }
