@@ -26,9 +26,10 @@ Personal autônomo (instrutor que trabalha sozinho): **R$ 39,90/mês até 30 alu
    teste interno. O Google só mostra produtos de assinatura para apps já enviados.
 3. **Perfil de pagamentos** (Play Console → Configurações → Perfil de pagamentos), com conta bancária.
 4. **Criar as assinaturas** (Monetizar → Produtos → Assinaturas):
-   - `foco_premium_mensal` — plano base mensal, renovação automática (sugestão: R$ 24,90);
-   - `foco_premium_anual` — plano base anual, renovação automática (sugestão: R$ 199,00).
-   Os IDs precisam ser exatamente esses (ou mude `BILLING_PRODUCT_IDS` no servidor).
+   - `foco_academia_mensal` — plano base mensal, renovação automática (R$ 19,99), com a oferta
+     de teste grátis `teste-15-dias` (8 dias; veja a issue sobre os 7 + 8 dias).
+   Não existe plano anual. O ID precisa ser exatamente esse (ou mude `BILLING_PRODUCT_IDS` no
+   servidor) e não pode ser trocado depois de criado.
    O preço mostrado no app vem da Play Store, não do código.
 5. **Conta de serviço para a API confirmar as compras:**
    - Google Cloud Console → criar projeto (ou usar um) → ativar **Google Play Android Developer API**;

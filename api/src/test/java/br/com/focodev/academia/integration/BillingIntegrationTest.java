@@ -111,13 +111,13 @@ class BillingIntegrationTest {
     void verifiedGooglePlayPurchaseUnlocksPremium() throws Exception {
         expireTrial();
         Instant renewsAt = Instant.now().plus(Duration.ofDays(30));
-        when(verifier.verify(eq("foco_premium_mensal"), eq("token-google")))
-                .thenReturn(Optional.of(new VerifiedSubscription("foco_premium_mensal", renewsAt, true, true)));
+        when(verifier.verify(eq("foco_academia_mensal"), eq("token-google")))
+                .thenReturn(Optional.of(new VerifiedSubscription("foco_academia_mensal", renewsAt, true, true)));
 
         mockMvc.perform(post("/api/student/subscription/google-play")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":\"foco_premium_mensal\",\"purchaseToken\":\"token-google\"}"))
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"token-google\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.premium").value(true))
                 .andExpect(jsonPath("$.reason").value("SUBSCRIPTION"))
@@ -130,11 +130,11 @@ class BillingIntegrationTest {
     @Test
     void rejectsInactiveUnknownOrReusedPurchases() throws Exception {
         when(verifier.verify(anyString(), eq("token-vencido")))
-                .thenReturn(Optional.of(new VerifiedSubscription("foco_premium_mensal", Instant.now().minusSeconds(5), false, false)));
+                .thenReturn(Optional.of(new VerifiedSubscription("foco_academia_mensal", Instant.now().minusSeconds(5), false, false)));
         mockMvc.perform(post("/api/student/subscription/google-play")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":\"foco_premium_mensal\",\"purchaseToken\":\"token-vencido\"}"))
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"token-vencido\"}"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/student/subscription/google-play")
@@ -145,7 +145,7 @@ class BillingIntegrationTest {
 
         // Mesma compra já vinculada a outra conta.
         when(verifier.verify(anyString(), eq("token-de-outro")))
-                .thenReturn(Optional.of(new VerifiedSubscription("foco_premium_anual", Instant.now().plus(Duration.ofDays(365)), true, true)));
+                .thenReturn(Optional.of(new VerifiedSubscription("foco_academia_mensal", Instant.now().plus(Duration.ofDays(365)), true, true)));
         AcademyFixture other = AcademyFixture.create(academyRepository, userRepository, passwordEncoder, jwtService);
         User otherStudent = other.student();
         otherStudent.setAcademy(null);
@@ -154,12 +154,12 @@ class BillingIntegrationTest {
         mockMvc.perform(post("/api/student/subscription/google-play")
                         .header("Authorization", "Bearer " + otherToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":\"foco_premium_anual\",\"purchaseToken\":\"token-de-outro\"}"))
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"token-de-outro\"}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/student/subscription/google-play")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":\"foco_premium_anual\",\"purchaseToken\":\"token-de-outro\"}"))
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"token-de-outro\"}"))
                 .andExpect(status().isConflict());
     }
 
@@ -169,7 +169,7 @@ class BillingIntegrationTest {
         mockMvc.perform(post("/api/student/subscription/google-play")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"productId\":\"foco_premium_mensal\",\"purchaseToken\":\"x\"}"))
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"x\"}"))
                 .andExpect(status().isServiceUnavailable());
     }
 

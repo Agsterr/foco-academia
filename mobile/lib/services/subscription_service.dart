@@ -13,7 +13,7 @@ class SubscriptionStatus {
     this.autoRenewing = false,
     this.enforced = false,
     this.storeConfigured = false,
-    this.productIds = const ['foco_premium_mensal', 'foco_premium_anual'],
+    this.productIds = const ['foco_academia_mensal'],
   });
 
   final bool premium;
@@ -62,7 +62,7 @@ class SubscriptionStatus {
         enforced: json['enforced'] as bool? ?? false,
         storeConfigured: json['storeConfigured'] as bool? ?? false,
         productIds: (json['productIds'] as List<dynamic>?)?.cast<String>() ??
-            const ['foco_premium_mensal', 'foco_premium_anual'],
+            const ['foco_academia_mensal'],
       );
 }
 

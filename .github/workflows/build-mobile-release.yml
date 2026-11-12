@@ -214,3 +214,28 @@ jobs:
             echo "Esperado versionCode ${VERSION_CODE}, obtido ${PUBLISHED}."
             exit 1
           fi
+
+      # Envio automático para a Play (teste fechado `alpha`). Só roda quando o secret
+      # PLAY_SERVICE_ACCOUNT_JSON existe; sem ele o AAB continua só como artefato (envio manual).
+      # Fica por último para uma falha da Play não impedir a publicação do APK na API.
+      - name: Checar chave da Play
+        id: play
+        env:
+          PLAY_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$PLAY_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Secret PLAY_SERVICE_ACCOUNT_JSON ausente: AAB não enviado à Play (suba manualmente)."
+          fi
+
+      - name: Enviar AAB para a Play (teste fechado)
+        if: steps.play.outputs.enabled == 'true'
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.focodev.academia.aluno
+          releaseFiles: mobile/build/app/outputs/bundle/release/app-release.aab
+          track: alpha
+          status: completed
