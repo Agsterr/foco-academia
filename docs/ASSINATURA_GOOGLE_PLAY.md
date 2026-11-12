@@ -25,13 +25,20 @@ Personal autônomo (instrutor que trabalha sozinho): **R$ 39,90/mês até 30 alu
 2. **Criar o app** com o pacote `com.focodev.academia.aluno` e enviar um build (AAB) para o
    teste interno. O Google só mostra produtos de assinatura para apps já enviados.
 3. **Perfil de pagamentos** (Play Console → Configurações → Perfil de pagamentos), com conta bancária.
-4. **Criar as assinaturas** (Monetizar → Produtos → Assinaturas):
-   - `foco_academia_mensal` — plano base mensal, renovação automática (R$ 19,99), com a oferta
-     de teste grátis `teste-15-dias` (8 dias; veja a issue sobre os 7 + 8 dias).
-   Não existe plano anual. O ID precisa ser exatamente esse (ou mude `BILLING_PRODUCT_IDS` no
-   servidor) e não pode ser trocado depois de criado.
+4. **Criar as assinaturas** (Monetizar → Produtos → Assinaturas).
+
+   **Situação atual (11/11/2026):** já criada e ativa no Play Console:
+   - `foco_academia_mensal` — plano base `mensal`, renovação automática, **R$ 19,99/mês, só Brasil**;
+   - oferta `teste-15-dias` (novos assinantes): **8 dias grátis**. Somados aos 7 dias de teste do
+     servidor (`BILLING_TRIAL_DAYS=7`) o aluno tem 15 dias grátis no total;
+   - o servidor usa `BILLING_PRODUCT_IDS=foco_academia_mensal` (no `.env` da Hetzner).
+   Não existe plano anual por enquanto.
+
+   O ID do produto não pode ser trocado depois de criado; ele precisa bater com `BILLING_PRODUCT_IDS`.
    O preço mostrado no app vem da Play Store, não do código.
-5. **Conta de serviço para a API confirmar as compras:**
+5. **Conta de serviço para a API confirmar as compras** (já feito: `foco-academia-billing@salao-max-play.iam.gserviceaccount.com`,
+   projeto Google Cloud `salao-max-play`, convidada só no Foco Academia com "Ver dados financeiros" e
+   "Gerenciar pedidos e assinaturas"; chave já gravada no `.env` do servidor):
    - Google Cloud Console → criar projeto (ou usar um) → ativar **Google Play Android Developer API**;
    - IAM → Contas de serviço → criar → Chaves → **Adicionar chave JSON** (baixa um arquivo);
    - Play Console → Usuários e permissões → convidar o e-mail da conta de serviço com permissão

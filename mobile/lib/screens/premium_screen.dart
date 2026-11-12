@@ -225,7 +225,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Renova automaticamente pelo mesmo valor até você cancelar na Play Store. '
-                  'Novas contas têm 7 dias grátis.',
+                  'Novas contas têm 15 dias grátis.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white54, fontSize: 12),
                 ),
