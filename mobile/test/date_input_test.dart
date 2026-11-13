@@ -24,6 +24,13 @@ String type(String keys, {String start = ''}) {
 http.Response _json(Object body, int status) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
+/// O formulário é mais alto que a tela: rola até o botão Salvar antes de tocar.
+Future<void> tapSave(WidgetTester t) async {
+  await t.scrollUntilVisible(find.text('Salvar'), 300, scrollable: find.byType(Scrollable).first);
+  await t.pump(const Duration(milliseconds: 600));
+  await t.tap(find.text('Salvar'));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -154,7 +161,7 @@ void main() {
         await tester.enterText(find.byKey(const Key('birth-field')), '31021988');
         await tester.pump();
         expect(find.textContaining('Esse dia não existe'), findsOneWidget);
-        await tester.tap(find.text('Salvar'));
+        await tapSave(tester);
         await settle(tester);
         expect(puts, isEmpty);
         expect(find.byType(ProfileScreen), findsOneWidget);
@@ -167,7 +174,7 @@ void main() {
         await tester.enterText(find.byKey(const Key('birth-field')), '1503');
         await tester.pump();
         expect(find.textContaining('Complete a data'), findsNothing, reason: 'sem erro enquanto digita');
-        await tester.tap(find.text('Salvar'));
+        await tapSave(tester);
         await settle(tester);
         expect(find.textContaining('Complete a data'), findsOneWidget);
         expect(puts, isEmpty);
@@ -182,7 +189,7 @@ void main() {
         final fields = find.byType(TextField);
         await tester.enterText(fields.at(0), '70');
         await tester.enterText(fields.at(1), '170');
-        await tester.tap(find.text('Salvar'));
+        await tapSave(tester);
         await settle(tester);
       });
       expect(puts, hasLength(1));

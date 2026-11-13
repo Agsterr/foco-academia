@@ -38,6 +38,8 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("obrigatório", response.getBody().get("name"));
+        // Os apps mostram o campo "message": o primeiro motivo vai nele, sem perder os campos.
+        assertEquals("obrigatório", response.getBody().get("message"));
     }
 
     @Test

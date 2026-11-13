@@ -12,9 +12,12 @@ public final class StudentProfileDtos {
 
     private StudentProfileDtos() {}
 
+    static final String HEIGHT_MESSAGE = "Altura deve estar entre 50 e 250 cm. Ex.: 170";
+    static final String WEIGHT_MESSAGE = "Peso deve estar entre 20 e 500 kg. Ex.: 78,5";
+
     public record OnboardingRequest(
-            @NotNull @DecimalMin("50") @DecimalMax("250") Double heightCm,
-            @NotNull @DecimalMin("20") @DecimalMax("500") Double weightKg,
+            @NotNull(message = "Informe a altura") @DecimalMin(value = "50", message = HEIGHT_MESSAGE) @DecimalMax(value = "250", message = HEIGHT_MESSAGE) Double heightCm,
+            @NotNull(message = "Informe o peso") @DecimalMin(value = "20", message = WEIGHT_MESSAGE) @DecimalMax(value = "500", message = WEIGHT_MESSAGE) Double weightKg,
             @NotNull FitnessGoal goal,
             BiologicalSex sex,
             LocalDate birthDate,
@@ -22,8 +25,8 @@ public final class StudentProfileDtos {
     ) {}
 
     public record UpdateProfileRequest(
-            @DecimalMin("50") @DecimalMax("250") Double heightCm,
-            @DecimalMin("20") @DecimalMax("500") Double weightKg,
+            @DecimalMin(value = "50", message = HEIGHT_MESSAGE) @DecimalMax(value = "250", message = HEIGHT_MESSAGE) Double heightCm,
+            @DecimalMin(value = "20", message = WEIGHT_MESSAGE) @DecimalMax(value = "500", message = WEIGHT_MESSAGE) Double weightKg,
             FitnessGoal goal,
             BiologicalSex sex,
             LocalDate birthDate,
@@ -51,7 +54,7 @@ public final class StudentProfileDtos {
     ) {}
 
     public record BodyMeasurementRequest(
-            @NotNull @DecimalMin("20") @DecimalMax("500") Double weightKg,
+            @NotNull(message = "Informe o peso") @DecimalMin(value = "20", message = WEIGHT_MESSAGE) @DecimalMax(value = "500", message = WEIGHT_MESSAGE) Double weightKg,
             Double waistCm,
             Double hipsCm,
             Double chestCm,

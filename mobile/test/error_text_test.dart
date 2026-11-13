@@ -13,6 +13,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 http.Response _json(Object body, int status) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
+/// O formulário é mais alto que a tela: rola até o botão Salvar antes de tocar.
+Future<void> tapSave(WidgetTester t) async {
+  await t.scrollUntilVisible(find.text('Salvar'), 300, scrollable: find.byType(Scrollable).first);
+  await t.pump(const Duration(milliseconds: 600));
+  await t.tap(find.text('Salvar'));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -42,7 +49,7 @@ void main() {
       expect(find.textContaining('Perfil não encontrado'), findsNothing);
       expect(find.textContaining('Exception'), findsNothing);
 
-      await tester.tap(find.text('Salvar'));
+      await tapSave(tester);
       for (var i = 0; i < 4; i++) {
         await tester.pump(const Duration(milliseconds: 300));
       }
@@ -87,7 +94,7 @@ void main() {
       await tester.enterText(fields.at(0), '81,5');
       await tester.enterText(fields.at(1), '165');
       await tester.enterText(fields.at(2), '15/03/1988');
-      await tester.tap(find.text('Salvar'));
+      await tapSave(tester);
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 300));
       }

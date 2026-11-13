@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../services/health_sync_service.dart';
@@ -6,6 +7,7 @@ import '../services/profile_service.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
 import '../core/ui/error_text.dart';
+import '../core/ui/body_input.dart';
 import '../core/ui/date_input.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -21,6 +23,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _birthCtrl = TextEditingController();
   /// A pessoa tentou salvar com a data pela metade: mostra o aviso no campo até ela digitar de novo.
   bool _birthIncomplete = false;
+  String? _heightError;
+  String? _weightError;
   String? _sex;
   String? _activity;
   String? _goal;
@@ -97,22 +101,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
-      String? birthIso;
-      if (_birthCtrl.text.trim().isNotEmpty) {
-        final check = checkBirthDate(_birthCtrl.text);
-        if (!check.isValid) {
-          // O motivo aparece embaixo do próprio campo (data incompleta, dia que não existe, futuro...).
-          setState(() {
-            _saving = false;
-            _birthIncomplete = !check.complete;
-          });
-          return;
-        }
-        birthIso = _formatIso(check.date!);
+      // Confere tudo antes de enviar; cada motivo aparece embaixo do próprio campo.
+      final height = checkHeightCm(_heightCtrl.text);
+      final weight = checkWeightKg(_weightCtrl.text);
+      final birth = _birthCtrl.text.trim().isEmpty ? null : checkBirthDate(_birthCtrl.text);
+      if (!height.isValid || !weight.isValid || (birth != null && !birth.isValid)) {
+        setState(() {
+          _saving = false;
+          _heightError = height.error;
+          _weightError = weight.error;
+          _birthIncomplete = birth != null && !birth.isValid && !birth.complete;
+        });
+        return;
       }
+      final birthIso = birth == null ? null : _formatIso(birth.date!);
       await ProfileService.instance.updateProfile(
-        heightCm: double.tryParse(_heightCtrl.text.replaceAll(',', '.')),
-        weightKg: double.tryParse(_weightCtrl.text.replaceAll(',', '.')),
+        heightCm: height.value,
+        weightKg: weight.value,
         goal: _goal,
         sex: _sex,
         birthDate: birthIso,
@@ -240,6 +245,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  /// Dica embaixo da altura: em centímetros, e avisa quando entendeu metros (1,60 -> 160 cm).
+  String get _heightHelper {
+    final h = checkHeightCm(_heightCtrl.text);
+    if (h.convertedFromMeters && h.value != null) {
+      return 'Entendi ${_heightCtrl.text.trim()} m como ${formatCm(h.value!)} cm.';
+    }
+    return 'Em centímetros. Ex.: 170 (se digitar 1,70, eu converto).';
+  }
+
   /// Aviso embaixo do campo de data: dia que não existe, futuro ou data pela metade ao salvar.
   String? get _birthErrorText {
     final check = checkBirthDate(_birthCtrl.text);
@@ -317,20 +331,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  key: const Key('weight-field'),
                   controller: _weightCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  onChanged: (_) => setState(() => _weightError = null),
+                  decoration: InputDecoration(
                     labelText: 'Peso (kg)',
-                    border: OutlineInputBorder(),
+                    helperText: 'Em quilos. Ex.: 78,5',
+                    errorText: _weightError,
+                    errorMaxLines: 2,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  key: const Key('height-field'),
                   controller: _heightCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  onChanged: (_) => setState(() => _heightError = null),
+                  decoration: InputDecoration(
                     labelText: 'Altura (cm)',
-                    border: OutlineInputBorder(),
+                    helperText: _heightHelper,
+                    helperMaxLines: 2,
+                    errorText: _heightError,
+                    errorMaxLines: 2,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
