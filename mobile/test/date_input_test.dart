@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:foco_academia_mobile/core/theme/app_theme.dart';
 import 'package:foco_academia_mobile/core/ui/date_input.dart';
