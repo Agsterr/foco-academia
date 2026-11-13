@@ -4,14 +4,22 @@ import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../services/health_sync_service.dart';
 import '../services/profile_service.dart';
+import '../services/weight_service.dart';
+import '../widgets/scale_scan_sheet.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
 import '../core/ui/error_text.dart';
 import '../core/ui/body_input.dart';
 import '../core/ui/date_input.dart';
 
+/// Lê o peso da balança Bluetooth (em kg). Nulo se a pessoa cancelar.
+typedef ScaleReader = Future<double?> Function(BuildContext context);
+
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.scaleReader = showScaleScanSheet});
+
+  /// Troca a leitura da balança (nos testes não há Bluetooth).
+  final ScaleReader scaleReader;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -76,11 +84,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final p = await ProfileService.instance.getProfile();
       final health = await HealthSyncService.instance.load();
+      // Conta sem peso no perfil (criada pelo app): usa o último peso medido, da balança ou da Evolução.
+      final latestWeight = p.currentWeightKg == null ? await _latestMeasuredWeight() : null;
       if (!mounted) return;
       setState(() {
         // No mesmo formato em que se digita: vírgula e sem casa decimal quando não precisa.
         _heightCtrl.text = p.heightCm == null ? '' : formatCm(p.heightCm!);
-        _weightCtrl.text = p.currentWeightKg == null ? '' : formatKg(p.currentWeightKg!);
+        final weight = p.currentWeightKg ?? latestWeight;
+        _weightCtrl.text = weight == null ? '' : formatKg(weight);
         _birthCtrl.text = _formatBirthForDisplay(p.birthDate);
         _sex = p.sex;
         _activity = p.activityLevel;
@@ -102,6 +113,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _error = errorText(e);
       });
     }
+  }
+
+  /// Último peso registrado (medições vêm da mais nova para a mais antiga). Nunca falha a tela.
+  Future<double?> _latestMeasuredWeight() async {
+    try {
+      final list = await WeightService.instance.list().timeout(ProfileService.requestTimeout);
+      return list.isEmpty ? null : list.first.weightKg;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Conecta na balança Bluetooth e põe o peso direto no campo (a pessoa confere e toca em Salvar).
+  Future<void> _readScale() async {
+    final kg = await widget.scaleReader(context);
+    if (kg == null || !mounted) return;
+    final rounded = double.parse(kg.toStringAsFixed(1));
+    setState(() {
+      _weightCtrl.text = formatKg(rounded);
+      _weightError = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Peso da balança: ${formatKg(rounded)} kg. Toque em Salvar para guardar.')),
+    );
   }
 
   Future<void> _save() async {
@@ -354,10 +389,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onChanged: (_) => setState(() => _weightError = null),
                   decoration: InputDecoration(
                     labelText: 'Peso (kg)',
-                    helperText: 'Em quilos. Ex.: 78,5',
+                    helperText: 'Em quilos. Ex.: 78,5. Ou toque no ícone para pegar da balança.',
+                    helperMaxLines: 2,
                     errorText: _weightError,
                     errorMaxLines: 2,
                     border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      key: const Key('weight-scale'),
+                      tooltip: 'Pegar o peso da balança Bluetooth',
+                      icon: const Icon(Icons.bluetooth_searching_rounded),
+                      onPressed: _readScale,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
