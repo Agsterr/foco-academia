@@ -509,6 +509,12 @@ class AuthService {
       if (body is Map && body['message'] != null) {
         return body['message'] as String;
       }
+      // Erro de validação do servidor: {"campo": "motivo"}. Mostra o motivo em vez de "Erro 400".
+      if (body is Map) {
+        for (final value in body.values) {
+          if (value is String && value.trim().isNotEmpty) return value;
+        }
+      }
     } catch (_) {}
     return fallback;
   }

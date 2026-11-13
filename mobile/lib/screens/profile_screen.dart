@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../services/health_sync_service.dart';
@@ -6,6 +7,7 @@ import '../services/profile_service.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
 import '../core/ui/error_text.dart';
+import '../core/ui/body_input.dart';
 import '../core/ui/date_input.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -21,6 +23,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _birthCtrl = TextEditingController();
   /// A pessoa tentou salvar com a data pela metade: mostra o aviso no campo até ela digitar de novo.
   bool _birthIncomplete = false;
+  String? _heightError;
+  String? _weightError;
   String? _sex;
   String? _activity;
   String? _goal;
@@ -28,6 +32,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _saving = false;
   bool _healthOptIn = false;
   String? _error;
+
+  /// O perfil não carregou (sem internet, servidor fora): mostra "Tentar de novo" junto do aviso.
+  bool _loadFailed = false;
 
   static const _goals = {
     'EMAGRECER': 'Emagrecer',
@@ -61,14 +68,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+      _error = null;
+    });
     try {
       final p = await ProfileService.instance.getProfile();
       final health = await HealthSyncService.instance.load();
       if (!mounted) return;
       setState(() {
-        _heightCtrl.text = p.heightCm?.toStringAsFixed(0) ?? '';
-        _weightCtrl.text = p.currentWeightKg?.toStringAsFixed(1) ?? '';
+        // No mesmo formato em que se digita: vírgula e sem casa decimal quando não precisa.
+        _heightCtrl.text = p.heightCm == null ? '' : formatCm(p.heightCm!);
+        _weightCtrl.text = p.currentWeightKg == null ? '' : formatKg(p.currentWeightKg!);
         _birthCtrl.text = _formatBirthForDisplay(p.birthDate);
         _sex = p.sex;
         _activity = p.activityLevel;
@@ -86,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _loadFailed = true;
         _error = errorText(e);
       });
     }
@@ -97,22 +110,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
-      String? birthIso;
-      if (_birthCtrl.text.trim().isNotEmpty) {
-        final check = checkBirthDate(_birthCtrl.text);
-        if (!check.isValid) {
-          // O motivo aparece embaixo do próprio campo (data incompleta, dia que não existe, futuro...).
-          setState(() {
-            _saving = false;
-            _birthIncomplete = !check.complete;
-          });
-          return;
-        }
-        birthIso = _formatIso(check.date!);
+      // Confere tudo antes de enviar; cada motivo aparece embaixo do próprio campo.
+      final height = checkHeightCm(_heightCtrl.text);
+      final weight = checkWeightKg(_weightCtrl.text);
+      final birth = _birthCtrl.text.trim().isEmpty ? null : checkBirthDate(_birthCtrl.text);
+      if (!height.isValid || !weight.isValid || (birth != null && !birth.isValid)) {
+        setState(() {
+          _saving = false;
+          _heightError = height.error;
+          _weightError = weight.error;
+          _birthIncomplete = birth != null && !birth.isValid && !birth.complete;
+        });
+        return;
       }
+      final birthIso = birth == null ? null : _formatIso(birth.date!);
       await ProfileService.instance.updateProfile(
-        heightCm: double.tryParse(_heightCtrl.text.replaceAll(',', '.')),
-        weightKg: double.tryParse(_weightCtrl.text.replaceAll(',', '.')),
+        heightCm: height.value,
+        weightKg: weight.value,
         goal: _goal,
         sex: _sex,
         birthDate: birthIso,
@@ -240,6 +254,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  /// Dica embaixo da altura: em centímetros, e avisa quando entendeu metros (1,60 -> 160 cm).
+  String get _heightHelper {
+    final h = checkHeightCm(_heightCtrl.text);
+    if (h.convertedFromMeters && h.value != null) {
+      return 'Entendi ${_heightCtrl.text.trim()} m como ${formatCm(h.value!)} cm.';
+    }
+    return 'Em centímetros. Ex.: 170 (se digitar 1,70, eu converto).';
+  }
+
   /// Aviso embaixo do campo de data: dia que não existe, futuro ou data pela metade ao salvar.
   String? get _birthErrorText {
     final check = checkBirthDate(_birthCtrl.text);
@@ -311,26 +334,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   value: _healthOptIn,
                   onChanged: (v) async {
-                    await HealthSyncService.instance.setOptIn(v);
-                    setState(() => _healthOptIn = v);
+                    try {
+                      await HealthSyncService.instance.setOptIn(v);
+                      if (mounted) setState(() => _healthOptIn = v);
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Não foi possível salvar essa opção. Tente de novo.')),
+                      );
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  key: const Key('weight-field'),
                   controller: _weightCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  onChanged: (_) => setState(() => _weightError = null),
+                  decoration: InputDecoration(
                     labelText: 'Peso (kg)',
-                    border: OutlineInputBorder(),
+                    helperText: 'Em quilos. Ex.: 78,5',
+                    errorText: _weightError,
+                    errorMaxLines: 2,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  key: const Key('height-field'),
                   controller: _heightCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+                  onChanged: (_) => setState(() => _heightError = null),
+                  decoration: InputDecoration(
                     labelText: 'Altura (cm)',
-                    border: OutlineInputBorder(),
+                    helperText: _heightHelper,
+                    helperMaxLines: 2,
+                    errorText: _heightError,
+                    errorMaxLines: 2,
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -401,7 +444,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  Container(
+                    key: const Key('profile-error'),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
+                          ],
+                        ),
+                        if (_loadFailed) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            key: const Key('profile-retry'),
+                            onPressed: _loading ? null : _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Tentar de novo'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 20),
                 FilledButton(

@@ -136,4 +136,30 @@ class StudentProfileIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").exists());
     }
+
+    @Test
+    void heightOrWeightOutOfRangeReturnsAClearMessage() throws Exception {
+        // Altura digitada em metros (1,60) chegava como 1,6 e o app só mostrava "Erro 400".
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"heightCm\":1.6,\"weightKg\":78}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Altura deve estar entre 50 e 250 cm. Ex.: 170"))
+                .andExpect(jsonPath("$.heightCm").exists());
+
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"weightKg\":5}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Peso deve estar entre 20 e 500 kg. Ex.: 78,5"));
+
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"heightCm\":160,\"weightKg\":78}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.heightCm").value(160.0));
+    }
 }

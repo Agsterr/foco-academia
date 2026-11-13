@@ -42,8 +42,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
+        String first = null;
         for (FieldError error : ex.getBindingResult().getFieldErrors()) {
             errors.put(error.getField(), error.getDefaultMessage());
+            if (first == null) {
+                first = error.getDefaultMessage();
+            }
+        }
+        // Os apps mostram o campo "message"; os campos continuam no corpo para quem precisa deles.
+        if (first != null) {
+            errors.putIfAbsent("message", first);
         }
         return ResponseEntity.badRequest().body(errors);
     }
