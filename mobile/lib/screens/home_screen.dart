@@ -25,6 +25,7 @@ import 'templates_screen.dart';
 import '../services/subscription_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/ui/vibrant.dart';
+import '../core/ui/error_text.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -153,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() => _status = 'Sessão expirada');
       await _goToLogin();
     } catch (e) {
-      setState(() => _status = 'Offline ou erro: $e');
+      setState(() => _status = 'Offline ou erro: ${errorText(e)}');
     }
   }
 
@@ -177,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao verificar atualização: $e')),
+        SnackBar(content: Text('Erro ao verificar atualização: ${errorText(e)}')),
       );
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);

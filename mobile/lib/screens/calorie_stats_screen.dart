@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
+import '../core/ui/error_text.dart';
 
 class CalorieStatsScreen extends StatefulWidget {
   const CalorieStatsScreen({super.key});
@@ -48,7 +49,7 @@ class _CalorieStatsScreenState extends State<CalorieStatsScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
     }
   }

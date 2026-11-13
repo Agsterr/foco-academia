@@ -199,9 +199,22 @@ class ProfileService {
   ProfileService._();
   static final instance = ProfileService._();
 
+  /// Mensagem da API quando o aluno ainda não tem registro de perfil (conta criada pelo app).
+  static const missingProfileMessage = 'Perfil não encontrado';
+
   Future<StudentProfile> getProfile() async {
-    final data = await AuthService.instance.get('/api/student/profile');
-    return StudentProfile.fromJson(data);
+    try {
+      final data = await AuthService.instance.get('/api/student/profile');
+      return StudentProfile.fromJson(data);
+    } on SessionExpiredException {
+      rethrow;
+    } catch (e) {
+      // Perfil ainda não preenchido não é erro: a tela abre vazia e o primeiro "Salvar" cria o perfil.
+      if (e.toString().contains(missingProfileMessage)) {
+        return StudentProfile(studentId: '', studentName: AuthService.instance.userName ?? '');
+      }
+      rethrow;
+    }
   }
 
   Future<StudentProfile> updateProfile({

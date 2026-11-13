@@ -11,6 +11,7 @@ import '../services/calories_service.dart';
 import '../services/workout_service.dart';
 import '../widgets/exercise_media_view.dart';
 import 'login_screen.dart';
+import '../core/ui/error_text.dart';
 
 class WorkoutDayScreen extends StatefulWidget {
   const WorkoutDayScreen({super.key, required this.dayId});
@@ -128,7 +129,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível iniciar: $e')),
+        SnackBar(content: Text('Não foi possível iniciar: ${errorText(e)}')),
       );
     }
   }
@@ -154,7 +155,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao marcar série: $e')),
+        SnackBar(content: Text('Erro ao marcar série: ${errorText(e)}')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -189,7 +190,7 @@ class _WorkoutDayScreenState extends State<WorkoutDayScreen> {
       if (!mounted) return;
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao finalizar: $e')),
+        SnackBar(content: Text('Erro ao finalizar: ${errorText(e)}')),
       );
     }
   }

@@ -117,8 +117,13 @@ public class StudentProfileService {
             StudentProfileDtos.UpdateProfileRequest request
     ) {
         User user = requireStudent(student);
-        StudentProfile profile = profileRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new ApiException("Perfil não encontrado. Conclua o onboarding primeiro."));
+        // Quem se cadastra pelo app não passa pelo onboarding do painel web: o primeiro "Salvar"
+        // do perfil físico cria o registro em vez de falhar.
+        StudentProfile profile = profileRepository.findByUserId(user.getId()).orElseGet(() -> {
+            StudentProfile created = new StudentProfile();
+            created.setUser(user);
+            return created;
+        });
 
         if (request.heightCm() != null) {
             profile.setHeightCm(request.heightCm());
@@ -143,6 +148,13 @@ public class StudentProfileService {
             measurement.setSource(MeasurementSource.STUDENT);
             measurement.setNotes("Atualização de perfil");
             measurementRepository.save(measurement);
+        }
+        // Com altura, peso e objetivo informados o cadastro está completo (o painel web não pede onboarding de novo).
+        if (profile.getOnboardingCompletedAt() == null
+                && profile.getHeightCm() != null
+                && profile.getCurrentWeightKg() != null
+                && profile.getGoal() != null) {
+            profile.setOnboardingCompletedAt(Instant.now());
         }
         profile.setUpdatedAt(Instant.now());
         profileRepository.save(profile);

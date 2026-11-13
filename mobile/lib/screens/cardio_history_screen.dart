@@ -8,6 +8,7 @@ import '../widgets/outdoor_calendar_card.dart';
 import 'login_screen.dart';
 import 'run_replay_screen.dart';
 import '../core/ui/insets.dart';
+import '../core/ui/error_text.dart';
 
 /// Histórico de treinos outdoor com acesso ao Replay.
 class CardioHistoryScreen extends StatefulWidget {
@@ -92,7 +93,7 @@ class _CardioHistoryScreenState extends State<CardioHistoryScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errorText(e);
       });
     }
   }
