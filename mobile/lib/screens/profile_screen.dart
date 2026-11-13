@@ -65,7 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _heightCtrl.text = p.heightCm?.toStringAsFixed(0) ?? '';
         _weightCtrl.text = p.currentWeightKg?.toStringAsFixed(1) ?? '';
-        _birthCtrl.text = p.birthDate ?? '';
+        _birthCtrl.text = _formatBirthForDisplay(p.birthDate);
         _sex = p.sex;
         _activity = p.activityLevel;
         _goal = p.goal;
@@ -93,12 +93,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
+      final birthRaw = _birthCtrl.text.trim();
+      String? birthIso;
+      if (birthRaw.isNotEmpty) {
+        birthIso = _toIsoBirthDate(birthRaw);
+        if (birthIso == null) {
+          setState(() {
+            _saving = false;
+            _error = 'Data de nascimento inválida. Use DD/MM/AAAA.';
+          });
+          return;
+        }
+      }
       await ProfileService.instance.updateProfile(
         heightCm: double.tryParse(_heightCtrl.text.replaceAll(',', '.')),
         weightKg: double.tryParse(_weightCtrl.text.replaceAll(',', '.')),
         goal: _goal,
         sex: _sex,
-        birthDate: _birthCtrl.text.trim().isEmpty ? null : _birthCtrl.text.trim(),
+        birthDate: birthIso,
         activityLevel: _activity,
       );
       if (!mounted) return;
@@ -199,6 +211,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   @override
+  Future<void> _pickBirthDate() async {
+    final now = DateTime.now();
+    final parsed = _parseBirthDate(_birthCtrl.text);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: parsed ?? DateTime(now.year - 25, 1, 1),
+      firstDate: DateTime(1920),
+      lastDate: now,
+      helpText: 'Data de nascimento',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _birthCtrl.text = _formatBr(picked));
+  }
+
+  static String _formatBirthForDisplay(String? raw) {
+    final parsed = _parseBirthDate(raw);
+    return parsed == null ? (raw ?? '') : _formatBr(parsed);
+  }
+
+  static String _formatBr(DateTime d) {
+    final day = d.day.toString().padLeft(2, '0');
+    final month = d.month.toString().padLeft(2, '0');
+    return '$day/$month/${d.year}';
+  }
+
+  static String _formatIso(DateTime d) {
+    final month = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$month-$day';
+  }
+
+  static String? _toIsoBirthDate(String raw) {
+    final parsed = _parseBirthDate(raw);
+    return parsed == null ? null : _formatIso(parsed);
+  }
+
+  static DateTime? _parseBirthDate(String? raw) {
+    if (raw == null) return null;
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final iso = DateTime.tryParse(text);
+    if (iso != null) return DateTime(iso.year, iso.month, iso.day);
+    final digits = text.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 8) {
+      final day = int.tryParse(digits.substring(0, 2));
+      final month = int.tryParse(digits.substring(2, 4));
+      final year = int.tryParse(digits.substring(4));
+      if (day != null && month != null && year != null) {
+        final candidate = DateTime(year, month, day);
+        if (candidate.year == year && candidate.month == month && candidate.day == day) {
+          return candidate;
+        }
+      }
+    }
+    return null;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil físico')),
@@ -246,9 +316,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _birthCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Data de nascimento (AAAA-MM-DD)',
-                    border: OutlineInputBorder(),
+                  keyboardType: TextInputType.datetime,
+                  decoration: InputDecoration(
+                    labelText: 'Data de nascimento (DD/MM/AAAA)',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      tooltip: 'Escolher data',
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      onPressed: _pickBirthDate,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),

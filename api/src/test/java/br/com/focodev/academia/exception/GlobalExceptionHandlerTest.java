@@ -6,6 +6,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.util.Map;
@@ -55,6 +56,18 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(401, response.getStatusCode().value());
         assertEquals("E-mail ou senha inválidos", response.getBody().get("message"));
+    }
+
+    @Test
+    void handleUnreadableDate() {
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error",
+                new java.time.format.DateTimeParseException("bad", "2706199", 0),
+                null
+        );
+        ResponseEntity<Map<String, String>> response = handler.handleUnreadable(ex);
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("Data inválida. Use AAAA-MM-DD ou DD/MM/AAAA.", response.getBody().get("message"));
     }
 
     @Test
