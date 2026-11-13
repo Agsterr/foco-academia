@@ -18,7 +18,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();
-  late final _slug = TextEditingController(text: AuthService.instance.academySlug ?? '');
+  // Começa vazio: o código de uma conta anterior fazia a entrada de outra conta falhar. A API já
+  // entra sem código (o e-mail é único), então ele só é usado se a pessoa digitar.
+  final _slug = TextEditingController();
   bool _loading = false;
   bool _showPassword = false;
   bool _remember = true;
@@ -37,7 +39,6 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       if (_email.text.isEmpty) _email.text = saved.email;
       if (_password.text.isEmpty) _password.text = saved.password;
-      if (_slug.text.isEmpty) _slug.text = saved.slug;
       _remember = true;
     });
   }
@@ -131,14 +132,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             'Treinos, corrida, evolução e sua academia num app só.',
                             style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15),
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 28),
+                          Text(
+                            'Entrar na sua conta',
+                            key: const Key('login-title'),
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Aluno, personal ou academia: use o e-mail e a senha que você cadastrou.',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                          const SizedBox(height: 18),
                           TextFormField(
                             controller: _slug,
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                             decoration: const InputDecoration(
                               labelText: 'Código da academia (opcional)',
-                              hintText: 'Deixe em branco se treina por conta própria',
+                              hintText: 'Pode deixar em branco',
                               prefixIcon: Icon(Icons.storefront_outlined),
                             ),
                           ),

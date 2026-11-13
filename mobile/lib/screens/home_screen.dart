@@ -145,6 +145,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Sai desta conta e abre a tela de entrada (o login lembrado continua salvo neste celular).
+  Future<void> _switchAccount() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Trocar de conta?'),
+        content: const Text('Você sai desta conta e poderá entrar com outro e-mail, ou voltar depois com o seu.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            key: const Key('switch-account-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+    if (leave != true || !mounted) return;
+    await AuthService.instance.logout();
+    await _goToLogin();
+  }
+
   Future<void> _sync() async {
     setState(() => _status = 'Sincronizando...');
     try {
@@ -395,6 +417,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: 'Atualização do app',
               subtitle: 'Versão instalada: $_versionLabel',
               onTap: _checkingUpdate ? null : _checkUpdate,
+            ),
+            VibrantTile(
+              key: const Key('switch-account'),
+              icon: Icons.swap_horiz_rounded,
+              gradient: AppTheme.fireGradient,
+              title: 'Trocar de conta',
+              subtitle: 'Sair e entrar com outro e-mail (aluno, personal ou academia)',
+              onTap: _switchAccount,
             ),
             if (kDebugMode && !_screenshotMode)
               VibrantTile(
