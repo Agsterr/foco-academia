@@ -84,6 +84,9 @@ void main() {
   test('formatCm usa vírgula e só mostra decimal quando precisa', () {
     expect(formatCm(160), '160');
     expect(formatCm(175.5), '175,5');
+    expect(formatKg(78), '78');
+    expect(formatKg(70.5), '70,5');
+    expect(formatKg(78.04), '78'); // uma casa decimal, sem ",0"
   });
 
   group('erro de validação do servidor', () {

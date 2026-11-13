@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../services/auth_service.dart';
 
 class StudentProfile {
@@ -202,9 +204,12 @@ class ProfileService {
   /// Mensagem da API quando o aluno ainda não tem registro de perfil (conta criada pelo app).
   static const missingProfileMessage = 'Perfil não encontrado';
 
+  /// Quanto esperar o servidor antes de avisar que a conexão está lenta (sem isso a tela ficava presa).
+  static const requestTimeout = Duration(seconds: 20);
+
   Future<StudentProfile> getProfile() async {
     try {
-      final data = await AuthService.instance.get('/api/student/profile');
+      final data = await AuthService.instance.get('/api/student/profile').timeout(requestTimeout);
       return StudentProfile.fromJson(data);
     } on SessionExpiredException {
       rethrow;
@@ -232,7 +237,7 @@ class ProfileService {
       if (sex != null) 'sex': sex,
       if (birthDate != null) 'birthDate': birthDate,
       if (activityLevel != null) 'activityLevel': activityLevel,
-    });
+    }).timeout(requestTimeout);
     return StudentProfile.fromJson(data);
   }
 

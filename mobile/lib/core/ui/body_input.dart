@@ -60,8 +60,12 @@ BodyValue checkWeightKg(String text) {
   return BodyValue.ok(kg);
 }
 
+/// 78 -> "78"; 78,5 -> "78,5" (formato brasileiro).
+String formatKg(double kg) => formatCm(kg);
+
 /// 160 -> "160"; 175,5 -> "175,5" (formato brasileiro).
 String formatCm(double cm) {
-  final text = cm == cm.roundToDouble() ? cm.toStringAsFixed(0) : cm.toStringAsFixed(1);
+  final rounded = (cm * 10).round() / 10; // uma casa decimal
+  final text = rounded == rounded.roundToDouble() ? rounded.toStringAsFixed(0) : rounded.toStringAsFixed(1);
   return text.replaceAll('.', ',');
 }

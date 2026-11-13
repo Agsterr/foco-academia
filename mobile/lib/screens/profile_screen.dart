@@ -33,6 +33,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _healthOptIn = false;
   String? _error;
 
+  /// O perfil não carregou (sem internet, servidor fora): mostra "Tentar de novo" junto do aviso.
+  bool _loadFailed = false;
+
   static const _goals = {
     'EMAGRECER': 'Emagrecer',
     'GANHAR_MASSA': 'Ganhar massa',
@@ -65,14 +68,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+      _error = null;
+    });
     try {
       final p = await ProfileService.instance.getProfile();
       final health = await HealthSyncService.instance.load();
       if (!mounted) return;
       setState(() {
-        _heightCtrl.text = p.heightCm?.toStringAsFixed(0) ?? '';
-        _weightCtrl.text = p.currentWeightKg?.toStringAsFixed(1) ?? '';
+        // No mesmo formato em que se digita: vírgula e sem casa decimal quando não precisa.
+        _heightCtrl.text = p.heightCm == null ? '' : formatCm(p.heightCm!);
+        _weightCtrl.text = p.currentWeightKg == null ? '' : formatKg(p.currentWeightKg!);
         _birthCtrl.text = _formatBirthForDisplay(p.birthDate);
         _sex = p.sex;
         _activity = p.activityLevel;
@@ -90,6 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _loadFailed = true;
         _error = errorText(e);
       });
     }
@@ -325,8 +334,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   value: _healthOptIn,
                   onChanged: (v) async {
-                    await HealthSyncService.instance.setOptIn(v);
-                    setState(() => _healthOptIn = v);
+                    try {
+                      await HealthSyncService.instance.setOptIn(v);
+                      if (mounted) setState(() => _healthOptIn = v);
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Não foi possível salvar essa opção. Tente de novo.')),
+                      );
+                    }
                   },
                 ),
                 const SizedBox(height: 16),
@@ -428,7 +444,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                  Container(
+                    key: const Key('profile-error'),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(_error!, style: const TextStyle(color: Colors.redAccent))),
+                          ],
+                        ),
+                        if (_loadFailed) ...[
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            key: const Key('profile-retry'),
+                            onPressed: _loading ? null : _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Tentar de novo'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
