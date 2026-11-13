@@ -96,4 +96,44 @@ class StudentProfileIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.heightCm").value(170.0));
     }
+
+    @Test
+    void updateProfileAcceptsBrazilianBirthDate() throws Exception {
+        mockMvc.perform(post("/api/student/profile/onboarding")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"heightCm":165,"weightKg":81,"goal":"EMAGRECER"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"heightCm":165,"weightKg":81,"goal":"EMAGRECER","sex":"MASCULINO","birthDate":"27061992","activityLevel":"MODERADO"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.birthDate").value("1992-06-27"));
+    }
+
+    @Test
+    void updateProfileRejectsInvalidBirthDateWith400() throws Exception {
+        mockMvc.perform(post("/api/student/profile/onboarding")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"heightCm":165,"weightKg":81,"goal":"EMAGRECER"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/student/profile")
+                        .header("Authorization", "Bearer " + fixture.studentToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"birthDate":"nao-e-data"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").exists());
+    }
 }
