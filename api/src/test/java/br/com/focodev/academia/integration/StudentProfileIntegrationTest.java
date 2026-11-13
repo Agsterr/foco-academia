@@ -111,10 +111,10 @@ class StudentProfileIntegrationTest {
                         .header("Authorization", "Bearer " + fixture.studentToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"heightCm":165,"weightKg":81,"goal":"EMAGRECER","sex":"MASCULINO","birthDate":"27061992","activityLevel":"MODERADO"}
+                                {"heightCm":165,"weightKg":81,"goal":"EMAGRECER","sex":"MASCULINO","birthDate":"15031988","activityLevel":"MODERADO"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.birthDate").value("1992-06-27"));
+                .andExpect(jsonPath("$.birthDate").value("1988-03-15"));
     }
 
     @Test

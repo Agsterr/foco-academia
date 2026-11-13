@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../core/ui/vibrant.dart';
 import '../services/auth_service.dart';
+import 'login_screen.dart';
 import 'app_home.dart';
 
 /// Perfil escolhido no cadastro.
@@ -89,6 +90,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Volta para a tela de entrada (ou abre ela, se esta tela foi aberta sozinha).
+  void _goToLogin() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 
@@ -258,7 +269,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     icon: Icons.rocket_launch_rounded,
                     label: 'Criar conta',
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    key: const Key('have-account'),
+                    onPressed: _loading ? null : _goToLogin,
+                    child: const Text('Já tenho conta. Entrar'),
+                  ),
+                  const SizedBox(height: 8),
                   if (_profile == SignupProfile.aluno)
                   Text(
                     'Se você treina em uma academia que usa o Foco Academia, não precisa criar conta: '

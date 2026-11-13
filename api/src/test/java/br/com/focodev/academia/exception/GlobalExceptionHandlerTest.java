@@ -62,7 +62,7 @@ class GlobalExceptionHandlerTest {
     void handleUnreadableDate() {
         HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
                 "JSON parse error",
-                new java.time.format.DateTimeParseException("bad", "2706199", 0),
+                new java.time.format.DateTimeParseException("bad", "1503198", 0),
                 null
         );
         ResponseEntity<Map<String, String>> response = handler.handleUnreadable(ex);

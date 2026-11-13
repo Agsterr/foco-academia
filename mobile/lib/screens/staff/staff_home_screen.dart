@@ -148,10 +148,15 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> with WidgetsBindingOb
     );
   }
 
-  Widget _logoutButton() => IconButton(
-        tooltip: 'Sair',
-        icon: const Icon(Icons.logout),
-        onPressed: _logout,
+  /// "Sair" com nome (só o ícone passava despercebido): é como se troca de conta neste celular.
+  Widget _logoutButton() => Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: TextButton.icon(
+          key: const Key('staff-logout'),
+          onPressed: _logout,
+          icon: const Icon(Icons.logout, size: 20),
+          label: const Text('Sair'),
+        ),
       );
 }
 

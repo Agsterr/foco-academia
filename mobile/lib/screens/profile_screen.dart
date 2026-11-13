@@ -245,7 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final check = checkBirthDate(_birthCtrl.text);
     if (check.error != null) return check.error;
     if (_birthIncomplete && !check.complete && _birthCtrl.text.trim().isNotEmpty) {
-      return 'Complete a data: dia, mês e ano. Ex.: 27/06/1992';
+      return 'Complete a data: dia, mês e ano. Ex.: 15/03/1988';
     }
     return null;
   }
@@ -337,7 +337,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TextField(
                   key: const Key('birth-field'),
                   controller: _birthCtrl,
-                  // Só números: as barras entram sozinhas (27061992 vira 27/06/1992).
+                  // Só números: as barras entram sozinhas (15031988 vira 15/03/1988).
                   keyboardType: TextInputType.number,
                   inputFormatters: const [BrDateInputFormatter()],
                   onChanged: (_) => setState(() => _birthIncomplete = false),
@@ -346,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // Rótulo sempre no alto: o formato DD/MM/AAAA fica visível dentro do campo desde o início.
                     floatingLabelBehavior: FloatingLabelBehavior.always,
                     hintText: 'DD/MM/AAAA',
-                    helperText: 'Ex.: 27/06/1992. Digite só os números ou toque no calendário.',
+                    helperText: 'Ex.: 15/03/1988. Digite só os números ou toque no calendário.',
                     helperMaxLines: 2,
                     errorText: _birthErrorText,
                     errorMaxLines: 2,

@@ -86,7 +86,7 @@ void main() {
       final fields = find.byType(TextField);
       await tester.enterText(fields.at(0), '81,5');
       await tester.enterText(fields.at(1), '165');
-      await tester.enterText(fields.at(2), '27/06/1992');
+      await tester.enterText(fields.at(2), '15/03/1988');
       await tester.tap(find.text('Salvar'));
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 300));
@@ -94,7 +94,7 @@ void main() {
       expect(sent, isNotNull);
       expect(sent!['weightKg'], 81.5);
       expect(sent!['heightCm'], 165);
-      expect(sent!['birthDate'], '1992-06-27');
+      expect(sent!['birthDate'], '1988-03-15');
       expect(find.byType(ProfileScreen), findsNothing, reason: 'volta para a tela anterior depois de salvar');
     }, () => MockClient((r) async {
           if (r.method == 'GET' && r.url.path == '/api/student/profile') return _json({'message': 'Perfil não encontrado'}, 400);
