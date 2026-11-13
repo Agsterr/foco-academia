@@ -29,15 +29,15 @@ void main() {
 
   group('máscara DD/MM/AAAA', () {
     test('as barras entram sozinhas', () {
-      expect(type('27061992'), '27/06/1992');
+      expect(type('15031988'), '15/03/1988');
       expect(type('27'), '27/');
       expect(type('270'), '27/0');
-      expect(type('2706'), '27/06/');
-      expect(type('27061'), '27/06/1');
+      expect(type('1503'), '15/03/');
+      expect(type('15031'), '15/03/1');
     });
 
     test('só números: letras, hífens e barras digitadas são ignorados', () {
-      expect(type('2a7-0/6x1992'), '27/06/1992');
+      expect(type('1a5-0/3x1988'), '15/03/1988');
       expect(type('abc'), '');
     });
 
@@ -54,27 +54,27 @@ void main() {
     });
 
     test('não passa de 8 números', () {
-      expect(type('270619921234'), '27/06/1992');
+      expect(type('150319881234'), '15/03/1988');
     });
 
     test('apagar funciona e a barra não prende', () {
       expect(type('27<'), '27'); // apaga a barra e o cursor fica no 7
       expect(type('27<<'), '2');
-      expect(type('27/06/1992<'), '27/06/199');
-      expect(type('27/06/1992<<<<<'), '27/0'); // a barra some sozinha ao apagar
-      expect(type('2706<'), '27/06');
-      expect(type('2706<<'), '27/0');
+      expect(type('15/03/1988<'), '15/03/198');
+      expect(type('15/03/1988<<<<<'), '15/0'); // a barra some sozinha ao apagar
+      expect(type('1503<'), '15/03');
+      expect(type('1503<<'), '15/0');
       expect(type('27<0'), '270'.replaceFirst('270', '27/0')); // depois de apagar, continua digitando normalmente
     });
 
     test('colar a data inteira (com ou sem barras) também formata', () {
       const formatter = BrDateInputFormatter();
-      for (final pasted in ['27/06/1992', '27061992', '27-06-1992', ' 27.06.1992 ']) {
+      for (final pasted in ['15/03/1988', '15031988', '15-03-1988', ' 15.03.1988 ']) {
         final out = formatter.formatEditUpdate(
           TextEditingValue.empty,
           TextEditingValue(text: pasted, selection: TextSelection.collapsed(offset: pasted.length)),
         );
-        expect(out.text, '27/06/1992', reason: pasted);
+        expect(out.text, '15/03/1988', reason: pasted);
       }
     });
   });
@@ -84,18 +84,18 @@ void main() {
 
     test('vazio e incompleto não mostram erro enquanto a pessoa digita', () {
       expect(checkBirthDate('', now: now).error, isNull);
-      expect(checkBirthDate('27/06', now: now).error, isNull);
-      expect(checkBirthDate('27/06', now: now).complete, isFalse);
+      expect(checkBirthDate('15/03', now: now).error, isNull);
+      expect(checkBirthDate('15/03', now: now).complete, isFalse);
     });
 
     test('data completa e válida', () {
-      final ok = checkBirthDate('27/06/1992', now: now);
+      final ok = checkBirthDate('15/03/1988', now: now);
       expect(ok.isValid, isTrue);
-      expect(ok.date, DateTime(1992, 6, 27));
+      expect(ok.date, DateTime(1988, 3, 15));
     });
 
     test('dia que não existe, futuro e ano muito antigo', () {
-      expect(checkBirthDate('31/02/1992', now: now).error, contains('não existe'));
+      expect(checkBirthDate('31/02/1988', now: now).error, contains('não existe'));
       expect(checkBirthDate('29/02/2023', now: now).error, contains('não existe'));
       expect(checkBirthDate('29/02/2024', now: now).isValid, isTrue); // ano bissexto
       expect(checkBirthDate('14/11/2026', now: now).error, contains('futuro'));
@@ -141,17 +141,17 @@ void main() {
 
     testWidgets('mostra como preencher e formata sozinho ao digitar só números', (tester) async {
       await openProfile(tester, (_) async {
-        expect(find.textContaining('Ex.: 27/06/1992'), findsOneWidget);
+        expect(find.textContaining('Ex.: 15/03/1988'), findsOneWidget);
         expect(find.byTooltip('Abrir calendário'), findsOneWidget);
-        await tester.enterText(find.byKey(const Key('birth-field')), '27061992');
+        await tester.enterText(find.byKey(const Key('birth-field')), '15031988');
         await tester.pump();
-        expect(tester.widget<TextField>(find.byKey(const Key('birth-field'))).controller!.text, '27/06/1992');
+        expect(tester.widget<TextField>(find.byKey(const Key('birth-field'))).controller!.text, '15/03/1988');
       });
     });
 
     testWidgets('dia que não existe mostra o erro no campo e não salva', (tester) async {
       final puts = await openProfile(tester, (puts) async {
-        await tester.enterText(find.byKey(const Key('birth-field')), '31021992');
+        await tester.enterText(find.byKey(const Key('birth-field')), '31021988');
         await tester.pump();
         expect(find.textContaining('Esse dia não existe'), findsOneWidget);
         await tester.tap(find.text('Salvar'));
@@ -164,14 +164,14 @@ void main() {
 
     testWidgets('data pela metade avisa ao salvar e some quando a pessoa volta a digitar', (tester) async {
       await openProfile(tester, (puts) async {
-        await tester.enterText(find.byKey(const Key('birth-field')), '2706');
+        await tester.enterText(find.byKey(const Key('birth-field')), '1503');
         await tester.pump();
         expect(find.textContaining('Complete a data'), findsNothing, reason: 'sem erro enquanto digita');
         await tester.tap(find.text('Salvar'));
         await settle(tester);
         expect(find.textContaining('Complete a data'), findsOneWidget);
         expect(puts, isEmpty);
-        await tester.enterText(find.byKey(const Key('birth-field')), '27061');
+        await tester.enterText(find.byKey(const Key('birth-field')), '15031');
         await settle(tester); // o aviso some com uma animação curta
         expect(find.textContaining('Complete a data'), findsNothing);
       });

@@ -11,20 +11,20 @@ class FlexibleLocalDatesTest {
 
     @Test
     void parsesIsoAndBrazilianFormats() {
-        LocalDate expected = LocalDate.of(1992, 6, 27);
-        assertEquals(expected, FlexibleLocalDates.parse("1992-06-27"));
-        assertEquals(expected, FlexibleLocalDates.parse("27/06/1992"));
-        assertEquals(expected, FlexibleLocalDates.parse("27-06-1992"));
-        assertEquals(expected, FlexibleLocalDates.parse("27061992"));
-        assertEquals(expected, FlexibleLocalDates.parse("19920627"));
+        LocalDate expected = LocalDate.of(1988, 3, 15);
+        assertEquals(expected, FlexibleLocalDates.parse("1988-03-15"));
+        assertEquals(expected, FlexibleLocalDates.parse("15/03/1988"));
+        assertEquals(expected, FlexibleLocalDates.parse("15-03-1988"));
+        assertEquals(expected, FlexibleLocalDates.parse("15031988"));
+        assertEquals(expected, FlexibleLocalDates.parse("19880315"));
         assertNull(FlexibleLocalDates.parse(" "));
         assertNull(FlexibleLocalDates.parse(null));
     }
 
     @Test
     void rejectsInvalidDate() {
-        assertThrows(DateTimeParseException.class, () -> FlexibleLocalDates.parse("2706199"));
-        assertThrows(DateTimeParseException.class, () -> FlexibleLocalDates.parse("31/02/1992"));
+        assertThrows(DateTimeParseException.class, () -> FlexibleLocalDates.parse("1503198"));
+        assertThrows(DateTimeParseException.class, () -> FlexibleLocalDates.parse("31/02/1988"));
         assertThrows(DateTimeParseException.class, () -> FlexibleLocalDates.parse("abc"));
     }
 }
