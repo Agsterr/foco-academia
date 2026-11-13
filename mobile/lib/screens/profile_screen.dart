@@ -6,6 +6,7 @@ import '../services/profile_service.dart';
 import 'login_screen.dart';
 import '../core/ui/insets.dart';
 import '../core/ui/error_text.dart';
+import '../core/ui/date_input.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,6 +19,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _heightCtrl = TextEditingController();
   final _weightCtrl = TextEditingController();
   final _birthCtrl = TextEditingController();
+  /// A pessoa tentou salvar com a data pela metade: mostra o aviso no campo até ela digitar de novo.
+  bool _birthIncomplete = false;
   String? _sex;
   String? _activity;
   String? _goal;
@@ -94,17 +97,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
-      final birthRaw = _birthCtrl.text.trim();
       String? birthIso;
-      if (birthRaw.isNotEmpty) {
-        birthIso = _toIsoBirthDate(birthRaw);
-        if (birthIso == null) {
+      if (_birthCtrl.text.trim().isNotEmpty) {
+        final check = checkBirthDate(_birthCtrl.text);
+        if (!check.isValid) {
+          // O motivo aparece embaixo do próprio campo (data incompleta, dia que não existe, futuro...).
           setState(() {
             _saving = false;
-            _error = 'Data de nascimento inválida. Use DD/MM/AAAA.';
+            _birthIncomplete = !check.complete;
           });
           return;
         }
+        birthIso = _formatIso(check.date!);
       }
       await ProfileService.instance.updateProfile(
         heightCm: double.tryParse(_heightCtrl.text.replaceAll(',', '.')),
@@ -211,19 +215,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  @override
   Future<void> _pickBirthDate() async {
     final now = DateTime.now();
-    final parsed = _parseBirthDate(_birthCtrl.text);
+    final today = DateTime(now.year, now.month, now.day);
+    final first = DateTime(1900);
+    var initial = _parseBirthDate(_birthCtrl.text) ?? DateTime(now.year - 25, 1, 1);
+    if (initial.isAfter(today)) initial = today;
+    if (initial.isBefore(first)) initial = first;
     final picked = await showDatePicker(
       context: context,
-      initialDate: parsed ?? DateTime(now.year - 25, 1, 1),
-      firstDate: DateTime(1920),
-      lastDate: now,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: today,
+      // Para data de nascimento é mais rápido escolher o ano primeiro e depois o dia.
+      initialDatePickerMode: DatePickerMode.year,
       helpText: 'Data de nascimento',
+      cancelText: 'Cancelar',
+      confirmText: 'Escolher',
     );
     if (picked == null || !mounted) return;
-    setState(() => _birthCtrl.text = _formatBr(picked));
+    setState(() {
+      _birthCtrl.text = _formatBr(picked);
+      _birthIncomplete = false;
+    });
+  }
+
+  /// Aviso embaixo do campo de data: dia que não existe, futuro ou data pela metade ao salvar.
+  String? get _birthErrorText {
+    final check = checkBirthDate(_birthCtrl.text);
+    if (check.error != null) return check.error;
+    if (_birthIncomplete && !check.complete && _birthCtrl.text.trim().isNotEmpty) {
+      return 'Complete a data: dia, mês e ano. Ex.: 27/06/1992';
+    }
+    return null;
   }
 
   static String _formatBirthForDisplay(String? raw) {
@@ -241,11 +265,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final month = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
     return '${d.year}-$month-$day';
-  }
-
-  static String? _toIsoBirthDate(String raw) {
-    final parsed = _parseBirthDate(raw);
-    return parsed == null ? null : _formatIso(parsed);
   }
 
   static DateTime? _parseBirthDate(String? raw) {
@@ -316,14 +335,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  key: const Key('birth-field'),
                   controller: _birthCtrl,
-                  keyboardType: TextInputType.datetime,
+                  // Só números: as barras entram sozinhas (27061992 vira 27/06/1992).
+                  keyboardType: TextInputType.number,
+                  inputFormatters: const [BrDateInputFormatter()],
+                  onChanged: (_) => setState(() => _birthIncomplete = false),
                   decoration: InputDecoration(
-                    labelText: 'Data de nascimento (DD/MM/AAAA)',
+                    labelText: 'Data de nascimento',
+                    // Rótulo sempre no alto: o formato DD/MM/AAAA fica visível dentro do campo desde o início.
+                    floatingLabelBehavior: FloatingLabelBehavior.always,
+                    hintText: 'DD/MM/AAAA',
+                    helperText: 'Ex.: 27/06/1992. Digite só os números ou toque no calendário.',
+                    helperMaxLines: 2,
+                    errorText: _birthErrorText,
+                    errorMaxLines: 2,
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      tooltip: 'Escolher data',
-                      icon: const Icon(Icons.calendar_today_outlined),
+                      key: const Key('birth-calendar'),
+                      tooltip: 'Abrir calendário',
+                      icon: const Icon(Icons.calendar_month_rounded),
                       onPressed: _pickBirthDate,
                     ),
                   ),
