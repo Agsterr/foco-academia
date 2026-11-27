@@ -12,7 +12,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -49,14 +48,6 @@ public class DataInitializer {
                 admin.setName("Administrador FocoDev");
                 admin.setRole(UserRole.ADMIN);
                 userRepository.save(admin);
-            }
-
-            List<User> orphans = userRepository.findAll().stream()
-                    .filter(u -> u.getAcademy() == null && u.getRole() != UserRole.ADMIN)
-                    .toList();
-            for (User u : orphans) {
-                u.setAcademy(academy);
-                userRepository.save(u);
             }
 
             String instructorPassword = envOrNull("SEED_INSTRUTOR_PASSWORD");

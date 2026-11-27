@@ -35,6 +35,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InviteService {
 
+    private final br.com.focodev.academia.billing.StudentLimit studentLimit;
     static final Duration VALIDITY = Duration.ofDays(7);
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int CODE_LENGTH = 10;
@@ -180,6 +181,9 @@ public class InviteService {
             }
             // A conta passa a valer só neste aparelho.
             deviceSessionRepository.deleteAll(deviceSessionRepository.findByUserIdOrderByLastSeenAtDesc(user.getId()));
+        }
+        if (invite.getRole() == UserRole.ALUNO) {
+            studentLimit.requireRoom(academy);
         }
         user.setAcademy(academy);
         user.setInstructor(invite.getRole() == UserRole.ALUNO ? invite.getInstructor() : null);

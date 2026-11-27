@@ -38,12 +38,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Assinatura do aluno avulso com o bloqueio ligado; o Google Play é simulado. */
+/** Assinatura dos alunos com o bloqueio ligado; o Google Play é simulado. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-@TestPropertySource(properties = "app.billing.enforce=true")
+@TestPropertySource(properties = {
+        "app.billing.enforce=true",
+        "app.billing.free-emails=liberado@teste.com",
+        "app.billing.academy-included-students=1"
+})
 class BillingIntegrationTest {
 
     @Autowired MockMvc mockMvc;
@@ -53,6 +57,8 @@ class BillingIntegrationTest {
     @Autowired SubscriptionRepository subscriptionRepository;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtService jwtService;
+
+    @Autowired br.com.focodev.academia.billing.StudentLimit studentLimit;
 
     @MockitoBean GooglePlayVerifier verifier;
 
@@ -174,14 +180,66 @@ class BillingIntegrationTest {
     }
 
     @Test
-    void academyStudentAlwaysHasAccess() throws Exception {
+    void academyStudentPaysTheLinkedPlanAndLosesTheInstructorPlanWhenItExpires() throws Exception {
         AcademyFixture fixture = AcademyFixture.create(academyRepository, userRepository, passwordEncoder, jwtService);
-        mockMvc.perform(get("/api/student/subscription").header("Authorization", "Bearer " + fixture.studentToken()))
-                .andExpect(jsonPath("$.premium").value(true))
-                .andExpect(jsonPath("$.reason").value("ACADEMY"));
-        mockMvc.perform(post("/api/student/templates/corrida-iniciante/start")
-                        .header("Authorization", "Bearer " + fixture.studentToken()))
+        String bearer = "Bearer " + fixture.studentToken();
+        mockMvc.perform(get("/api/student/subscription").header("Authorization", bearer))
+                .andExpect(jsonPath("$.reason").value("TRIAL"))
+                .andExpect(jsonPath("$.academyStudent").value(true))
+                .andExpect(jsonPath("$.productIds[0]").value("foco_academia_aluno_mensal"));
+        mockMvc.perform(get("/api/student/workouts").header("Authorization", bearer))
                 .andExpect(status().isOk());
+
+        var sub = subscriptionRepository.findByUserId(fixture.student().getId()).orElseThrow();
+        sub.setExpiresAt(Instant.now().minusSeconds(60));
+        subscriptionRepository.save(sub);
+
+        mockMvc.perform(get("/api/student/workouts").header("Authorization", bearer))
+                .andExpect(status().isPaymentRequired());
+        mockMvc.perform(get("/api/student/programs/active").header("Authorization", bearer))
+                .andExpect(status().isPaymentRequired());
+        mockMvc.perform(get("/api/student/stats").header("Authorization", bearer))
+                .andExpect(status().isOk());
+        // O plano cheio não serve para aluno vinculado.
+        mockMvc.perform(post("/api/student/subscription/google-play")
+                        .header("Authorization", bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"foco_academia_mensal\",\"purchaseToken\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void independentStudentCannotBuyTheCheaperLinkedPlan() throws Exception {
+        mockMvc.perform(post("/api/student/subscription/google-play")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":\"foco_academia_aluno_mensal\",\"purchaseToken\":\"x\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void freeListedEmailNeverPays() throws Exception {
+        AcademyFixture fixture = AcademyFixture.create(academyRepository, userRepository, passwordEncoder, jwtService);
+        User student = fixture.student();
+        student.setEmail("Liberado@Teste.com");
+        userRepository.save(student);
+        String bearer = "Bearer " + jwtService.generateToken(new AuthUser(student));
+
+        mockMvc.perform(get("/api/student/subscription").header("Authorization", bearer))
+                .andExpect(jsonPath("$.premium").value(true))
+                .andExpect(jsonPath("$.reason").value("COURTESY"));
+        mockMvc.perform(get("/api/student/workouts").header("Authorization", bearer))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void studentLimitBlocksNewStudentsAboveThePlan() {
+        AcademyFixture fixture = AcademyFixture.create(academyRepository, userRepository, passwordEncoder, jwtService);
+        var academy = fixture.student().getAcademy();
+        // Limite de 1 aluno neste teste; a academia do cenário já tem um.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> studentLimit.requireRoom(academy))
+                .isInstanceOf(br.com.focodev.academia.exception.ApiException.class)
+                .hasMessageContaining("até 1 alunos");
     }
 
     @Test

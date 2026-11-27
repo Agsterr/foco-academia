@@ -12,12 +12,26 @@ e avisa quando a academia passa do limite. A cobrança da academia é feita fora
 Personal autônomo (instrutor que trabalha sozinho): **R$ 39,90/mês até 30 alunos**
 (`PERSONAL_MONTHLY_PRICE` / `PERSONAL_INCLUDED_STUDENTS`), cobrado do mesmo jeito.
 
-## O que é premium
+## Quem paga o quê
 
-- **Aluno de academia:** tudo liberado (a academia paga). Não vê cobrança.
-- **Aluno avulso (conta criada no app):**
-  - grátis: treino outdoor livre, peso, histórico, a ficha que já estiver ativa;
-  - premium: começar **treinos prontos** e **montar fichas novas**.
+Com `BILLING_ENFORCE=true`:
+
+| Quem | Paga | Sem assinatura, depois do teste |
+|---|---|---|
+| Aluno avulso | `foco_academia_mensal` (R$ 19,99) | não começa treinos prontos nem monta fichas novas |
+| Aluno de academia ou personal | `foco_academia_aluno_mensal` (R$ 14,99) | também não abre a ficha do instrutor |
+| E-mail em `BILLING_FREE_EMAILS` | nada | tudo liberado |
+
+Treino outdoor livre, peso e histórico continuam grátis. O teste de quem é de academia começa a contar
+no primeiro acesso depois do bloqueio ligado. A academia e o personal continuam pagando por fora e não
+cadastram alunos acima do limite do plano.
+
+`BILLING_FREE_EMAILS` é uma lista separada por vírgulas, só no `.env` do servidor (testadores e revisor
+da loja). O cadastro não confirma o e-mail, então não publique a lista.
+
+**Antes de ligar o bloqueio:** criar `foco_academia_aluno_mensal` no Play Console (com a oferta de teste),
+publicar o app em produção com a versão nova, desvincular as contas avulsas que o servidor antigo colocou
+numa academia, preencher `BILLING_FREE_EMAILS` e fazer uma compra de teste.
 
 ## Passo a passo (uma vez)
 

@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ManagerService {
 
+    private final br.com.focodev.academia.billing.StudentLimit studentLimit;
     private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
     private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -288,6 +289,9 @@ public class ManagerService {
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new ApiException("Já existe uma conta com este e-mail.");
+        }
+        if (role == UserRole.ALUNO) {
+            studentLimit.requireRoom(academy);
         }
         User user = new User();
         user.setEmail(email);

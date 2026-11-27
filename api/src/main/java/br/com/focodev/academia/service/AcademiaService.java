@@ -20,6 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AcademiaService {
 
+    private final br.com.focodev.academia.billing.StudentLimit studentLimit;
     private final UserRepository userRepository;
     private final WorkoutRepository workoutRepository;
     private final WorkoutFeedbackRepository feedbackRepository;
@@ -35,6 +36,8 @@ public class AcademiaService {
         if (userRepository.existsByEmailIgnoreCase(request.email())) {
             throw new ApiException("E-mail já cadastrado");
         }
+
+        studentLimit.requireRoom(instructorUser.getAcademy());
 
         User student = new User();
         student.setEmail(request.email().trim().toLowerCase());

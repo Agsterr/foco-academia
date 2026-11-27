@@ -17,11 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Assinatura do aluno avulso. Aluno de academia sempre tem acesso (a academia paga).
- * O bloqueio só vale com app.billing.enforce=true, para nada travar antes de os
+ * Assinatura do aluno. Todo aluno paga pela Play Store; o vinculado a uma academia ou
+ * personal paga menos. Só os e-mails liberados usam de graça. O bloqueio só vale com app.billing.enforce=true, para nada travar antes de os
  * produtos existirem no Google Play Console.
  */
 @Slf4j
@@ -50,20 +51,24 @@ public class BillingService {
     @Transactional
     public SubscriptionStatus status(AuthUser authUser) {
         User user = requireStudent(authUser);
-        if (user.getAcademy() != null) {
-            return status(true, AccessReason.ACADEMY, null, false);
+        if (properties.isFreeEmail(user.getEmail())) {
+            return status(user, true, AccessReason.COURTESY, null, false);
+        }
+        // Aluno vinculado que nunca teve teste: começa a contar quando o bloqueio já está ligado.
+        if (properties.enforce() && user.getAcademy() != null) {
+            startTrial(user);
         }
         Subscription sub = subscriptionRepository.findByUserId(user.getId()).orElse(null);
         if (sub == null) {
-            return status(false, AccessReason.NONE, null, false);
+            return status(user, false, AccessReason.NONE, null, false);
         }
         refreshIfExpired(sub);
         Instant now = Instant.now();
         if (!sub.isActive(now)) {
-            return status(false, AccessReason.NONE, sub.getExpiresAt(), false);
+            return status(user, false, AccessReason.NONE, sub.getExpiresAt(), false);
         }
         AccessReason reason = sub.getSource() == Subscription.Source.TRIAL ? AccessReason.TRIAL : AccessReason.SUBSCRIPTION;
-        return status(true, reason, sub.getExpiresAt(), Boolean.TRUE.equals(sub.getAutoRenewing()));
+        return status(user, true, reason, sub.getExpiresAt(), Boolean.TRUE.equals(sub.getAutoRenewing()));
     }
 
     /** Bloqueia o recurso premium quando o bloqueio está ligado e o aluno não tem acesso. */
@@ -80,11 +85,25 @@ public class BillingService {
         }
     }
 
+    /** Ficha passada pelo instrutor: aluno vinculado sem assinatura não abre. Aluno avulso não é afetado. */
+    @Transactional
+    public void requirePlanAccess(AuthUser authUser) {
+        if (!properties.enforce() || authUser.getRole() != UserRole.ALUNO) {
+            return;
+        }
+        if (requireStudent(authUser).getAcademy() != null && !status(authUser).premium()) {
+            throw new ApiException(
+                    "Assine o Foco Premium para abrir a ficha do seu instrutor.",
+                    HttpStatus.PAYMENT_REQUIRED
+            );
+        }
+    }
+
     /** Recebe a compra feita no app, confirma no Google e libera o acesso. */
     @Transactional
     public SubscriptionStatus applyGooglePlayPurchase(AuthUser authUser, BillingDtos.GooglePlayPurchaseRequest request) {
         User user = requireStudent(authUser);
-        if (!properties.productIdsOrDefault().contains(request.productId())) {
+        if (!productIdsFor(user).contains(request.productId())) {
             throw new ApiException("Plano desconhecido.");
         }
         if (!verifier.isConfigured()) {
@@ -160,7 +179,11 @@ public class BillingService {
         }
     }
 
-    private SubscriptionStatus status(boolean premium, AccessReason reason, Instant expiresAt, boolean autoRenewing) {
+    private List<String> productIdsFor(User user) {
+        return user.getAcademy() != null ? properties.linkedProductIdsOrDefault() : properties.productIdsOrDefault();
+    }
+
+    private SubscriptionStatus status(User user, boolean premium, AccessReason reason, Instant expiresAt, boolean autoRenewing) {
         return new SubscriptionStatus(
                 premium || !properties.enforce(),
                 reason,
@@ -168,7 +191,8 @@ public class BillingService {
                 autoRenewing,
                 properties.enforce(),
                 verifier.isConfigured(),
-                properties.productIdsOrDefault()
+                productIdsFor(user),
+                user.getAcademy() != null
         );
     }
 

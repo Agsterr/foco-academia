@@ -538,6 +538,9 @@ class AuthService {
     final response = await _send(
       () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
     );
+    if (response.statusCode == 402) {
+      throw PaymentRequiredException(_errorMessage(response, 'Recurso do Foco Premium.'));
+    }
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
@@ -548,6 +551,9 @@ class AuthService {
     final response = await _send(
       () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
     );
+    if (response.statusCode == 402) {
+      throw PaymentRequiredException(_errorMessage(response, 'Recurso do Foco Premium.'));
+    }
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }
@@ -562,6 +568,9 @@ class AuthService {
       () => http.get(Uri.parse('$apiBase$path'), headers: _headers()),
     );
     if (response.statusCode == 404) return null;
+    if (response.statusCode == 402) {
+      throw PaymentRequiredException(_errorMessage(response, 'Recurso do Foco Premium.'));
+    }
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Erro ${response.statusCode}'));
     }

@@ -211,6 +211,9 @@ class CardioService {
       return workout;
     } on SessionExpiredException {
       rethrow;
+    } on PaymentRequiredException {
+      // Sem assinatura, o treino guardado no aparelho também não abre.
+      return null;
     } catch (_) {
       return CardioWorkoutCache.instance.load();
     }
@@ -230,6 +233,8 @@ class CardioService {
       return workouts;
     } on SessionExpiredException {
       rethrow;
+    } on PaymentRequiredException {
+      return const [];
     } catch (_) {
       return CardioWorkoutLibrary.instance.listAll();
     }

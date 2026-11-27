@@ -114,7 +114,11 @@ void main() {
       expiresAt: DateTime.now().add(const Duration(days: 5, hours: 2)),
     );
     expect(trial.summary, 'Teste grátis: faltam 6 dias');
-    expect(const SubscriptionStatus(premium: true, reason: 'ACADEMY').summary, 'Incluído pela sua academia');
+    expect(const SubscriptionStatus(premium: true, reason: 'COURTESY').summary, 'Acesso liberado para sua conta');
+    expect(
+      const SubscriptionStatus(premium: false, reason: 'NONE', academyStudent: true).summary,
+      'Assine para abrir a ficha do seu instrutor',
+    );
     expect(const SubscriptionStatus(premium: false, reason: 'NONE').summary, contains('Assine'));
   });
 }
