@@ -20,6 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AdminService {
 
+    private final br.com.focodev.academia.billing.StudentLimit studentLimit;
     private final AcademyRepository academyRepository;
     private final UserRepository userRepository;
     private final DeviceSessionRepository deviceSessionRepository;
@@ -130,6 +131,8 @@ public class AdminService {
                 || !instructor.getAcademy().getId().equals(academyId)) {
             throw new ApiException("Instrutor não pertence a esta academia");
         }
+
+        studentLimit.requireRoom(academy);
 
         User student = new User();
         student.setEmail(request.email().trim().toLowerCase());

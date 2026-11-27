@@ -14,11 +14,12 @@ class SubscriptionStatus {
     this.enforced = false,
     this.storeConfigured = false,
     this.productIds = const ['foco_academia_mensal'],
+    this.academyStudent = false,
   });
 
   final bool premium;
 
-  /// ACADEMY, TRIAL, SUBSCRIPTION ou NONE.
+  /// COURTESY, TRIAL, SUBSCRIPTION ou NONE.
   final String reason;
   final DateTime? expiresAt;
   final bool autoRenewing;
@@ -26,7 +27,11 @@ class SubscriptionStatus {
   final bool storeConfigured;
   final List<String> productIds;
 
-  bool get viaAcademy => reason == 'ACADEMY';
+  /// Aluno de academia ou personal: paga o plano reduzido.
+  final bool academyStudent;
+
+  /// E-mail liberado: não paga.
+  bool get courtesy => reason == 'COURTESY';
   bool get onTrial => reason == 'TRIAL';
   bool get subscribed => reason == 'SUBSCRIPTION';
 
@@ -39,13 +44,15 @@ class SubscriptionStatus {
 
   /// Linha curta para o cartão da tela inicial.
   String get summary {
-    if (viaAcademy) return 'Incluído pela sua academia';
+    if (courtesy) return 'Acesso liberado para sua conta';
     if (onTrial) {
       final d = daysLeft ?? 0;
       return d <= 1 ? 'Teste grátis termina hoje' : 'Teste grátis: faltam $d dias';
     }
     if (subscribed) return autoRenewing ? 'Assinatura ativa' : 'Ativo até ${_date(expiresAt)}';
-    return 'Assine para liberar treinos prontos e montar treinos';
+    return academyStudent
+        ? 'Assine para abrir a ficha do seu instrutor'
+        : 'Assine para liberar treinos prontos e montar treinos';
   }
 
   static String _date(DateTime? d) {
@@ -63,6 +70,7 @@ class SubscriptionStatus {
         storeConfigured: json['storeConfigured'] as bool? ?? false,
         productIds: (json['productIds'] as List<dynamic>?)?.cast<String>() ??
             const ['foco_academia_mensal'],
+        academyStudent: json['academyStudent'] as bool? ?? false,
       );
 }
 

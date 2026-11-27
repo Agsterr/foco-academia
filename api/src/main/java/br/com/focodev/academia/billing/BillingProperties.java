@@ -17,6 +17,8 @@ import java.util.List;
  * @param academyIncludedStudents alunos incluídos na mensalidade da academia
  * @param personalMonthlyPrice     mensalidade do personal autônomo (R$)
  * @param personalIncludedStudents alunos incluídos na mensalidade do personal
+ * @param linkedProductIds  IDs das assinaturas de aluno vinculado a academia ou personal
+ * @param freeEmails        e-mails que usam sem pagar
  */
 @ConfigurationProperties(prefix = "app.billing")
 public record BillingProperties(
@@ -28,8 +30,23 @@ public record BillingProperties(
         java.math.BigDecimal academyMonthlyPrice,
         Integer academyIncludedStudents,
         java.math.BigDecimal personalMonthlyPrice,
-        Integer personalIncludedStudents
+        Integer personalIncludedStudents,
+        List<String> linkedProductIds,
+        List<String> freeEmails
 ) {
+    /** Assinaturas (mais baratas) de aluno vinculado a academia ou personal. */
+    public List<String> linkedProductIdsOrDefault() {
+        return linkedProductIds != null && !linkedProductIds.isEmpty()
+                ? linkedProductIds
+                : List.of("foco_academia_aluno_mensal");
+    }
+
+    /** E-mails liberados sem pagar (testadores e revisor da loja). */
+    public boolean isFreeEmail(String email) {
+        return email != null && freeEmails != null
+                && freeEmails.stream().anyMatch(free -> free.trim().equalsIgnoreCase(email.trim()));
+    }
+
     /** Mensalidade conforme o tipo: academia ou personal autônomo. */
     public java.math.BigDecimal planMonthlyPrice(br.com.focodev.academia.domain.Academy academy) {
         if (academy.isPersonal()) {

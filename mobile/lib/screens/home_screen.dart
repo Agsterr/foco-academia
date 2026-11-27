@@ -360,7 +360,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
               ],
             ),
-            if (_subscription != null && !_subscription!.viaAcademy) ...[
+            if (_subscription != null && !_subscription!.courtesy) ...[
               const SizedBox(height: 16),
               HeroCard(
                 key: const Key('premium-card'),

@@ -35,6 +35,8 @@ import 'package:foco_academia_mobile/services/auth_service.dart';
 import 'package:foco_academia_mobile/services/home_workout_progress.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:foco_academia_mobile/services/subscription_service.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite/sqflite_dev.dart' show sqfliteDatabaseFactoryDefault;
@@ -195,8 +197,35 @@ List<Map<String, dynamic>> get _students => [
 http.Response _json(Object body, [int status = 200]) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
+bool _unpaidAcademyStudent = false;
+
+/// Loja de mentira: o plugin real não responde em teste. O preço é o planejado para o aluno vinculado.
+class _DemoStore implements StoreGateway {
+  @override
+  Future<bool> isAvailable() async => true;
+  @override
+  Future<List<StorePlan>> plans(List<String> ids) async =>
+      const [StorePlan(id: 'foco_academia_aluno_mensal', title: 'Mensal', price: r'R$ 14,99')];
+  @override
+  Future<bool> buy(StorePlan plan) async => true;
+  @override
+  Future<void> restore() async {}
+  @override
+  Stream<List<PurchaseDetails>> get purchases => const Stream.empty();
+  @override
+  Future<void> complete(PurchaseDetails purchase) async {}
+}
+
 Future<http.Response> _demoApi(http.Request r) async {
   final path = r.url.path;
+  if (_unpaidAcademyStudent) {
+    if (path == '/api/student/programs/active') {
+      return _json({'message': 'Assine o Foco Premium para abrir a ficha do seu instrutor.'}, 402);
+    }
+    if (path == '/api/student/subscription') {
+      return _json({'premium': false, 'reason': 'NONE', 'enforced': true, 'academyStudent': true});
+    }
+  }
   switch (path) {
     case '/api/auth/heartbeat':
       return http.Response('', 204);
@@ -467,6 +496,22 @@ void main() {
     await _shot(tester, '09_login', const LoginScreen());
     await _shot(tester, '10_cadastro', const RegisterScreen(initialProfile: SignupProfile.academia));
   }, skip: skip);
+
+  for (final (name, screen) in [
+    ('extra_ficha_bloqueada', const WorkoutsScreen()),
+    ('extra_premium_academia', const PremiumScreen()),
+  ]) {
+    testWidgets(name, (tester) async {
+      await tester.runAsync(_loadFonts);
+      addTearDown(tester.view.reset);
+      _unpaidAcademyStudent = true;
+      final realStore = SubscriptionService.instance.store;
+      SubscriptionService.instance.store = _DemoStore();
+      addTearDown(() => SubscriptionService.instance.store = realStore);
+      addTearDown(() => _unpaidAcademyStudent = false);
+      await _shot(tester, name, screen);
+    }, skip: skip);
+  }
 
   // Outras telas, para conferir o tema (não vão para a loja).
   for (final (name, screen) in [

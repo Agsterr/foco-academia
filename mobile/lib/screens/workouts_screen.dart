@@ -1,3 +1,4 @@
+import 'premium_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
@@ -23,6 +24,8 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
   StudentStats? _stats;
   bool _loading = true;
   String? _error;
+  /// Aluno de academia sem assinatura: a ficha do instrutor fica fechada.
+  bool _locked = false;
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
         _error = null;
       });
     }
+    _locked = false;
     try {
       final results = await Future.wait([
         WorkoutService.instance.getActiveProgram(),
@@ -57,6 +61,14 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (_) => false,
       );
+    } on PaymentRequiredException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _locked = true;
+        _program = null;
+        _error = e.message;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -167,7 +179,19 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: AppTheme.muted),
                             ),
-                            if (_program == null) ...[
+                            if (_locked) ...[
+                              const SizedBox(height: 16),
+                              GradientButton(
+                                onPressed: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const PremiumScreen()),
+                                  );
+                                  if (mounted) _load();
+                                },
+                                icon: Icons.workspace_premium_rounded,
+                                label: 'Assinar',
+                              ),
+                            ] else if (_program == null) ...[
                               const SizedBox(height: 16),
                               GradientButton(
                                 onPressed: () async {

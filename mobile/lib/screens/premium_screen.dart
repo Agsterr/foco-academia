@@ -166,9 +166,17 @@ class _PremiumScreenState extends State<PremiumScreen> {
                     subtitle: Text(subtitle),
                   ),
                 const SizedBox(height: 12),
-                if (status?.viaAcademy ?? false)
+                if (status?.academyStudent ?? false)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Preço de aluno de academia ou personal. Inclui a ficha do seu instrutor.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (status?.courtesy ?? false)
                   const Text(
-                    'Você treina por uma academia: tudo isso já está incluído.',
+                    'Sua conta tem acesso liberado: você não precisa assinar.',
                     textAlign: TextAlign.center,
                   )
                 else if (status?.subscribed ?? false)
@@ -217,7 +225,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
                   const SizedBox(height: 8),
                   Text(_message!, textAlign: TextAlign.center),
                 ],
-                if (_storeAvailable && !(status?.viaAcademy ?? false))
+                if (_storeAvailable && !(status?.courtesy ?? false))
                   TextButton(
                     onPressed: _buying ? null : _restore,
                     child: const Text('Já assinei — restaurar compra'),

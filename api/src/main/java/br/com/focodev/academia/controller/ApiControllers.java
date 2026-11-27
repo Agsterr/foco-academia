@@ -212,6 +212,7 @@ public class ApiControllers {
 
     @GetMapping("/student/programs")
     public List<WorkoutProgramResponse> listStudentPrograms(@AuthenticationPrincipal AuthUser user) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.listStudentPrograms(user);
     }
 
@@ -230,6 +231,7 @@ public class ApiControllers {
             @PathVariable UUID id,
             @Valid @RequestBody StudentProgramRequest request
     ) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.updateOwnProgram(user, id, request);
     }
 
@@ -241,6 +243,7 @@ public class ApiControllers {
 
     @PostMapping("/student/programs/{id}/activate")
     public WorkoutProgramResponse activateProgram(@AuthenticationPrincipal AuthUser user, @PathVariable UUID id) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.activateProgram(user, id);
     }
 
@@ -285,6 +288,7 @@ public class ApiControllers {
 
     @GetMapping("/student/programs/active")
     public WorkoutProgramResponse getActiveStudentProgram(@AuthenticationPrincipal AuthUser user) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.getActiveStudentProgram(user);
     }
 
@@ -293,6 +297,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @PathVariable UUID id
     ) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.getProgram(user, id);
     }
 
@@ -301,6 +306,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @PathVariable UUID dayId
     ) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.getStudentDay(user, dayId);
     }
 
@@ -309,6 +315,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @PathVariable UUID dayId
     ) {
+        billingService.requirePlanAccess(user);
         return workoutProgramService.startOrResumeSession(user, dayId);
     }
 
@@ -337,6 +344,7 @@ public class ApiControllers {
 
     @GetMapping("/student/workouts")
     public List<WorkoutResponse> listStudentWorkouts(@AuthenticationPrincipal AuthUser user) {
+        billingService.requirePlanAccess(user);
         return academiaService.listStudentWorkouts(user);
     }
 
@@ -345,6 +353,7 @@ public class ApiControllers {
             @AuthenticationPrincipal AuthUser user,
             @PathVariable UUID id
     ) {
+        billingService.requirePlanAccess(user);
         return academiaService.getWorkout(user, id);
     }
 
@@ -429,11 +438,13 @@ public class ApiControllers {
 
     @GetMapping("/student/cardio-workouts/active")
     public CardioDtos.CardioWorkoutResponse activeCardioWorkout(@AuthenticationPrincipal AuthUser user) {
+        billingService.requirePlanAccess(user);
         return cardioService.getActiveStudentWorkout(user);
     }
 
     @GetMapping("/student/cardio-workouts")
     public List<CardioDtos.CardioWorkoutResponse> listStudentCardioWorkouts(@AuthenticationPrincipal AuthUser user) {
+        billingService.requirePlanAccess(user);
         return cardioService.listStudentWorkouts(user);
     }
 

@@ -499,6 +499,8 @@ class WorkoutService {
       return WorkoutProgram.fromJson(data);
     } on SessionExpiredException {
       rethrow;
+    } on PaymentRequiredException {
+      rethrow;
     } catch (_) {
       return null;
     }

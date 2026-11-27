@@ -11,8 +11,8 @@ public final class BillingDtos {
 
     private BillingDtos() {}
 
-    /** ACADEMY: a academia paga · TRIAL: teste grátis · SUBSCRIPTION: assinatura ativa · NONE: sem acesso premium. */
-    public enum AccessReason { ACADEMY, TRIAL, SUBSCRIPTION, NONE }
+    /** COURTESY: e-mail liberado · TRIAL: teste grátis · SUBSCRIPTION: assinatura ativa · NONE: sem acesso premium. */
+    public enum AccessReason { COURTESY, TRIAL, SUBSCRIPTION, NONE }
 
     public record SubscriptionStatus(
             boolean premium,
@@ -22,7 +22,9 @@ public final class BillingDtos {
             /** Bloqueio ligado no servidor; desligado, ninguém fica sem acesso. */
             boolean enforced,
             boolean storeConfigured,
-            List<String> productIds
+            List<String> productIds,
+            /** Aluno de academia ou personal: preço reduzido e a ficha do instrutor depende da assinatura. */
+            boolean academyStudent
     ) {}
 
     public record GooglePlayPurchaseRequest(
